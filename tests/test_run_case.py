@@ -10,6 +10,8 @@
    result.json 与 config.yaml 落盘；
 5. **厚度换算**：二维反力是单位厚度的（N/m），F = F_per_thickness × thickness。
    这一步错了会与文献差 1000 倍（Miehe 的板厚 1 mm）。
+6. **峰值可信性**：``assess_peak`` 只看曲线本身、不看运行状态 —— 旧判据把
+   「过峰之后才崩」的算例误标成「仍在上升、只是下界」，note 与事实相反。
 """
 
 from __future__ import annotations
@@ -215,3 +217,74 @@ def test_run_static_rejects_bad_stages(tmp_path):
     cfg2 = rc.load_case(path2)
     with pytest.raises(KeyError, match="stages"):
         rc.run_static(cfg2)
+
+
+# --------------------------------------------------------------------------
+# 6. 峰值可信性判据（assess_peak）
+# --------------------------------------------------------------------------
+def test_assess_peak_interior_peak_is_reliable():
+    forces = [1.0, 2.0, 3.0, 2.9, 2.7, 2.4]
+    a = rc.assess_peak(forces)
+    assert a.index == 2
+    assert a.reliable
+    assert a.n_descending == 3
+    assert "峰值可信" in a.note
+
+
+def test_assess_peak_monotone_rising_is_only_a_lower_bound():
+    forces = [1.0, 2.0, 3.0, 4.0]
+    a = rc.assess_peak(forces, status="not_converged")
+    assert a.index == 3
+    assert not a.reliable
+    assert a.n_descending == 0
+    assert a.last_rise == pytest.approx(1.0)
+    assert "下界" in a.note and "not_converged" in a.note
+
+
+def test_assess_peak_ignores_run_status_when_curve_already_turned_over():
+    """**回归测试**：这是踩过的真 bug。
+
+    h4/h8 两个 SENT 算例在过峰之后才因交错振荡失败，曲线里已经有 4-5 个
+    连续下降的收敛步，峰值是真的；旧判据却因为 ``status == "not_converged"``
+    把它标成「仍在上升，只是下界」，note 与事实相反。
+    未收敛的那一步在 append 之前就 break，故 curve 中只有收敛步 ——
+    可信性只能由曲线本身判定。
+    """
+    # 取自 data/benchmark_sent_h8/result.json 的尾部（单位 N）
+    forces = [705.279, 705.300, 705.315, 705.319, 705.316, 705.291, 705.244, 705.143]
+    for status in ("not_converged", "completed", "past_peak", "damage_limit"):
+        a = rc.assess_peak(forces, status=status)
+        assert a.index == 3
+        assert a.n_descending == 4
+        assert a.reliable, "峰后已连续下降 4 步，不该因 status=%s 被判为下界" % status
+
+
+def test_assess_peak_single_dip_is_not_enough():
+    """单步负增量可能只是交错容差造成的抖动，不足以认定过峰。
+
+    取自 data/benchmark_sent/result.json：峰后只降了 1 步、跌幅 7e-5，
+    仍应报下界（而 last_rise 很小，说明离真峰值已经不远）。
+    """
+    forces = [769.709, 769.735, 769.739, 769.685]
+    a = rc.assess_peak(forces, status="not_converged")
+    assert a.index == 2
+    assert a.n_descending == 1
+    assert not a.reliable
+    assert a.post_peak_drop_rel < rc.PEAK_MIN_DROP_REL
+    assert a.last_rise == pytest.approx(0.004, abs=1e-3)
+
+
+def test_assess_peak_large_single_drop_is_reliable():
+    """一步跌破 PEAK_MIN_DROP_REL（如 stop_after_peak_drop 触发）即已确定过峰。"""
+    forces = [740.0, 741.1, 11.1]
+    a = rc.assess_peak(forces, status="past_peak")
+    assert a.index == 1
+    assert a.n_descending == 1
+    assert a.post_peak_drop_rel > rc.PEAK_MIN_DROP_REL
+    assert a.reliable
+
+
+def test_assess_peak_empty_curve():
+    a = rc.assess_peak([])
+    assert a.index == -1
+    assert not a.reliable

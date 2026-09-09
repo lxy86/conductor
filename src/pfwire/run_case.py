@@ -39,7 +39,9 @@ from . import mesh as pfmesh
 from .material import Material, load_material, resolve_fracture_properties
 from .phasefield import PhaseFieldModel, PhaseFieldSolver, SolverConfig
 
-__all__ = ["CaseConfig", "load_case", "run_static", "run_case", "main"]
+__all__ = [
+    "assess_peak",
+    "PeakAssessment","CaseConfig", "load_case", "run_static", "run_case", "main"]
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +79,96 @@ class CaseConfig:
     乘以厚度才是物理力。Miehe 2010 的 SENT 板厚 1 mm，故 thickness = 1.0e-3，
     否则会与原文的 kN 量级差 1000 倍。"""
     raw: dict[str, Any] = field(default_factory=dict)
+
+
+#: 峰值可信性判据（见 run_static）。峰后连续下降步数阈值：
+#: 取 3 是因为交错容差 tol_d 造成的抖动是无偏的，连续 3 步同向下降概率极低，
+#: 而真正的极限点之后载荷是单调下降的。
+PEAK_MIN_DESCENT = 3
+#: 相对跌幅阈值：跌到峰值的 99% 以下时，无论下降了几步都已确定过峰。
+PEAK_MIN_DROP_REL = 1.0e-2
+
+
+@dataclass(frozen=True)
+class PeakAssessment:
+    """载荷–位移曲线的峰值及其**可信性**。
+
+    为什么要单独判「可信」
+    ----------------------
+    验证 1 的口径是峰值载荷偏差 < 5%，所以 ``argmax`` 到底是真峰值还是「曲线
+    还在上升就被打断」的下界，直接决定结论能不能成立。曾经因为把下界当峰值
+    报出过错误的 "在 5% 以内"。
+
+    判据只看曲线本身，**不看运行状态**：``run_static`` 在未收敛时是先 break
+    再 append，故 curve 里只有收敛步 —— 「峰后有没有更低的载荷」这件事不因
+    运行怎么结束而改变。（早期版本要求 status ∈ {completed, past_peak,
+    damage_limit}，于是把明明已经过峰、只是峰后才崩的算例误标成下界。）
+
+    - ``n_descending``：峰后**连续**下降的步数。交错容差 tol_d 造成的抖动是
+      无偏的，连续同向下降数步的概率极低，而真极限点之后载荷单调下降；
+    - ``post_peak_drop_rel``：峰后相对跌幅。跌破 PEAK_MIN_DROP_REL 时无论
+      降了几步都已确定过峰（用于 stop_after_peak_drop 一步跌很多的情形）；
+    - ``last_rise``：峰前最后一步的载荷增量。曲线仍在上升时，它给出「真峰值
+      还能高多少」的量级参考。
+    """
+
+    index: int
+    reliable: bool
+    n_descending: int
+    post_peak_drop_rel: float
+    last_rise: float
+    note: str
+
+
+def assess_peak(forces, *, status: str = "completed") -> PeakAssessment:
+    """定位峰值并判断其可信性。``forces`` 为按加载顺序排列的载荷序列。"""
+    values = np.asarray(forces, dtype=float)
+    if values.size == 0:
+        return PeakAssessment(-1, False, 0, 0.0, 0.0, "曲线为空，无峰值")
+
+    index = int(np.argmax(values))
+    is_interior = index < values.size - 1
+
+    n_descending = 0
+    for i in range(index + 1, values.size):
+        if values[i] >= values[i - 1]:
+            break
+        n_descending += 1
+
+    peak = float(values[index])
+    post_peak_drop_rel = (
+        float((peak - values[index + 1 :].min()) / peak)
+        if is_interior and peak > 0.0
+        else 0.0
+    )
+    last_rise = float(values[index] - values[index - 1]) if index > 0 else 0.0
+    reliable = bool(
+        is_interior
+        and (
+            n_descending >= PEAK_MIN_DESCENT
+            or post_peak_drop_rel >= PEAK_MIN_DROP_REL
+        )
+    )
+    if reliable:
+        note = "峰值可信：峰后连续下降 %d 步、相对跌幅 %.2e" % (
+            n_descending,
+            post_peak_drop_rel,
+        )
+    else:
+        note = (
+            "**不是真峰值**：曲线到最后一个收敛步仍在上升（status=%s，"
+            "峰后连续下降 %d 步、跌幅 %.2e），此值只是下界；"
+            "峰前最后一步增量 %+.4g 可作「还差多少」的量级参考"
+            % (status, n_descending, post_peak_drop_rel, last_rise)
+        )
+    return PeakAssessment(
+        index=index,
+        reliable=reliable,
+        n_descending=n_descending,
+        post_peak_drop_rel=post_peak_drop_rel,
+        last_rise=last_rise,
+        note=note,
+    )
 
 
 def load_case(path: str | Path) -> CaseConfig:
@@ -345,18 +437,8 @@ def run_static(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, An
 
     forces = np.array([c["F"] for c in curve])
     displacements = np.array([c["u"] for c in curve])
-    peak_index = int(np.argmax(forces)) if forces.size else -1
-    # **诚实报告**：若"峰值"就是最后一个记录点、且运行不是因为过峰/损伤上限而停，
-    # 那它只是载荷的**下界**（曲线还在上升就被打断了），绝不能当峰值用。
-    peak_is_interior = 0 <= peak_index < len(curve) - 1
-    peak_reliable = bool(
-        peak_is_interior and stopped in ("completed", "past_peak", "damage_limit")
-    )
-    peak_note = (
-        "峰值可信：其后有载荷更低的步"
-        if peak_reliable
-        else "**不是真峰值**：曲线到最后一步仍在上升（status=%s），此值只是下界" % stopped
-    )
+    assessment = assess_peak(forces, status=stopped)
+    peak_index = assessment.index
     result: dict[str, Any] = {
         "case": cfg.path.name,
         "case_type": cfg.case_type,
@@ -373,8 +455,11 @@ def run_static(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, An
         "mesh": {"type": "sent", "n_cells": int(n_cells), **cfg.mesh_cfg},
         "thickness": cfg.thickness,
         "peak": {
-            "reliable": peak_reliable,
-            "note": peak_note,
+            "reliable": assessment.reliable,
+            "note": assessment.note,
+            "n_descending_after": assessment.n_descending,
+            "post_peak_drop_rel": assessment.post_peak_drop_rel,
+            "last_rise_before_peak": assessment.last_rise,
             "F": float(forces[peak_index]) if peak_index >= 0 else None,
             "F_per_thickness": (
                 float(forces[peak_index] / cfg.thickness) if peak_index >= 0 else None
