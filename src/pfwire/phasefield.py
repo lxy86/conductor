@@ -736,6 +736,34 @@ class PhaseFieldSolver:
             "psi_plus": self._assemble(self._form_psi_plus),
         }
 
+    def reaction(self, probe: fem.Function) -> float:
+        """沿 ``probe`` 方向的支反力：R = dPi_el/du . probe = ∫ sigma : eps(probe) dV。
+
+        ``probe`` 取「在受约束边界上等于单位方向、其余处为零」的场，
+        于是该标量就是该边界上的总反力分量。耗散项不含 u，求导自动落掉，
+        故这里对**精确**（非冻结）弹性能求导即可，两种分解都适用。
+        比直接积分边界面力稳妥：不需要显式写出 sigma，避免对分解求导写错。
+        """
+        model = self.model
+        psi = elastic_energy_density(
+            strain(self.u),
+            self.d,
+            model.material,
+            model.split,
+            self.dim,
+            model.k_res,
+        )
+        form = fem.form(ufl.derivative(psi * self.dx, self.u, probe))
+        return self.comm.allreduce(fem.assemble_scalar(form), op=MPI.SUM)
+
+    def make_probe(self, bcs_probe) -> fem.Function:
+        """按给定的 DirichletBC（值为单位方向）构造 :meth:`reaction` 用的探针场。"""
+        probe = fem.Function(self.V_u, name="probe")
+        for bc in _resolve_bcs(bcs_probe, self.V_u, "u"):
+            bc.set(probe.x.array)
+        probe.x.scatter_forward()
+        return probe
+
     def max_damage(self) -> float:
         n = self._n_owned_d()
         local = float(np.max(self.d.x.array[:n], initial=0.0))

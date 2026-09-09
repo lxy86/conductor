@@ -1,0 +1,31 @@
+# Miehe et al. 2010 (CMAME 199:2765-2778) 第 5.1 节 SENT 基准的合成脆性材料。
+# 仅用于验证 1，不是 Al 1350。单位 SI。
+name: Miehe 2010 SENT benchmark
+
+elastic:
+  E: 210.0e+9         # Pa。由原文 lambda=121.15、mu=80.77 kN/mm^2 反解得 E=210 GPa、nu=0.3
+  nu: 0.3
+  plane_state: plane_strain   # 原文直接给三维 Lamé 常数 -> 平面应变（见 DECISIONS.md D-10）
+
+strength:
+  # 该基准不涉及材料强度：AT2 没有起裂阈值，软化峰值由 (G_c, ell) 决定。
+  # 这里填 AT2 的峰值应力 sigma_y = (9/16)sqrt(E G_c/(3 ell))（ell = 0.0075 mm 时约 2.82 GPa），
+  # 只为满足 schema，不参与计算。
+  sigma_u: 2.824e+9
+
+fracture:
+  dissipation: AT2    # w(d)=d^2、c_w=2 -> 前因子 G_c/2，即 Miehe 的经典写法
+  mode: from_gc_and_ell
+  Gc: 2700.0          # J/m^2 = 2.7e-3 kN/mm
+  ell: 7.5e-6         # m = 0.0075 mm（原文的 ell_2）；工况里可用 model.ell 覆盖成 15e-6
+
+fatigue:
+  alpha_T: null       # 静态基准不涉及疲劳
+
+sources:
+  all: >-
+    Miehe, Hofacker & Welschinger, CMAME 199 (2010) 2765-2778, 第 5.1 节：
+    lambda = 121.15 kN/mm^2、mu = 80.77 kN/mm^2、g_c = 2.7e-3 kN/mm、
+    ell_1 = 0.0150 mm、ell_2 = 0.0075 mm，临界带 h <= ell/2。
+    峰值载荷从原文 Fig. 7 数字化：ell_1 -> 0.71 kN、ell_2 -> 0.74 kN，
+    峰值位移 u ≈ 0.0056 mm。详见 DECISIONS.md D-10。

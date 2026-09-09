@@ -1,0 +1,39 @@
+# 验证 1：单边缺口拉伸（SENT），复现 Miehe et al. 2010 第 5.1 节。
+# 验收：峰值载荷与原文 Fig. 7 偏差 < 5%（ell=0.0075 mm 时参考 0.74 kN）。
+case_type: static
+material: configs/material_miehe.yaml
+
+model:
+  split: spectral       # 该文正是提出主应变分解的
+  dissipation: AT2
+  ell: 7.5e-6           # 覆盖材料卡；换 15.0e-6 即复现原文 ell_1 那条曲线
+  k_res: 1.0e-6
+
+solver:
+  u_solver: newton      # spectral 分解没有冻结形式，必须走精确非线性路径
+  tol_d: 1.0e-4
+  max_iter: 50
+
+mesh:
+  type: sent
+  W: 1.0e-3
+  H: 1.0e-3
+  notch_length: 0.5e-3
+  thickness: 1.0e-3     # 原文板厚 T = 1 mm。二维算出的是单位厚度反力(N/m)，
+                        # 乘厚度才得到与原文可比的 kN
+  h_fine: 3.75e-6       # = ell/2，原文规定临界带 h <= ell/2
+  h_coarse: 3.0e-5
+  refine_halfheight: 6.0e-5
+
+loading:
+  type: tension_y       # 底边全约束，顶边给竖向位移
+  # 原文 Δu = 1e-5 mm（前 500 步）后转 1e-6 mm；这里弹性段用更粗的步长省时间，
+  # 峰值附近（u ≈ 5.6e-6 m）再细化，保证峰值分辨率。
+  stages:
+    - {du: 1.0e-7, n: 45}    # 到 u = 4.5e-6 m，仍在弹性段
+    - {du: 5.0e-9, n: 400}   # 到 u = 6.5e-6 m，覆盖峰值与峰后
+  stop_damage: 0.99
+
+output:
+  dir: data/benchmark_sent
+  save_fields_every: 0
