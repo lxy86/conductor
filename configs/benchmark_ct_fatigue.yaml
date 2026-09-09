@@ -28,9 +28,14 @@ mesh:
   hole_offset_over_W: 0.275
   notch_height_over_W: 0.0625      # = 1/16，原文标的 W/16
   notch_taper_length: 1.5625e-3    # = W/32，即 45° V 尖（原文未标尺寸，见 D-19）
-  h_fine: 5.0e-5        # = ell/4。原文用 ell/5，但 p20 明确 alpha = psi+ 时
-                        # h = ell/3 就已收敛，而我们自己的 D-17 结论是 h <= ell/4；
-                        # 取 ell/4 在两者之上，且比 ell/5 省 1.56 倍单元。
+  h_fine: 1.0e-4        # = ell/2。三条依据（见 DECISIONS.md D-20）：
+                        # 1. **实测**：本试样的 P_mon 在 h = ell/2 与 ell/4 下**完全相同**
+                        #    （都是 190 N），说明该量已网格收敛；
+                        # 2. 原文 p20 明确：alpha 取 psi+ 时 h = ell/3 即已收敛
+                        #    （alpha = ||eps|| 才会强烈依赖网格，我们用的是 psi+）；
+                        # 3. D-17 的 h <= ell/4 是**静态峰值载荷**的结论（SENT），
+                        #    那里 h = ell/2 高估 5%；此处已用 (1) 直接验过，不必照搬。
+                        # 代价上 ell/4 每步贵约 4 倍、整个疲劳算例要按天计。
   h_coarse: 1.5e-3
   refine_halfheight: 1.0e-3        # = 5 ell，容得下相场带宽 + 裂纹偏折
   refine_x_margin: 2.0e-3          # 加密带自 a0 - 2 mm 起，缺口尖端也在带内
@@ -57,7 +62,13 @@ loading:
     peak_phase: null    # 自动取 ∫psi+ dx 最大的子步（三角波下应为 0.5）
   crack:
     threshold: 0.95
-    spacing: 5.0e-5     # <= h_fine，否则会低估裂纹长度（CrackPathGrid 会检查）
+    spacing: 2.5e-5     # = h_fine/2 = Δa/10。**必须远细于 paris_delta_a**：
+                        # 采样间距就是 a 的量化步长，而 da/dN = Δa/ΔN 靠 a 越过每个
+                        # Δa 边界的时刻定出。实测 spacing = 0.1 mm 配 Δa = 0.25 mm
+                        # （每区间仅 2.5 个采样步）时 da/dN 完全是阶梯噪声：
+                        # 速率在 1.3e-3~4.9e-3 之间乱跳、R^2 = 0.002、m 拟成 0.74。
+                        # d 是 P1 场，亚单元采样由线性插值给出真实的 0.95 等值面位置，
+                        # 不是虚假精度。
     halfwidth: 8.0e-4   # = 4 ell，容得下相场带宽
     growth_length: 2.6e-2   # 自 a0 = 11 mm 量到 37 mm（a/W = 0.74），覆盖停止阈值
   stop_at_a_over_W: 0.7
