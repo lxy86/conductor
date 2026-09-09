@@ -434,3 +434,22 @@ def test_bc_on_foreign_function_space_is_rejected():
     )
     with pytest.raises(ValueError, match="静默忽略"):
         pf.PhaseFieldSolver(msh, model, bcs_u=[bc])
+
+
+def test_tiny_load_increment_still_converges():
+    """回归：极小的载荷增量不能把 d 的 SNES 逼到舍入地板以下。
+
+    实测过的失败模式：atol/rtol 设得过紧时，载荷步越细、网格越密，
+    ‖F_0‖ 越小、相对目标越先掉到装配的舍入地板下，SNES 必然撞 max_it
+    （症状是「越细越早死」，reason=-5）。这里连着施加 1e-4 相对量级的
+    微小增量，全部必须收敛。
+    """
+    case = UniaxialStrainCase()
+    s = 1.2
+    case.apply_ratio(s)
+    case.solver.commit_step()
+    for k in range(1, 6):
+        result = case.apply_ratio(s + 1.0e-4 * k)  # 每步只增 0.01% 应变
+        assert result.converged, f"第 {k} 个微小增量就不收敛了：{result.failure_mode}"
+        case.solver.commit_step()
+    assert case.solver.max_damage() > 0.0

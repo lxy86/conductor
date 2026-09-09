@@ -24,9 +24,9 @@ loading:
   - du: 2.0e-07
     n: 26
   - du: 2.0e-08
-    n: 20
-  - du: 4.0e-09
-    n: 350
+    n: 15
+  - du: 1.0e-09
+    n: 700
   stop_damage: 0.99
   stop_after_peak_drop: 0.2
 output:

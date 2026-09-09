@@ -154,7 +154,8 @@ def load_case(path: str | Path) -> CaseConfig:
     solver_cfg = dict(raw.get("solver", {}))
     _require_keys(
         solver_cfg,
-        {"u_solver", "tol_d", "max_iter", "degree_u", "degree_d", "log_iterations"},
+        {"u_solver", "tol_d", "max_iter", "degree_u", "degree_d",
+         "log_iterations", "relaxation"},
         "solver",
     )
     solver = SolverConfig(
@@ -164,6 +165,7 @@ def load_case(path: str | Path) -> CaseConfig:
         degree_u=int(solver_cfg.get("degree_u", 1)),
         degree_d=int(solver_cfg.get("degree_d", 1)),
         log_iterations=bool(solver_cfg.get("log_iterations", False)),
+        relaxation=float(solver_cfg.get("relaxation", 1.0)),
     )
 
     output_cfg = dict(raw.get("output", {}))

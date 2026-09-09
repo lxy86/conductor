@@ -348,10 +348,23 @@ class SolverConfig:
     u_solver: USolver = "linear"
     degree_u: int = 1
     degree_d: int = 1
-    snes_atol: float = 1.0e-10
-    snes_rtol: float = 1.0e-9
-    snes_max_it: int = 100
+    snes_atol: float = 1.0e-8
+    snes_rtol: float = 1.0e-6
+    snes_max_it: int = 200
+    """d 的 SNES 容差。**不要再调紧**：d 问题是二次的（残差线性），残差会掉到
+    装配的舍入地板上就不动了。实测（h=ell/4、16229 个 d 自由度、AT2、Gc=2700、
+    ell=15 um）：某个载荷步的残差历史为 6.27e-4 -> 9.66e-10 -> 6.34e-10 ->
+    ... -> 1.04e-10 后卡住约 95 次迭代。原先 atol=1e-10 正压在地板上、
+    rtol=1e-9 对应的目标 6.3e-13 更在地板之下，于是必然撞上 max_it。
+    现取 atol=1e-8（约为地板的 100 倍）、rtol=1e-6，仍有 5 个数量级的下降余量。
+    症状是**越细越早死**：载荷步越细、网格越密 -> ||F_0|| 越小、地板越高
+    -> 相对目标越先掉到地板下。"""
     log_iterations: bool = False  # 逐迭代日志（排查静默不收敛）
+    relaxation: float = 1.0
+    """交错更新中 d 的松弛因子：d <- d_prev + omega (d_solved - d_prev)。
+    默认 1.0（不松弛）。极限点附近交错格式可能**振荡**（‖Δd‖ 停在 1e-2 量级不降），
+    此时取 omega ~ 0.5 可压住振荡；不动点不变，故不影响解的正确性。
+    因 d_prev 与 d_solved 都 >= d_old，凸组合仍满足不可逆下界。"""
 
     direct_solver_options: dict[str, object] = field(
         default_factory=lambda: {
@@ -366,6 +379,8 @@ class SolverConfig:
             raise ValueError("u_solver 只能是 'linear' 或 'newton'，收到 %r" % (self.u_solver,))
         if self.tol_d <= 0 or self.max_iter < 1:
             raise ValueError("tol_d 必须为正、max_iter >= 1")
+        if not 0.0 < self.relaxation <= 1.0:
+            raise ValueError("relaxation 须在 (0,1] 内，收到 %r" % (self.relaxation,))
 
 
 @dataclass
@@ -633,15 +648,33 @@ class PhaseFieldSolver:
                 )
             raise RuntimeError("u 的 Newton 求解未收敛：SNESConvergedReason=%d" % reason)
 
+    def _snes_diagnostics(self) -> str:
+        """d 求解失败时的可诊断信息：最终残差、容差、迭代数。
+
+        只报 reason=-5 是查不出问题的——真正的信息是「残差停在什么量级、
+        与 atol 差多少」。见 SolverConfig.snes_atol 的注释。
+        """
+        snes = self._d_problem.solver
+        rtol, atol, _, max_it = snes.getTolerances()
+        try:
+            fnorm = snes.getFunctionNorm()
+        except Exception:  # 某些 reason 下取不到
+            fnorm = float("nan")
+        return (
+            "最终残差 ‖F‖=%.3e，atol=%.1e、rtol=%.1e，迭代 %d/%d 次。"
+            "若 ‖F‖ 停在 atol 附近不动，说明容差压到了装配的舍入地板上，"
+            "应放宽 atol 而不是加迭代次数。"
+            % (fnorm, atol, rtol, snes.getIterationNumber(), max_it)
+        )
+
     def solve_damage(self) -> None:
         self._sync_lower_bound()
         self._d_problem.solve()
         reason = self._d_problem.solver.getConvergedReason()
         if reason <= 0:
             raise RuntimeError(
-                "d 的 SNES(vinewtonrsls) 未收敛：SNESConvergedReason=%d，"
-                "迭代 %d 次（界约束 [d_old,1]）"
-                % (reason, self._d_problem.solver.getIterationNumber())
+                "d 的 SNES(vinewtonrsls) 未收敛：SNESConvergedReason=%d（界约束 "
+                "[d_old,1]）。%s" % (reason, self._snes_diagnostics())
             )
 
     def _count_sign_flips(self, tr_before: np.ndarray) -> tuple[int, np.ndarray]:
@@ -678,6 +711,12 @@ class PhaseFieldSolver:
             try:
                 self.solve_displacement()
                 self.solve_damage()
+                if cfg.relaxation < 1.0:
+                    prev = self._d_previous_iterate.x.array
+                    self.d.x.array[:] = prev + cfg.relaxation * (
+                        self.d.x.array - prev
+                    )
+                    self.d.x.scatter_forward()
             except RuntimeError as exc:  # 子求解器失败：立刻标记，不静默继续
                 failure = str(exc)
                 break

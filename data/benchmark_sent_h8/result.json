@@ -1,0 +1,89 @@
+{
+  "case": "benchmark_sent_h8.yaml",
+  "case_type": "static",
+  "status": "not_converged",
+  "material": "Miehe 2010 SENT benchmark",
+  "model": {
+    "split": "spectral",
+    "dissipation": "AT2",
+    "k_res": 1e-06,
+    "ell": 1.5e-05,
+    "Gc": 2700.0,
+    "sigma_c": 1996676926.7961206
+  },
+  "mesh": {
+    "type": "sent",
+    "n_cells": 102598,
+    "W": 0.001,
+    "H": 0.001,
+    "notch_length": 0.0005,
+    "thickness": 0.001,
+    "h_fine": 1.875e-06,
+    "h_coarse": 3e-05,
+    "refine_halfheight": 6e-05
+  },
+  "thickness": 0.001,
+  "peak": {
+    "reliable": false,
+    "note": "**不是真峰值**：曲线到最后一步仍在上升（status=not_converged），此值只是下界",
+    "F": 165.04326312513504,
+    "F_per_thickness": 165043.26312513504,
+    "u": 1.2e-06,
+    "step": 6
+  },
+  "n_steps": 7,
+  "timing_s": {
+    "mesh": 5.182583399997384,
+    "solve": 101.20581860200036
+  },
+  "curve": [
+    {
+      "step": 1,
+      "u": 2e-07,
+      "F_per_thickness": 27600.97968150324,
+      "F": 27.60097968150324,
+      "max_d": 0.0003844657716811626,
+      "iterations": 2
+    },
+    {
+      "step": 2,
+      "u": 4e-07,
+      "F_per_thickness": 55185.88287336592,
+      "F": 55.18588287336592,
+      "max_d": 0.0015393375301965336,
+      "iterations": 2
+    },
+    {
+      "step": 3,
+      "u": 6e-07,
+      "F_per_thickness": 82738.63910503566,
+      "F": 82.73863910503566,
+      "max_d": 0.0034690482509772847,
+      "iterations": 2
+    },
+    {
+      "step": 4,
+      "u": 8e-07,
+      "F_per_thickness": 110243.17749294546,
+      "F": 110.24317749294546,
+      "max_d": 0.0061810435955484576,
+      "iterations": 2
+    },
+    {
+      "step": 5,
+      "u": 1e-06,
+      "F_per_thickness": 137683.41830554593,
+      "F": 137.68341830554593,
+      "max_d": 0.009685898204267828,
+      "iterations": 2
+    },
+    {
+      "step": 6,
+      "u": 1.2e-06,
+      "F_per_thickness": 165043.26312513504,
+      "F": 165.04326312513504,
+      "max_d": 0.013997499597461724,
+      "iterations": 2
+    }
+  ]
+}
