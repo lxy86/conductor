@@ -1,0 +1,56 @@
+# 冒烟测试：只验 run_fatigue 的管路能端到端跑通，**不是**物理算例。
+# 网格粗到 h = 2.5 ell，采样也粗，故 a(N) 与 Paris 参数在这里毫无意义。
+case_type: fatigue
+material: configs/material_carrara.yaml
+
+model:
+  split: spectral
+  dissipation: AT2
+  k_res: 1.0e-6
+
+solver:
+  u_solver: newton
+  tol_d: 1.0e-4
+  max_iter: 200
+
+mesh:
+  type: ct
+  W: 50.0e-3
+  thickness: 1.0e-3
+  a0_over_W: 0.22
+  total_width_over_W: 1.25
+  halfheight_over_W: 0.6
+  hole_diameter_over_W: 0.25
+  hole_offset_over_W: 0.275
+  notch_height_over_W: 0.0625
+  notch_taper_length: 1.5625e-3
+  h_fine: 5.0e-4          # 2.5 ell —— 只为跑得快
+  h_coarse: 4.0e-3
+  refine_halfheight: 2.0e-3
+  refine_x_margin: 2.0e-3
+
+loading:
+  type: ct_pin_force
+  delta_P: 20.0
+  P_min: 0.0
+  cycle:
+    n_sub: 4
+    dN_init: 50.0
+    dN_min: 1.0
+    dN_max: 5.0e+2
+    dd_max: 0.05
+    grow_below: 0.5
+    factor: 2.0
+    N_max: 3.0e+2         # 只跑几个 jump 步
+    peak_phase: null
+  crack:
+    threshold: 0.95
+    spacing: 5.0e-4
+    halfwidth: 2.0e-3
+    growth_length: 2.0e-2
+  stop_at_a_over_W: 0.7
+  paris_delta_a: 0.25e-3
+
+output:
+  dir: data/_ct_smoke
+  save_fields_every: 0

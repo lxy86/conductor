@@ -166,10 +166,56 @@ def test_bad_case_type(tmp_path):
         rc.load_case(path)
 
 
-def test_fatigue_case_type_not_yet_implemented(tmp_path):
+def test_fatigue_dispatch_reaches_run_fatigue(tmp_path):
+    """case_type='fatigue' 必须分派到 run_fatigue。
+
+    这里用的是 static 的 loading 段，故应当在 run_fatigue 的键校验处报错 ——
+    报错内容证明确实进了 fatigue 分支（而不是被静默当成 static 跑掉）。
+    """
     path = write_case(tmp_path, case_type="fatigue")
-    with pytest.raises(NotImplementedError, match="fatigue"):
+    with pytest.raises(KeyError, match="loading"):
         rc.run_case(path)
+
+
+def test_fatigue_rejects_unknown_loading_type(tmp_path):
+    path = write_case(
+        tmp_path,
+        case_type="fatigue",
+        loading={
+            "type": "tension_y",
+            "delta_P": 20.0,
+            "P_min": 0.0,
+            "cycle": {},
+            "crack": {},
+            "stop_at_a_over_W": 0.7,
+            "stages": None,
+            "stop_damage": None,
+        },
+    )
+    cfg = rc.load_case(path)
+    # 先把 static 专用键去掉，只留 fatigue 的键
+    cfg.loading.pop("stages", None)
+    cfg.loading.pop("stop_damage", None)
+    with pytest.raises(NotImplementedError, match="ct_pin_force"):
+        rc.run_fatigue(cfg)
+
+
+def test_fatigue_rejects_nonpositive_delta_P(tmp_path):
+    path = write_case(tmp_path, case_type="fatigue")
+    cfg = rc.load_case(path)
+    cfg.loading.clear()
+    cfg.loading.update(
+        {
+            "type": "ct_pin_force",
+            "delta_P": 0.0,
+            "P_min": 0.0,
+            "cycle": {},
+            "crack": {},
+            "stop_at_a_over_W": 0.7,
+        }
+    )
+    with pytest.raises(ValueError, match="delta_P"):
+        rc.run_fatigue(cfg)
 
 
 # --------------------------------------------------------------------------

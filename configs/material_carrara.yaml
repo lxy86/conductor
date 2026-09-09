@@ -1,0 +1,48 @@
+# Carrara et al. 2020 (CMAME 361:112731 / arXiv:1811.02244) 第 5.2 节的合成脆性材料。
+# 仅用于验证 2（CT 试样 Paris 律对拍），不是 Al 1350。单位 SI。
+#
+# 原文 §5.2 原话（p24）：
+#   "The material parameters adopted are E = 6 GPa, nu = 0.22, Gc = 2.28 N/mm
+#    (KIC = 3.69 MPa sqrt(m)), alpha_T = alpha_N = 9.5e-1 N/mm^2 and l = 0.2 mm.
+#    Plane stress conditions are assumed and the simulations are force-controlled."
+#
+# 单位换算（这几步最容易错，故写全）：
+#   Gc:      2.28 N/mm = 2.28e3 N/m = 2280 J/m^2
+#   alpha_T: 9.5e-1 N/mm^2 = 0.95 MPa = 9.5e5 Pa = 9.5e5 J/m^3
+#   ell:     0.2 mm = 2.0e-4 m
+# **交叉验证**：平面应力下 K_IC = sqrt(E Gc) = sqrt(6e9 x 2280) = 3.699e6 Pa sqrt(m)
+#   = 3.70 MPa sqrt(m)，与原文给的 3.69 一致 -> 三个量的单位换算都对。
+name: Carrara 2020 CT benchmark
+
+elastic:
+  E: 6.0e+9
+  nu: 0.22
+  plane_state: plane_stress   # 原文明写 "Plane stress conditions are assumed"
+
+strength:
+  # AT2 没有起裂阈值，软化峰值由 (Gc, ell) 决定；这里填 AT2 的峰值应力
+  # sigma_y = (9/16) sqrt(E Gc / (3 ell))（见 DECISIONS.md D-10 的 Eq. 14 锚点），
+  # 只为满足 schema，不参与计算。
+  # (9/16)*sqrt(6e9*2280/(3*2e-4)) = 0.5625*sqrt(2.28e16) = 8.494e7 Pa
+  sigma_u: 8.494e+7
+
+fracture:
+  dissipation: AT2    # 原文 p17：除特别说明外一律 AT2（w = d^2）
+  mode: from_gc_and_ell
+  Gc: 2280.0
+  ell: 2.0e-4
+
+fatigue:
+  alpha_T: 9.5e+5
+  form: asymptotic    # 原文 Eq. 37。**必须**用 asymptotic：Tab. 2 的 C/m 参考值
+                      # 就是用它算的；生产工况（Al 1350）用的 logarithmic 形式
+                      # 会给出不同的 S-N 斜率，混用就没有可比性了（见 D-14）。
+
+sources:
+  all: >-
+    Carrara, Ambati, Alessi & De Lorenzis, CMAME 361 (2020) 112731
+    (arXiv:1811.02244), 第 5.2 节 p24：E = 6 GPa、nu = 0.22、Gc = 2.28 N/mm、
+    alpha_T = alpha_N = 9.5e-1 N/mm^2、ell = 0.2 mm，平面应力 + 力控。
+    模型形式 p17：AT2 + Eq.35 累积 + Eq.37 asymptotic 退化；
+    分解 p19-20："in the remaining of the paper the spectral split will be used
+    if not differently specified"。详见 DECISIONS.md D-10 与 D-19。

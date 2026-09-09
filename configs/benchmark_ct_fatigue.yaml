@@ -1,0 +1,62 @@
+# 验证 2：CT 试样疲劳裂纹扩展，复现 Carrara et al. 2020 §5.2.1。
+# 验收（PLAN Phase 1）：da/dN-ΔK 曲线的 Paris 斜率与原文同量级。
+# 原文 Tab. 2（a0/W = 0.22、ΔP = 20 N）：N_u = 7288、C = 2.01e-2、m = 3.42
+# （C 的口径是 mm/cycle-MPa√m，对表要看 result.json 里的 paris.C_mm_MPa）。
+case_type: fatigue
+material: configs/material_carrara.yaml
+
+model:
+  split: spectral       # 原文 p19-20：其余部分一律用 spectral 分解
+  dissipation: AT2      # 原文 p17
+  k_res: 1.0e-6
+
+solver:
+  u_solver: newton      # spectral 分解没有冻结形式，必须走精确非线性路径
+  tol_d: 1.0e-4
+  max_iter: 500
+  # 疲劳算例是力控、载荷远低于静态峰值（ΔP/P_mon = 13.5%），不在极限点附近，
+  # 故不需要欠松弛；若日后在裂纹失稳段振荡再按 D-18 打开 relaxation。
+
+mesh:
+  type: ct
+  W: 50.0e-3            # 载荷线到背面（**不是**试样总宽），原文 W = 50 mm
+  thickness: 1.0e-3     # 原文 T = 1 mm。二维算的是单位厚度量，力要乘厚度
+  a0_over_W: 0.22       # 原文参考算例
+  total_width_over_W: 1.25
+  halfheight_over_W: 0.6
+  hole_diameter_over_W: 0.25
+  hole_offset_over_W: 0.275
+  notch_height_over_W: 0.0625      # = 1/16，原文标的 W/16
+  notch_taper_length: 1.5625e-3    # = W/32，即 45° V 尖（原文未标尺寸，见 D-19）
+  h_fine: 5.0e-5        # = ell/4。原文用 ell/5，但 p20 明确 alpha = psi+ 时
+                        # h = ell/3 就已收敛，而我们自己的 D-17 结论是 h <= ell/4；
+                        # 取 ell/4 在两者之上，且比 ell/5 省 1.56 倍单元。
+  h_coarse: 1.5e-3
+  refine_halfheight: 1.0e-3        # = 5 ell，容得下相场带宽 + 裂纹偏折
+  refine_x_margin: 2.0e-3          # 加密带自 a0 - 2 mm 起，缺口尖端也在带内
+
+loading:
+  type: ct_pin_force
+  delta_P: 20.0         # N，原文 Tab. 2 的参考行
+  P_min: 0.0            # 原文参考算例不含平均载荷效应（Pmean 的影响见其 Fig. 15）
+  cycle:
+    n_sub: 8            # 原文 p20：每周期 8 个载荷步已收敛
+    dN_init: 50.0
+    dN_min: 1.0
+    dN_max: 2.0e+3       # N_u ≈ 7288，ΔN 上限取其 ~1/4，保证 a(N) 有足够采样点
+    dd_max: 0.02
+    grow_below: 0.5
+    factor: 2.0
+    N_max: 5.0e+4        # 远大于 N_u = 7288；跑到 a/W 上限就会先停
+    peak_phase: null    # 自动取 ∫psi+ dx 最大的子步（三角波下应为 0.5）
+  crack:
+    threshold: 0.95
+    spacing: 5.0e-5     # <= h_fine，否则会低估裂纹长度（CrackPathGrid 会检查）
+    halfwidth: 8.0e-4   # = 4 ell，容得下相场带宽
+    growth_length: 2.6e-2   # 自 a0 = 11 mm 量到 37 mm（a/W = 0.74），覆盖停止阈值
+  stop_at_a_over_W: 0.7
+  paris_delta_a: 0.25e-3   # 原文 Eq. B.1 / ASTM E647 建议的固定裂纹增量
+
+output:
+  dir: data/benchmark_ct_fatigue
+  save_fields_every: 0

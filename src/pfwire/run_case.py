@@ -31,17 +31,28 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import ufl
 import yaml
 from dolfinx import default_scalar_type, fem
 from mpi4py import MPI
 
 from . import mesh as pfmesh
+from . import paris as pfparis
+from .cyclejump import CycleJumpConfig, CycleJumpDriver, FatigueState
+from .failure import CrackPathGrid
 from .material import Material, load_material, resolve_fracture_properties
 from .phasefield import PhaseFieldModel, PhaseFieldSolver, SolverConfig
 
 __all__ = [
+    "CaseConfig",
+    "PeakAssessment",
     "assess_peak",
-    "PeakAssessment","CaseConfig", "load_case", "run_static", "run_case", "main"]
+    "load_case",
+    "run_static",
+    "run_fatigue",
+    "run_case",
+    "main",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -282,17 +293,38 @@ def _build_mesh(cfg: CaseConfig, comm: MPI.Comm):
     mesh_cfg = dict(cfg.mesh_cfg)
     mesh_type = str(mesh_cfg.pop("type", "sent"))
     mesh_cfg.pop("thickness", None)  # 厚度只用于把 N/m 换成 N，不进几何
-    if mesh_type != "sent":
-        raise NotImplementedError(
-            "目前只实现了 mesh.type='sent'（验证 1）。微动试样属 Phase 2.1。"
+    if mesh_type == "sent":
+        _require_keys(
+            mesh_cfg,
+            {"W", "H", "notch_length", "h_fine", "h_coarse", "refine_halfheight"},
+            "mesh",
         )
-    _require_keys(
-        mesh_cfg,
-        {"W", "H", "notch_length", "h_fine", "h_coarse", "refine_halfheight"},
-        "mesh",
+        spec = pfmesh.SentSpec(**{k: float(v) for k, v in mesh_cfg.items()})
+        return pfmesh.sent_mesh(spec, comm)
+    if mesh_type == "ct":
+        _require_keys(
+            mesh_cfg,
+            {
+                "W",
+                "a0_over_W",
+                "total_width_over_W",
+                "halfheight_over_W",
+                "hole_diameter_over_W",
+                "hole_offset_over_W",
+                "notch_height_over_W",
+                "notch_taper_length",
+                "h_fine",
+                "h_coarse",
+                "refine_halfheight",
+                "refine_x_margin",
+            },
+            "mesh",
+        )
+        spec = pfmesh.CtSpec(**{k: float(v) for k, v in mesh_cfg.items()})
+        return pfmesh.ct_mesh(spec, comm)
+    raise NotImplementedError(
+        "mesh.type 只支持 'sent'（验证 1）与 'ct'（验证 2）。微动试样属 Phase 2.1。"
     )
-    spec = pfmesh.SentSpec(**{k: float(v) for k, v in mesh_cfg.items()})
-    return pfmesh.sent_mesh(spec, comm)
 
 
 def _load_stages(loading: dict) -> list[tuple[float, int]]:
@@ -484,12 +516,350 @@ def run_static(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, An
     return result
 
 
+def _triangular_wave(phase: float) -> float:
+    """周期三角波：相位 0 -> 0，0.5 -> 1，1 -> 0（连续、闭合）。
+
+    Carrara Fig. 11 的循环载荷是在 P_min 与 P_max 之间往复。用三角波而不是
+    正弦：ᾱ 的累积由 Eq. 35 的加载/卸载判据控制（只在 ψ⁺ 上升时累积），
+    与波形细节无关，而三角波让 n_sub 个子步在载荷上等间距、外推最稳。
+    """
+    x = float(phase) % 1.0
+    return 2.0 * x if x <= 0.5 else 2.0 * (1.0 - x)
+
+
+def run_fatigue(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any]:
+    """力控循环加载 + cycle-jump，输出 a(N) 与 Paris 拟合（验证 2）。
+
+    载荷方式（``loading.type = "ct_pin_force"``，Carrara Fig. 12a）：
+    下销孔全约束（原文的 ū = 0），上销孔施加合力为 P(t) 的竖向面力。
+
+    **两个显式的建模选择**（原文只画了箭头，没给分布）：
+    1. 面力在**整个上孔周边均匀**施加，合力 = P；真实销接触只压半边，但裂纹面
+       距孔心 0.275W ≈ 2.2 个孔半径，圣维南原理下分布细节对 ΔK 无影响，
+       而 ΔK 本身用的是 ASTM 远场标定式 Y(a/W)；
+    2. 二维是**单位厚度**求解，故面力 t = P / (T · L_hole)，其中 L_hole 是
+       实测的孔周长（不是解析弧长 —— 网格上是内接多边形，短 O(1/n²)，
+       用解析值会让合力偏大那么多）。
+    """
+    _require_keys(
+        dict(cfg.loading),
+        {
+            "type",
+            "delta_P",
+            "P_min",
+            "cycle",
+            "crack",
+            "stop_at_a_over_W",
+            "paris_delta_a",
+        },
+        "loading",
+    )
+    loading_type = str(cfg.loading.get("type", "ct_pin_force"))
+    if loading_type != "ct_pin_force":
+        raise NotImplementedError(
+            "fatigue 目前只实现 loading.type='ct_pin_force'（验证 2）"
+        )
+    delta_P = float(cfg.loading["delta_P"])
+    P_min = float(cfg.loading.get("P_min", 0.0))
+    if delta_P <= 0.0:
+        raise ValueError("delta_P 必须为正")
+    if P_min < 0.0:
+        raise ValueError(
+            "P_min < 0 表示压缩相，本驱动只处理正向（拉伸）循环，"
+            "与 Carrara §5.2 的参考算例一致"
+        )
+    stop_at = float(cfg.loading.get("stop_at_a_over_W", 0.7))
+
+    is_root = comm.rank == 0
+
+    def log(level, msg, *args):
+        if is_root:
+            getattr(logger, level)(msg, *args)
+
+    t_start = time.perf_counter()
+    ct = _build_mesh(cfg, comm)
+    msh, tags, spec = ct.mesh, ct.facet_tags, ct.spec
+    fdim = msh.topology.dim - 1
+    n_cells = msh.topology.index_map(msh.topology.dim).size_global
+    t_mesh = time.perf_counter() - t_start
+
+    # 上孔周长按**网格实测**取（见 docstring 第 2 点）
+    ds = ufl.Measure("ds", domain=msh, subdomain_data=tags)
+    hole_length = comm.allreduce(
+        fem.assemble_scalar(
+            fem.form(fem.Constant(msh, default_scalar_type(1.0))
+                     * ds(pfmesh.CT_TAG_HOLE_TOP))
+        ),
+        op=MPI.SUM,
+    )
+    if hole_length <= 0.0:
+        raise RuntimeError("上销孔周长为 0 —— 物理组 CT_TAG_HOLE_TOP 没匹配到边界")
+
+    traction = fem.Constant(msh, default_scalar_type(0.0))  # N/m^2，竖向
+
+    def make_bcs(V):
+        lower = tags.find(pfmesh.CT_TAG_HOLE_BOTTOM)
+        zero_vec = np.zeros(msh.geometry.dim, dtype=default_scalar_type)
+        return [
+            fem.dirichletbc(
+                zero_vec, fem.locate_dofs_topological(V, fdim, lower), V
+            )
+        ]
+
+    # 必须用可调用形式：TestFunction 要取自求解器自己的 V_u，在外部另建同构空间
+    # 会让 UFL 看到两个同号不同源的 Argument 并报错（见 phasefield.WorkSpec）。
+    zero = fem.Constant(msh, default_scalar_type(0.0))
+
+    def make_external_work(V):
+        v = ufl.TestFunction(V)
+        t = ufl.as_vector([zero, traction])
+        return ufl.inner(t, v) * ds(pfmesh.CT_TAG_HOLE_TOP)
+
+    alpha_T, form, kappa = cfg.material.require_fatigue_params()
+    state = FatigueState(msh, cfg.model, alpha_T=alpha_T, form=form, kappa=kappa)
+    solver = PhaseFieldSolver(
+        msh,
+        cfg.model,
+        bcs_u=make_bcs,
+        external_work=make_external_work,
+        f_alpha=state.f_alpha,
+        config=cfg.solver,
+    )
+    state.bind_solver(solver)
+
+    def set_phase(phase: float) -> None:
+        P = P_min + delta_P * _triangular_wave(phase)
+        traction.value = P / (cfg.thickness * hole_length)
+
+    cycle_cfg = dict(cfg.loading.get("cycle", {}))
+    _require_keys(
+        cycle_cfg,
+        {"n_sub", "dN_init", "dN_min", "dN_max", "dd_max", "grow_below",
+         "factor", "N_max", "peak_phase"},
+        "loading.cycle",
+    )
+    jump_cfg = CycleJumpConfig(
+        n_sub=int(cycle_cfg.get("n_sub", 8)),
+        dN_init=float(cycle_cfg.get("dN_init", 100.0)),
+        dN_min=float(cycle_cfg.get("dN_min", 1.0)),
+        dN_max=float(cycle_cfg.get("dN_max", 1.0e5)),
+        dd_max=float(cycle_cfg.get("dd_max", 0.02)),
+        grow_below=float(cycle_cfg.get("grow_below", 0.5)),
+        factor=float(cycle_cfg.get("factor", 2.0)),
+        N_max=float(cycle_cfg.get("N_max", 1.0e8)),
+        peak_phase=(
+            None if cycle_cfg.get("peak_phase") is None
+            else float(cycle_cfg["peak_phase"])
+        ),
+    )
+    driver = CycleJumpDriver(solver, state, set_phase, jump_cfg)
+
+    crack_cfg = dict(cfg.loading.get("crack", {}))
+    _require_keys(
+        crack_cfg, {"threshold", "spacing", "halfwidth", "growth_length"}, "loading.crack"
+    )
+    threshold = float(crack_cfg.get("threshold", 0.95))
+    # 裂纹自缺口尖端 (a0, 0) 沿 +x 生长；默认量到背面前留一点余量
+    growth_length = float(
+        crack_cfg.get("growth_length", 0.95 * (spec.x_back - spec.a0))
+    )
+    grid = CrackPathGrid(
+        msh,
+        origin=(spec.a0, 0.0),
+        growth_length=growth_length,
+        halfwidth=float(crack_cfg["halfwidth"]),
+        spacing=float(crack_cfg["spacing"]),
+        growth_dir=(1.0, 0.0),
+        h_fine=spec.h_fine,
+    )
+
+    history: list[dict[str, float]] = []
+    stopped = "completed"
+    t_solve = time.perf_counter()
+    log(
+        "info",
+        "CT 疲劳算例：ΔP=%.4g N，P_min=%.4g N，a0/W=%.3f，网格 %d 单元，"
+        "上孔周长 %.6f m（解析 %.6f）",
+        delta_P,
+        P_min,
+        spec.a0_over_W,
+        n_cells,
+        hole_length,
+        2.0 * np.pi * spec.hole_radius,
+    )
+
+    def record(report) -> None:
+        metrics = grid.crack_extension(solver.d, threshold=threshold)
+        a = spec.a0 + metrics.depth
+        history.append(
+            {
+                "N": report.N,
+                "delta_N": report.delta_N,
+                "a": a,
+                "a_over_W": a / spec.W,
+                "crack_extension": metrics.depth,
+                "max_d": report.max_d,
+                "max_alpha_bar": report.max_alpha_bar,
+                "max_dd": report.max_dd,
+                "rejections": report.rejections,
+                "n_surface_components": metrics.n_surface_components,
+            }
+        )
+
+    def stop(report) -> bool:
+        record(report)
+        last = history[-1]
+        if len(history) % 10 == 0 or last["a_over_W"] >= stop_at:
+            log(
+                "info",
+                "N=%.4g  ΔN=%.4g  a=%.4f mm (a/W=%.3f)  max_d=%.4f  ᾱ_max=%.4g  已用 %.0f s",
+                report.N,
+                report.delta_N,
+                1e3 * last["a"],
+                last["a_over_W"],
+                report.max_d,
+                report.max_alpha_bar,
+                time.perf_counter() - t_solve,
+            )
+        return last["a_over_W"] >= stop_at
+
+    reports = driver.run(stop=stop)
+    t_solve = time.perf_counter() - t_solve
+
+    final = reports[-1] if reports else None
+    if final is not None and not final.accepted:
+        stopped = "not_converged"
+        log("error", "cycle-jump 在 N=%.4g 失败：%s", final.N, final.failure_mode)
+    elif final is not None and final.runout:
+        stopped = "runout"
+    elif history and history[-1]["a_over_W"] >= stop_at:
+        stopped = "crack_limit"
+
+    result: dict[str, Any] = {
+        "case": cfg.path.name,
+        "case_type": cfg.case_type,
+        "status": stopped,
+        "material": cfg.material.name,
+        "model": {
+            "split": cfg.model.split,
+            "dissipation": cfg.model.dissipation,
+            "k_res": cfg.model.k_res,
+            "ell": cfg.material.fracture.ell,
+            "Gc": cfg.material.fracture.Gc,
+            "sigma_c": cfg.material.fracture.sigma_c,
+            "alpha_T": alpha_T,
+            "fatigue_form": form,
+            "kappa": kappa,
+        },
+        "mesh": {"type": "ct", "n_cells": int(n_cells), **cfg.mesh_cfg},
+        "thickness": cfg.thickness,
+        "loading": {
+            "delta_P": delta_P,
+            "P_min": P_min,
+            "hole_length_mesh": float(hole_length),
+            "hole_length_analytic": float(2.0 * np.pi * spec.hole_radius),
+        },
+        "n_jumps": len(reports),
+        "N_final": float(final.N) if final is not None else 0.0,
+        "timing_s": {"mesh": t_mesh, "solve": t_solve},
+        "history": history,
+    }
+
+    # Paris 拟合。点数不足时**不报错、只记原因** —— 算例本身可能只是还没跑到
+    # 稳定扩展段，那不是 bug，但也绝不能悄悄给个假的 C/m。
+    result["paris"] = _fit_paris_or_explain(history, spec, cfg, delta_P)
+
+    if comm.rank == 0:
+        cfg.output_dir.mkdir(parents=True, exist_ok=True)
+        (cfg.output_dir / "result.json").write_text(
+            json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        (cfg.output_dir / "config.yaml").write_text(
+            yaml.safe_dump(cfg.raw, sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+    return result
+
+
+def _fit_paris_or_explain(history, spec, cfg: CaseConfig, delta_P: float) -> dict:
+    """对 a(N) 做 Paris 拟合；失败时返回 ``{"ok": False, "reason": ...}``。"""
+    if len(history) < 2:
+        return {"ok": False, "reason": "只有 %d 个 a(N) 点" % len(history)}
+    a = np.array([h["a"] for h in history])
+    N = np.array([h["N"] for h in history])
+    # 裂纹一步也没长时不必拟合
+    if a[-1] - a[0] <= 0.0:
+        return {"ok": False, "reason": "裂纹未扩展（a 始终为 a0）"}
+    delta_a = float(cfg.loading.get("paris_delta_a", 0.25e-3))
+    try:
+        fit = pfparis.paris_fit(
+            a,
+            N,
+            W=spec.W,
+            T=cfg.thickness,
+            delta_P=delta_P,
+            delta_a=delta_a,
+        )
+    except ValueError as exc:
+        return {"ok": False, "reason": str(exc), "delta_a": delta_a}
+    return {
+        "ok": True,
+        "delta_a": delta_a,
+        "C": fit.C,
+        "m": fit.m,
+        "C_mm_MPa": fit.C_mm_MPa,
+        "n_points_used": fit.n_points_used,
+        "delta_K_range": list(fit.delta_K_range),
+        "fit_window": list(fit.fit_window),
+        "r_squared": fit.r_squared,
+        "da_dN": fit.rate.da_dN.tolist(),
+        "delta_K": fit.rate.delta_K.tolist(),
+        "a_mid": fit.rate.a_mid.tolist(),
+    }
+
+
 def run_case(path: str | Path, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any]:
     cfg = load_case(path)
     if cfg.case_type == "static":
         return run_static(cfg, comm)
-    raise NotImplementedError(
-        "case_type='fatigue' 尚未实现（验证 2 与 Phase 2 会加入）"
+    if cfg.case_type == "fatigue":
+        return run_fatigue(cfg, comm)
+    raise NotImplementedError("未知 case_type: %r" % (cfg.case_type,))
+
+
+def _summarize(result: dict[str, Any]) -> str:
+    """一行汇总。static 报峰值载荷，fatigue 报寿命与 Paris 参数。"""
+    if result.get("case_type") == "fatigue":
+        paris = result.get("paris", {})
+        tail = (
+            "C=%.4g m=%.4g (C_mm_MPa=%.4g, R^2=%.4f, %d 点)"
+            % (
+                paris["C"],
+                paris["m"],
+                paris["C_mm_MPa"],
+                paris["r_squared"],
+                paris["n_points_used"],
+            )
+            if paris.get("ok")
+            else "Paris 未拟合：%s" % paris.get("reason", "未知")
+        )
+        hist = result.get("history") or []
+        a_over_W = hist[-1]["a_over_W"] if hist else float("nan")
+        return "状态=%s  jump 步数=%d  N=%.6g  a/W=%.4f  %s  耗时 %.1f s" % (
+            result["status"],
+            result["n_jumps"],
+            result["N_final"],
+            a_over_W,
+            tail,
+            result["timing_s"]["solve"],
+        )
+    peak = result.get("peak", {})
+    return "状态=%s  步数=%d  峰值 F=%.6g N (u=%.6g m)  耗时 %.1f s" % (
+        result["status"],
+        result["n_steps"],
+        peak.get("F") or float("nan"),
+        peak.get("u") or float("nan"),
+        result["timing_s"]["solve"],
     )
 
 
@@ -505,18 +875,13 @@ def main(argv: list[str] | None = None) -> int:
     comm = MPI.COMM_WORLD
     result = run_case(args.config, comm)
     if comm.rank == 0:
-        peak = result.get("peak", {})
-        print(
-            "状态=%s  步数=%d  峰值 F=%.6g N (u=%.6g m)  耗时 %.1f s"
-            % (
-                result["status"],
-                result["n_steps"],
-                peak.get("F") or float("nan"),
-                peak.get("u") or float("nan"),
-                result["timing_s"]["solve"],
-            )
-        )
-    return 0 if result["status"] in ("completed", "damage_limit", "past_peak") else 1
+        print(_summarize(result))
+    return (
+        0
+        if result["status"]
+        in ("completed", "damage_limit", "past_peak", "crack_limit", "runout")
+        else 1
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

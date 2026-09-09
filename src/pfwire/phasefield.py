@@ -94,6 +94,14 @@ BCSpec = (
     "Sequence[fem.DirichletBC] | Callable[[fem.FunctionSpace], Sequence[fem.DirichletBC]]"
 )
 
+#: 外力功（Neumann 项）同理：既可直接给 UFL 形式，也可给「拿到 V_u 再构造」的可调用对象。
+#: **必须用后者**，除非你能保证形式里的 TestFunction 取自求解器自己的 ``V_u``——
+#: 在外部另建一个结构相同的向量空间做 ufl.TestFunction，UFL 组装残差时会看到两个
+#: 编号相同却不同源的 Argument，直接报
+#: "Found different Arguments with same number and part"。
+#: 与 BC 那个陷阱同源（见 BCSpec），只是这个是显式报错、不会静默出垃圾解。
+WorkSpec = "ufl.Form | Callable[[fem.FunctionSpace], ufl.Form] | None"
+
 #: 支持的疲劳退化函数形式。两者均为 Carrara, Ambati, Alessi & De Lorenzis 2020,
 #: CMAME 361:112731（预印本 arXiv:1811.02244）的 Eq. (37) 与 Eq. (38)。
 #: PLAN.md 第 2 节只写了 asymptotic；logarithmic 按 DECISIONS.md D-14 补入，
@@ -406,6 +414,31 @@ def _space_contains(space: fem.FunctionSpace, other) -> bool:
     return space._cpp_object.contains(getattr(other, "_cpp_object", other))
 
 
+def _resolve_external_work(spec, space: fem.FunctionSpace):
+    """把 ``external_work`` 解析成 UFL 形式；可调用对象用求解器自己的 ``V_u`` 调用。
+
+    为什么要这一步：Neumann 项里的 TestFunction 必须取自求解器持有的 ``V_u``。
+    在外部另建一个结构相同的向量空间做 ``ufl.TestFunction``，UFL 会看到两个编号
+    相同却不同源的 Argument 并报 "Found different Arguments with same number and
+    part"（与 BC 那个静默陷阱同源，只是这个会显式炸）。而调用方拿不到 ``V_u``——
+    它是构造函数里才建的 —— 所以按本项目 ``bcs_u=lambda V: [...]`` 的既有约定，
+    允许传 ``external_work=lambda V: ...``。
+
+    注意判断顺序：``ufl.Form`` 自身也实现了 ``__call__``（用于系数替换），
+    故必须**先**判断是不是 Form，再判断 callable，否则会把现成的形式当工厂调用。
+    """
+    if spec is None:
+        return None
+    if isinstance(spec, ufl.Form):
+        return spec
+    if callable(spec):
+        return spec(space)
+    raise TypeError(
+        "external_work 只能是 ufl.Form、接受函数空间的可调用对象或 None，收到 %r"
+        % (type(spec),)
+    )
+
+
 def _resolve_bcs(spec, space: fem.FunctionSpace, label: str) -> list[fem.DirichletBC]:
     """把 BCSpec 归一成列表，并校验每个 bc 都属于 ``space``（或其子空间）。"""
     bcs = list(spec(space)) if callable(spec) else list(spec)
@@ -478,7 +511,7 @@ class PhaseFieldSolver:
         )
 
         self.dx = ufl.Measure("dx", domain=mesh)
-        self.external_work = external_work
+        self.external_work = _resolve_external_work(external_work, self.V_u)
 
         self._build_u_problem()
         self._build_d_problem()
