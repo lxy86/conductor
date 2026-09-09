@@ -10,3 +10,8 @@ data/_tmp_gmsh/
 *.msh
 *.xdmf
 *.h5
+
+# 参考文献 PDF 与从中提取的图：版权材料，不入库
+*.pdf
+data/_*.png
+data/_*.jpeg

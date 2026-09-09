@@ -32,6 +32,9 @@ __all__ = [
     "FractureProperties",
     "Material",
     "FRACTURE_MODES",
+    "PLANE_STATES",
+    "DISSIPATION_MODELS",
+    "dissipation_normalization",
     "lame_parameters",
     "plane_strain_modulus",
     "bulk_modulus",
@@ -43,6 +46,12 @@ __all__ = [
     "at1_gc_from_sigma_c_ell",
     "at1_ell_from_gc_sigma_c",
     "at1_sigma_c_from_gc_ell",
+    "at2_gc_from_sigma_c_ell",
+    "at2_ell_from_gc_sigma_c",
+    "at2_sigma_c_from_gc_ell",
+    "gc_from_sigma_c_ell",
+    "ell_from_gc_sigma_c",
+    "sigma_c_from_gc_ell",
     "resolve_fracture_properties",
     "load_material",
 ]
@@ -56,6 +65,19 @@ FRACTURE_MODES: tuple[str, ...] = (
 )
 
 Counterpart = Literal["aluminum", "rigid"]
+
+#: 二维应力状态。平面应变直接用三维 Lamé 常数；平面应力要把 lambda 换成
+#: lambda* = 2 lambda mu/(lambda + 2 mu) = E nu/(1 - nu^2)。
+#: 生产工况一律 plane_strain（PLAN 第 1 节）；plane_stress 只为复现文献算例
+#: （Miehe 2010 与 Carrara 2020 §5.2 都是平面应力/平面应变的具体设定见 DECISIONS.md D-10）。
+PLANE_STATES: tuple[str, ...] = ("plane_strain", "plane_stress")
+
+#: 耗散函数模型。w(d) 与归一化常数 c_w（约定 c_w = 4∫₀¹ sqrt(w) ds）：
+#:   AT1: w = d   -> c_w = 8/3，耗散前因子 G_c/c_w = 3G_c/8（PLAN 第 2 节）
+#:   AT2: w = d^2 -> c_w = 2，  耗散前因子 G_c/2（Miehe/Bourdin 的经典形式）
+#: 注意 Carrara 2020 用的是 c_w = 2/3（AT1）这套差一个因子 2 的约定，
+#: 不能直接搬他们的数，见 DECISIONS.md D-10。
+DISSIPATION_MODELS: tuple[str, ...] = ("AT1", "AT2")
 
 
 def _coerce(obj: Any, field: str, caster) -> None:
@@ -76,6 +98,26 @@ def _require_positive(value: float, name: str) -> float:
     return v
 
 
+def _require_plane_state(state: str) -> str:
+    if state not in PLANE_STATES:
+        raise ValueError("plane_state 只能取 %r，收到 %r" % (PLANE_STATES, state))
+    return state
+
+
+def _require_dissipation(model: str) -> str:
+    if model not in DISSIPATION_MODELS:
+        raise ValueError(
+            "dissipation 只能取 %r，收到 %r" % (DISSIPATION_MODELS, model)
+        )
+    return model
+
+
+def dissipation_normalization(model: str) -> float:
+    """c_w = 4∫₀¹ sqrt(w(s)) ds。AT1 -> 8/3，AT2 -> 2。"""
+    _require_dissipation(model)
+    return 8.0 / 3.0 if model == "AT1" else 2.0
+
+
 def _require_poisson(nu: float) -> float:
     v = float(nu)
     # 平面应变下 nu -> 0.5 使 lambda 发散，故上界取严格小于 0.5
@@ -87,12 +129,22 @@ def _require_poisson(nu: float) -> float:
 # --------------------------------------------------------------------------
 # 弹性常数换算
 # --------------------------------------------------------------------------
-def lame_parameters(E: float, nu: float) -> tuple[float, float]:
-    """返回 (lambda, mu)。三维 Lamé 常数，平面应变直接沿用、不需修正。"""
+def lame_parameters(
+    E: float, nu: float, plane_state: str = "plane_strain"
+) -> tuple[float, float]:
+    """返回二维本构用的 (lambda_eff, mu)。
+
+    - ``plane_strain``：直接用三维 Lamé 常数（平面应变不需修正）；
+    - ``plane_stress``：lambda* = 2 lambda mu/(lambda + 2 mu) = E nu/(1 - nu^2)，
+      这样单轴时 sigma_xx = E eps_xx 且横向自由收缩。
+    """
     E = _require_positive(E, "E")
     nu = _require_poisson(nu)
+    _require_plane_state(plane_state)
     lmbda = E * nu / ((1.0 + nu) * (1.0 - 2.0 * nu))
     mu = E / (2.0 * (1.0 + nu))
+    if plane_state == "plane_stress":
+        lmbda = 2.0 * lmbda * mu / (lmbda + 2.0 * mu)
     return lmbda, mu
 
 
@@ -106,14 +158,17 @@ def plane_strain_modulus(E: float, nu: float) -> float:
     return E / (1.0 - nu * nu)
 
 
-def bulk_modulus(E: float, nu: float, dim: int = 2) -> float:
-    """Amor 分解所需的 d 维体积模量 K_d = lambda + 2 mu / d。
+def bulk_modulus(
+    E: float, nu: float, dim: int = 2, plane_state: str = "plane_strain"
+) -> float:
+    """Amor 分解所需的 d 维体积模量 K_d = lambda_eff + 2 mu / d。
 
-    dim=2 即平面应变（tr(eps) 为二维迹），dim=3 为通常的 K。Amor et al. 2009。
+    dim=2 为二维（tr(eps) 是二维迹），dim=3 为通常的 K。Amor et al. 2009。
+    lambda_eff 由 plane_state 决定。
     """
     if dim not in (2, 3):
         raise ValueError("dim 只能是 2 或 3，收到 %r" % (dim,))
-    lmbda, mu = lame_parameters(E, nu)
+    lmbda, mu = lame_parameters(E, nu, plane_state)
     return lmbda + 2.0 * mu / dim
 
 
@@ -207,6 +262,70 @@ def at1_sigma_c_from_gc_ell(E: float, Gc: float, ell: float) -> float:
     return math.sqrt(3.0 * E * Gc / (8.0 * ell))
 
 
+def at2_sigma_c_from_gc_ell(E: float, Gc: float, ell: float) -> float:
+    """AT2 的均匀响应峰值应力 sigma_y = (9/16) sqrt(E G_c/(3 ell))。
+
+    出处：Carrara et al. 2020（arXiv:1811.02244）Eq. (14) 给出
+    sigma_y^AT2 = (9/16) sqrt(E G_c/(3 ell))、eps_y^AT2 = sqrt(G_c/(3 ell E))。
+    可自行验算：均匀状态能量密度 (1-d)^2 psi+ + (G_c/2)(d^2/ell) 的驻点给出
+    d = eps^2/(eps^2 + k)，k = G_c/(ell E)；sigma = (1-d)^2 E eps 在
+    eps = sqrt(k/3) 处取极大，值即上式。
+
+    注意 AT2 **没有弹性阈值**（w'(0) = 0），任意 eps > 0 都有 d > 0；
+    这里的 sigma_y 是软化开始的峰值，不是 AT1 那种起裂阈值。
+    """
+    E = _require_positive(E, "E")
+    Gc = _require_positive(Gc, "Gc")
+    ell = _require_positive(ell, "ell")
+    return (9.0 / 16.0) * math.sqrt(E * Gc / (3.0 * ell))
+
+
+def at2_gc_from_sigma_c_ell(E: float, sigma_c: float, ell: float) -> float:
+    """at2_sigma_c_from_gc_ell 的逆：G_c = 256 sigma_y^2 ell/(27 E)。"""
+    E = _require_positive(E, "E")
+    sigma_c = _require_positive(sigma_c, "sigma_c")
+    ell = _require_positive(ell, "ell")
+    return 256.0 * sigma_c * sigma_c * ell / (27.0 * E)
+
+
+def at2_ell_from_gc_sigma_c(E: float, Gc: float, sigma_c: float) -> float:
+    """at2_sigma_c_from_gc_ell 的逆：ell = 27 E G_c/(256 sigma_y^2)。"""
+    E = _require_positive(E, "E")
+    Gc = _require_positive(Gc, "Gc")
+    sigma_c = _require_positive(sigma_c, "sigma_c")
+    return 27.0 * E * Gc / (256.0 * sigma_c * sigma_c)
+
+
+def gc_from_sigma_c_ell(
+    E: float, sigma_c: float, ell: float, dissipation: str = "AT1"
+) -> float:
+    """按耗散模型派发到 AT1/AT2 的 G_c(sigma_c, ell)。"""
+    _require_dissipation(dissipation)
+    if dissipation == "AT1":
+        return at1_gc_from_sigma_c_ell(E, sigma_c, ell)
+    return at2_gc_from_sigma_c_ell(E, sigma_c, ell)
+
+
+def ell_from_gc_sigma_c(
+    E: float, Gc: float, sigma_c: float, dissipation: str = "AT1"
+) -> float:
+    """按耗散模型派发到 AT1/AT2 的 ell(G_c, sigma_c)。"""
+    _require_dissipation(dissipation)
+    if dissipation == "AT1":
+        return at1_ell_from_gc_sigma_c(E, Gc, sigma_c)
+    return at2_ell_from_gc_sigma_c(E, Gc, sigma_c)
+
+
+def sigma_c_from_gc_ell(
+    E: float, Gc: float, ell: float, dissipation: str = "AT1"
+) -> float:
+    """按耗散模型派发到 AT1/AT2 的 sigma_c(G_c, ell)。"""
+    _require_dissipation(dissipation)
+    if dissipation == "AT1":
+        return at1_sigma_c_from_gc_ell(E, Gc, ell)
+    return at2_sigma_c_from_gc_ell(E, Gc, ell)
+
+
 # --------------------------------------------------------------------------
 # 数据类
 # --------------------------------------------------------------------------
@@ -216,14 +335,16 @@ class ElasticProperties:
 
     E: float
     nu: float
+    plane_state: str = "plane_strain"
 
     def __post_init__(self) -> None:
         _coerce(self, "E", lambda v: _require_positive(v, "E"))
         _coerce(self, "nu", _require_poisson)
+        _require_plane_state(self.plane_state)
 
     @property
     def lame(self) -> tuple[float, float]:
-        return lame_parameters(self.E, self.nu)
+        return lame_parameters(self.E, self.nu, self.plane_state)
 
     @property
     def lmbda(self) -> float:
@@ -238,7 +359,7 @@ class ElasticProperties:
         return plane_strain_modulus(self.E, self.nu)
 
     def bulk(self, dim: int = 2) -> float:
-        return bulk_modulus(self.E, self.nu, dim)
+        return bulk_modulus(self.E, self.nu, dim, self.plane_state)
 
 
 @dataclass(frozen=True)
@@ -254,10 +375,12 @@ class FractureProperties:
     sigma_c: float
     derived: str
     kic_equivalent: float
+    dissipation: str = "AT1"
 
     def __post_init__(self) -> None:
         for field in ("Gc", "ell", "sigma_c", "kic_equivalent"):
             _coerce(self, field, lambda v, f=field: _require_positive(v, f))
+        _require_dissipation(self.dissipation)
 
 
 @dataclass(frozen=True)
@@ -317,6 +440,7 @@ def resolve_fracture_properties(
     ell: float | None = None,
     sigma_c: float | None = None,
     rtol: float = 1e-6,
+    dissipation: str = "AT1",
 ) -> FractureProperties:
     """按 mode 用两个输入导出第三个断裂参数。
 
@@ -337,13 +461,14 @@ def resolve_fracture_properties(
     if missing:
         raise ValueError("mode=%r 需要给出 %r，缺少 %r" % (mode, required, missing))
 
+    _require_dissipation(dissipation)
     derived = next(k for k in ("Gc", "ell", "sigma_c") if k not in required)
     if derived == "Gc":
-        value = at1_gc_from_sigma_c_ell(E, sigma_c, ell)
+        value = gc_from_sigma_c_ell(E, sigma_c, ell, dissipation)
     elif derived == "ell":
-        value = at1_ell_from_gc_sigma_c(E, Gc, sigma_c)
+        value = ell_from_gc_sigma_c(E, Gc, sigma_c, dissipation)
     else:
-        value = at1_sigma_c_from_gc_ell(E, Gc, ell)
+        value = sigma_c_from_gc_ell(E, Gc, ell, dissipation)
 
     if given[derived] is not None:
         supplied = float(given[derived])
@@ -371,6 +496,7 @@ def resolve_fracture_properties(
         sigma_c=resolved["sigma_c"],
         derived=derived,
         kic_equivalent=kic_from_gc(resolved["Gc"], E, nu),
+        dissipation=dissipation,
     )
 
 
@@ -390,14 +516,24 @@ def load_material(path: str | Path) -> Material:
         if key not in raw:
             raise KeyError("%s 缺少顶层键 %r" % (path, key))
 
-    elastic = ElasticProperties(E=raw["elastic"]["E"], nu=raw["elastic"]["nu"])
+    elastic_cfg = dict(raw["elastic"])
+    unknown_elastic = set(elastic_cfg) - {"E", "nu", "plane_state"}
+    if unknown_elastic:
+        raise KeyError(
+            "%s 的 elastic 段有未知键 %r" % (path, sorted(unknown_elastic))
+        )
+    elastic = ElasticProperties(
+        E=elastic_cfg["E"],
+        nu=elastic_cfg["nu"],
+        plane_state=str(elastic_cfg.get("plane_state", "plane_strain")),
+    )
     frac_cfg = dict(raw["fracture"])
     mode = frac_cfg.pop("mode", None)
     if mode is None:
         raise KeyError(
             "%s 的 fracture 段缺少 mode（可选：%r）" % (path, FRACTURE_MODES)
         )
-    unknown = set(frac_cfg) - {"Gc", "ell", "sigma_c", "rtol"}
+    unknown = set(frac_cfg) - {"Gc", "ell", "sigma_c", "rtol", "dissipation"}
     if unknown:
         raise KeyError("%s 的 fracture 段有未知键 %r" % (path, sorted(unknown)))
     fracture = resolve_fracture_properties(
@@ -408,6 +544,7 @@ def load_material(path: str | Path) -> Material:
         ell=frac_cfg.get("ell"),
         sigma_c=frac_cfg.get("sigma_c"),
         rtol=float(frac_cfg.get("rtol", 1e-6)),
+        dissipation=str(frac_cfg.get("dissipation", "AT1")),
     )
     fatigue_cfg = raw["fatigue"]
     unknown_fatigue = set(fatigue_cfg) - {"alpha_T", "form", "kappa"}

@@ -56,10 +56,15 @@ from dolfinx import mesh as dmesh
 from dolfinx.fem.petsc import LinearProblem, NonlinearProblem
 from mpi4py import MPI
 
-from .material import Material, bulk_modulus, lame_parameters
+from .material import (
+    DISSIPATION_MODELS,
+    Material,
+    dissipation_normalization,
+)
 
 __all__ = [
     "SPLITS",
+    "DISSIPATION_MODELS",
     "FATIGUE_FORMS",
     "fatigue_degradation",
     "inverse_fatigue_degradation",
@@ -135,12 +140,13 @@ def energy_split(eps, material: Material, split: str, dim: int, *, freeze_from=N
     """
     if split not in SPLITS:
         raise ValueError("split 只能取 %r，收到 %r" % (SPLITS, split))
-    E, nu = material.elastic.E, material.elastic.nu
-    lmbda, mu = lame_parameters(E, nu)
+    # 用 ElasticProperties 的方法而不是自己调 lame_parameters(E, nu)，
+    # 这样 plane_state（平面应变/平面应力）会自动传导进来
+    lmbda, mu = material.elastic.lame
     tr_eps = ufl.tr(eps)
 
     if split == "amor":
-        K = bulk_modulus(E, nu, dim)
+        K = material.elastic.bulk(dim)
         dev = eps - (tr_eps / dim) * ufl.Identity(dim)
         dev_energy = mu * ufl.inner(dev, dev)
         if freeze_from is None:
@@ -278,11 +284,24 @@ def inverse_fatigue_degradation(
     return alpha_T * 10.0 ** ((1.0 - root) / kappa)
 
 
-def dissipation_density(d, material: Material, f_alpha):
-    """f(alpha_bar) (3 Gc/8) [d/ell + ell |grad d|^2]。PLAN.md 第 2 节。"""
+def dissipation_density(d, material: Material, f_alpha, model: str = "AT1"):
+    """f(alpha_bar) (G_c/c_w) [w(d)/ell + ell |grad d|^2]。
+
+    - AT1（PLAN 第 2 节，生产工况）：w = d、c_w = 8/3 -> 前因子 3 G_c/8；
+    - AT2（仅用于复现文献算例）：w = d^2、c_w = 2 -> 前因子 G_c/2，
+      即 Miehe/Bourdin 的经典写法 G_c[d^2/(2 ell) + (ell/2)|grad d|^2]。
+    """
+    if model not in DISSIPATION_MODELS:
+        raise ValueError(
+            "dissipation 只能取 %r，收到 %r" % (DISSIPATION_MODELS, model)
+        )
     Gc = material.fracture.Gc
     ell = material.fracture.ell
-    return f_alpha * (3.0 * Gc / 8.0) * (d / ell + ell * ufl.inner(ufl.grad(d), ufl.grad(d)))
+    w = d if model == "AT1" else d**2
+    prefactor = Gc / dissipation_normalization(model)
+    return f_alpha * prefactor * (
+        w / ell + ell * ufl.inner(ufl.grad(d), ufl.grad(d))
+    )
 
 
 # --------------------------------------------------------------------------
@@ -295,12 +314,26 @@ class PhaseFieldModel:
     material: Material
     split: Split = "amor"
     k_res: float = 1.0e-6
+    dissipation: str = "AT1"
 
     def __post_init__(self) -> None:
         if self.split not in SPLITS:
             raise ValueError("split 只能取 %r，收到 %r" % (SPLITS, self.split))
         if not 0.0 < self.k_res < 1.0:
             raise ValueError("k_res 应在 (0,1) 内，收到 %r" % (self.k_res,))
+        if self.dissipation not in DISSIPATION_MODELS:
+            raise ValueError(
+                "dissipation 只能取 %r，收到 %r"
+                % (DISSIPATION_MODELS, self.dissipation)
+            )
+        # 材料卡里的 sigma_c 是按某个耗散模型换算的，与模型不一致就是参数错配，
+        # 必须拒绝：AT1 的 sigma_c 与 AT2 的 sigma_y 是两回事（差 (9/16)/sqrt(8/9) 之类的因子）。
+        if self.material.fracture.dissipation != self.dissipation:
+            raise ValueError(
+                "模型用 dissipation=%r，但材料卡的 fracture.dissipation=%r。"
+                "两者的 sigma_c <-> (G_c, ell) 换算关系不同，不能混用。"
+                % (self.dissipation, self.material.fracture.dissipation)
+            )
 
 
 @dataclass(frozen=True)
@@ -520,7 +553,9 @@ class PhaseFieldSolver:
         )
         energy = (
             degradation(self.d, model.k_res) * psi_plus
-            + dissipation_density(self.d, model.material, self.f_alpha)
+            + dissipation_density(
+                self.d, model.material, self.f_alpha, model.dissipation
+            )
         ) * self.dx
         F = ufl.derivative(energy, self.d, w)
         self._d_problem = NonlinearProblem(
@@ -551,7 +586,10 @@ class PhaseFieldSolver:
             (degradation(self.d, model.k_res) * psi_plus + psi_minus) * self.dx
         )
         self._form_dissipated = fem.form(
-            dissipation_density(self.d, model.material, self.f_alpha) * self.dx
+            dissipation_density(
+                self.d, model.material, self.f_alpha, model.dissipation
+            )
+            * self.dx
         )
         self._form_psi_plus = fem.form(psi_plus * self.dx)
 

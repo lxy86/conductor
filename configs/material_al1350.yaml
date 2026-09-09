@@ -6,6 +6,8 @@ name: Al 1350-H19
 elastic:
   E: 69.0e+9          # Pa
   nu: 0.33
+  plane_state: plane_strain   # 生产工况一律平面应变（PLAN 第 1 节）；
+                              # plane_stress 只用于复现文献算例，见 DECISIONS.md D-10
 
 strength:
   sigma_u: 185.0e+6   # Pa，抗拉强度（实测值，见 sources；PLAN.md 原写 170）
@@ -18,6 +20,9 @@ strength:
 #   from_gc_and_sigma_c  -> 导出 ell
 # 冗余项若同时给出会做一致性校验，不自洽直接报错。
 fracture:
+  dissipation: AT1   # w(d)=d、c_w=8/3 -> 耗散前因子 3G_c/8（PLAN 第 2 节）。
+                     # AT2 仅用于复现 Miehe 2010 / Carrara 2020 的算例（D-10）。
+                     # 注意 sigma_c <-> (G_c, ell) 的换算随此项而变，模型必须与之一致。
   mode: from_sigma_c_and_ell
   sigma_c: 185.0e+6   # Pa，取 sigma_c = sigma_u（PLAN.md 第 1 节原文）
   ell: 4.0e-6        # m，数值正则化长度。接触半宽 a = 2 R p0/E*，
