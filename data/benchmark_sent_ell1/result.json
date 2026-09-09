@@ -25,7 +25,10 @@
   "thickness": 0.001,
   "peak": {
     "reliable": true,
-    "note": "峰值可信：其后有载荷更低的步",
+    "note": "峰值可信：峰后连续下降 12 步、相对跌幅 9.85e-01",
+    "n_descending_after": 12,
+    "post_peak_drop_rel": 0.9849767152510056,
+    "last_rise_before_peak": 0.0006708058443791742,
     "F": 741.1284911948262,
     "F_per_thickness": 741128.4911948262,
     "u": 5.949999999999837e-06,

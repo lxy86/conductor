@@ -24,8 +24,11 @@
   },
   "thickness": 0.001,
   "peak": {
-    "reliable": false,
-    "note": "**不是真峰值**：曲线到最后一步仍在上升（status=not_converged），此值只是下界",
+    "reliable": true,
+    "note": "峰值可信：峰后连续下降 5 步、相对跌幅 3.76e-04",
+    "n_descending_after": 5,
+    "post_peak_drop_rel": 0.00037603795004440287,
+    "last_rise_before_peak": 0.0004323581192693382,
     "F": 714.7964839807553,
     "F_per_thickness": 714796.4839807553,
     "u": 5.693999999999926e-06,

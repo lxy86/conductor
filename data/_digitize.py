@@ -5,6 +5,8 @@
   1) 图例色块也是红/绿，必须把左上角图例区排除；
   2) 斜率只能在**上升段**拟合 —— 峰后下降段同样穿过 0.1~0.4 kN，混进去会算错 10 倍。
 """
+import pathlib
+
 import numpy as np
 import PIL.Image
 import pymupdf
@@ -32,6 +34,7 @@ X_MAX, Y_MAX = 0.008, 0.8
 print("坐标框：竖线 %s 横线 %s  -> x:0~%g mm, y:0~%g kN" % (vs, hs, X_MAX, Y_MAX))
 
 results = {}
+curves = {}
 for name, ell, (xa, xb) in (("(a)", 0.0150, (vs[0], vs[1])), ("(b)", 0.0075, (vs[2], vs[3]))):
     for label, mask in (("eta=0", red), ("eta=1e-6", green)):
         sub = mask[:, xa:xb + 1].copy()
@@ -50,5 +53,23 @@ for name, ell, (xa, xb) in (("(a)", 0.0150, (vs[0], vs[1])), ("(b)", 0.0075, (vs
             # 过原点拟合：F = k u（曲线确实自原点出发）
             k = float(np.sum(u[rise] * F[rise]) / np.sum(u[rise] ** 2))
         results[(name, label)] = (F[i], u[i], k)
+        curves["%s ell=%.4f %s" % (name, ell, label)] = {
+            "ell_mm": ell,
+            "eta": label,
+            "u_mm": u.tolist(),
+            "F_kN": F.tolist(),
+            "F_peak_kN": float(F[i]),
+            "u_peak_mm": float(u[i]),
+            "k_N_per_m": (None if k != k else k * 1e6),
+        }
         print("%s ell=%.4f mm  %-9s  F_peak=%.4f kN @ u=%.5f mm   k=%.1f kN/mm = %.4e N/m  (%d 列)"
               % (name, ell, label, F[i], u[i], k, k * 1e6, cols.size))
+
+# 落盘供作图脚本叠加（本文件由 miehe2010.pdf 重新生成；PDF 是版权材料，不入库，
+# 故这份派生数据也按 data/_*.json 排除在版本库外，见 .gitignore）
+import json
+
+pathlib.Path("data/_miehe_fig7.json").write_text(
+    json.dumps(curves, indent=1), encoding="utf-8"
+)
+print("已写 data/_miehe_fig7.json（%d 条曲线）" % len(curves))

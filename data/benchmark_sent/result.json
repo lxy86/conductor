@@ -25,7 +25,10 @@
   "thickness": 0.001,
   "peak": {
     "reliable": false,
-    "note": "**不是真峰值**：曲线到最后一步仍在上升（status=not_converged），此值只是下界",
+    "note": "**不是真峰值**：曲线到最后一个收敛步仍在上升（status=not_converged，峰后连续下降 1 步、跌幅 7.00e-05），此值只是下界；峰前最后一步增量 +0.004284 可作「还差多少」的量级参考",
+    "n_descending_after": 1,
+    "post_peak_drop_rel": 6.998319443718742e-05,
+    "last_rise_before_peak": 0.004284427448851602,
     "F": 769.7390323969032,
     "F_per_thickness": 769739.0323969031,
     "u": 5.88399999999986e-06,
