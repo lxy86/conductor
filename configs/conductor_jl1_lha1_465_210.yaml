@@ -1,0 +1,69 @@
+# 导线 JL1/LHA1-465/210（铝合金芯铝绞线，GB/T 1179-2017）。单位一律 SI。
+# 用途：Poffenberger–Swart 把本体应力幅 sigma_a 换算成 89 mm 处弯曲振幅 Y_b，
+# 以及 CIGRE 安全边界线对比（PLAN.md 第 1 节、图 6）。函数在 loads.py（Phase 2.2）。
+name: JL1/LHA1-465/210
+
+structure:
+  n_wires_al: 42            # 硬铝 JL1（Al 1350）单线根数，标称截面 465 mm^2
+  n_wires_alloy: 19         # 铝合金 LHA1 芯线根数，标称截面 210 mm^2
+  d_wire_al: 3.75e-3        # m，硬铝单线直径（465e-6/42 -> 11.07 mm^2 -> 3.755 mm，取标称 3.75）
+  d_wire_alloy: 3.75e-3     # m，合金单线直径（210e-6/19 -> 11.05 mm^2，与铝线同径）
+  area_al: 465.0e-6         # m^2
+  area_alloy: 210.0e-6      # m^2
+  diameter_overall: 33.75e-3  # m，61 线同心绞（1+6+12+18+24），D = 9 d
+
+mechanical:
+  RTS: 137.02e+3            # N，计算拉断力
+  mass_per_length: 1.8589   # kg/m
+  E_al: 69.0e+9             # Pa，Al 1350-H19（与 material_al1350.yaml 一致）
+  E_alloy: 65.0e+9          # Pa，LHA1 铝合金（TODO：GB/T 23308 未给 E，见 sources）
+
+  # EI_min：所有单线各自独立弯曲的下界，EI_min = sum_i E_i * pi d_i^4/64。
+  # 这是 P–S 公式里 EI_min 的常规取法（单线间无剪力传递的极限）。
+  #   I_wire = pi (3.75e-3)^4/64 = 9.7077e-12 m^4
+  #   铝:   42 * 69e9 * I = 28.13 N m^2
+  #   合金: 19 * 65e9 * I = 11.99 N m^2
+  #   EI_min = 40.12 N m^2
+  EI_min: 40.12             # N m^2，由上式算得，见 DECISIONS.md D-6
+
+# P–S 换算工况：张力取 RTS 的百分比（用户 2026-09-09 指定 15/20/25%）
+tension_cases:
+  - {label: "T15", fraction_RTS: 0.15}   # T = 20.553 kN
+  - {label: "T20", fraction_RTS: 0.20}   # T = 27.404 kN
+  - {label: "T25", fraction_RTS: 0.25}   # T = 34.255 kN
+
+poffenberger_swart:
+  x: 89.0e-3                # m，标准测点距线夹最后接触点的距离
+  y_b_definition: peak_to_peak   # Y_b 取峰峰值（双振幅），sigma_a 取零峰值幅值
+  # 用上面参数算出的 K（供 Phase 2.2 实现时对拍，代码不得硬编码这些值）：
+  #   p = sqrt(T/EI_min);  K = E_al d_wire p^2 / (4 (e^{-px} - 1 + px))
+  #   T15: p = 22.63 1/m, K = 2.887e10 Pa/m = 28.87 MPa/mm
+  #   T20: p = 26.14 1/m, K = 3.104e10 Pa/m = 31.04 MPa/mm
+  #   T25: p = 29.22 1/m, K = 3.298e10 Pa/m = 32.98 MPa/mm
+  # 量级检查：sigma_a = 35 MPa 在 T20 下对应 Y_b ≈ 1.13 mm（峰峰），合理。
+
+cigre_safe_border_line:
+  # sigma_a = A N^(-b)，分段。PLAN.md 第 1 节给的是**多层导线**那一套系数。
+  # 本导线为 61 线、铝层 2 层，属多层，故用 multilayer。
+  applicable: multilayer
+  multilayer:
+    - {N_max: 1.56e+7, A: 450.0e+6, b: 0.20}
+    - {N_max: null,    A: 263.0e+6, b: 0.17}
+  # 单层系数位（本工况不用，留作切换）：TODO 按 CIGRE TB 332 填并核对上面多层系数
+  single_layer: null
+
+sources:
+  structure: >-
+    GB/T 1179-2017 圆线同心绞架空导线。465/210 规格结构为 42/19（42 根硬铝 + 19 根
+    合金芯线），单线直径 3.75 mm，61 线同心绞外径 9d = 33.75 mm。
+  RTS: "厂商/规范性能参数表：计算拉断力 137.02 kN，单位质量 1858.9 kg/km，20°C 直流电阻 0.0447 Ω/km"
+  RTS_crosscheck: >-
+    按单线强度独立核算：465e-6*160e6（GB/T 17048 硬铝 d≈3.75 mm 的最小抗拉强度）
+    + 210e-6*295e6（GB/T 23308 LHA1）= 136.4 kN，与表值 137.02 kN 相差 0.5%，可信。
+  E_alloy: >-
+    TODO：GB/T 23308 只规定强度不规定弹性模量。65 GPa 取自 6201 类 Al-Mg-Si 合金线的
+    常用值区间（63-65 GPa）。EI_min 对 E_alloy 不敏感：取 63 GPa 时 EI_min 变为 39.8
+    N m^2（-0.8%），对 K 的影响 < 0.5%。
+  EI_min: "DECISIONS.md D-6：定义为各单线独立弯曲之和 sum E_i pi d_i^4/64"
+  poffenberger_swart: "PLAN.md 第 1 节；x = 89 mm 为 IEEE/CIGRE 标准测点"
+  cigre_safe_border_line: "PLAN.md 第 1 节，TODO 实现前对照 CIGRE TB 332 核对系数"

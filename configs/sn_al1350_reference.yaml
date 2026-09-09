@@ -1,0 +1,72 @@
+# Al 1350-H19 单丝**纯拉伸（无接触）**疲劳 S–N 参考曲线 —— alpha_T 标定的靶子。
+#
+# ############################  重要声明  ############################
+# 这是 **代理曲线（surrogate）**，不是实测数据。用户 2026-09-09 授权：
+# 「D-3 你可以上网搜索或者找到类似数据做一个相近的」。
+# 检索结果：1350-H19 单丝疲劳的论文很多（见 sources），但 S–N 的数值表/系数
+# 全在付费正文里，公开摘要拿不到。因此本文件按下面写明的两个锚点构造 Basquin
+# 曲线，**论文中必须声明标定靶为代理曲线**，或在投稿前替换为实测数据。
+# 替换方式：只改本文件的 basquin 与 calibration_targets，代码与流程不动。
+# ####################################################################
+name: "Al 1350-H19 单丝纯拉伸疲劳（代理曲线）"
+is_surrogate: true
+
+conditions:
+  stress_ratio_R: -1.0      # 与模型一致（DECISIONS.md D-5：零平均应力）
+  loading: uniaxial_tension_no_contact
+  wire_diameter: 3.75e-3    # m，与 JL1/LHA1-465/210 的铝单线一致
+  frequency: null           # 代理曲线无频率信息；铝在室温下对频率不敏感
+
+# sigma_a = A * N^(-b)，sigma_a 为零峰值幅值（Pa）
+basquin:
+  A: 430.6e+6               # Pa
+  b: 0.1336
+  N_valid_min: 1.0e+4
+  N_valid_high: 5.0e+7
+
+# 构造依据（两个锚点，均以 sigma_u = 185 MPa 为基准）：
+#   sigma_a(1e5) = 0.50 * sigma_u = 92.5 MPa
+#   sigma_a(1e7) = 0.27 * sigma_u = 50.0 MPa
+# -> b = log10(92.5/50)/2 = 0.1336,  A = 92.5e6 * (1e5)^0.1336 = 430.6 MPa
+# 0.50 与 0.27 是非热处理强化变形铝合金（1xxx-H1x）在 1e5 / 1e7 循环下疲劳比的
+# 常用区间取值，见 sources.fatigue_ratio。
+
+# alpha_T 标定用的 4 个应力水平（PLAN.md Phase 2.3：calib_tension.yaml）
+calibration_targets:
+  - {sigma_a: 90.0e+6, N_target: 1.23e+5}
+  - {sigma_a: 70.0e+6, N_target: 8.02e+5}
+  - {sigma_a: 55.0e+6, N_target: 4.90e+6}
+  - {sigma_a: 45.0e+6, N_target: 2.20e+7}
+
+# 验收口径（DECISIONS.md D-3）
+acceptance:
+  metric: mean_abs_log10_error
+  tolerance: 0.30           # 即 4 个点的寿命平均偏差在 2 倍以内
+
+# 合理性交叉检查（不是标定输入，只是防止代理曲线离谱）
+plausibility_check:
+  note: >-
+    本代理曲线在 1e7 循环给出 50 MPa；CIGRE 多层导线安全边界线在 1e7 给出
+    450*1e7^(-0.2) = 17.9 MPa。比值 2.8 倍，方向与量级都合理：CSBL 是**导线断丝**
+    的保守下界（含微动损伤与分散性），单丝纯拉伸疲劳强度理应显著高于它。
+    若标定后模型的微动寿命反而高于 CSBL 很多倍，说明微动损伤机制没起作用，
+    应停下检查而不是调 alpha_T（硬约束 6）。
+
+sources:
+  fretting_literature: >-
+    Numerical and experimental analysis of fretting fatigue performance of the
+    1350-H19 aluminum alloy, J. Braz. Soc. Mech. Sci. Eng. 42 (2020) 597,
+    doi:10.1007/s40430-020-02498-w —— 有 1350-H19 单丝微动与单轴 S–N 曲线，
+    正文付费。TODO：取到正文后用其实测 S–N 替换本代理曲线。
+  related_wire_fatigue: >-
+    Fatigue of two contacting wires of the ACSR Ibis 397.5 MCM conductor:
+    Experiments and life prediction, Tribology International (2019),
+    doi:10.1016/j.triboint.2019.05.040；
+    Fretting fatigue of 6201 aluminum alloy wires of overhead conductors,
+    Tribology International (2020), doi:10.1016/j.triboint.2020.106541。
+  material_properties: >-
+    上述文献一致给出 1350-H19：E = 69 GPa，sigma_y = 165 MPa，sigma_u = 185 MPa。
+    据此把 material_al1350.yaml 的 sigma_u 从 PLAN.md 的 170 MPa 改为 185 MPa。
+  fatigue_ratio: >-
+    0.50/0.27 的疲劳比取值属工程常用区间（非热处理强化变形铝合金），
+    TODO：定稿前换成上面 doi:10.1007/s40430-020-02498-w 的实测系数。

@@ -8,7 +8,8 @@ elastic:
   nu: 0.33
 
 strength:
-  sigma_u: 170.0e+6   # Pa，抗拉强度
+  sigma_u: 185.0e+6   # Pa，抗拉强度（实测值，见 sources；PLAN.md 原写 170）
+  sigma_y: 165.0e+6   # Pa，屈服强度，仅供论文中说明「相场为弹脆性、不含塑性」
 
 # 断裂参数三角（G_c / ell / sigma_c 只有两个独立，见 DECISIONS.md D-2）。
 # mode 指明哪两个是输入：
@@ -18,10 +19,12 @@ strength:
 # 冗余项若同时给出会做一致性校验，不自洽直接报错。
 fracture:
   mode: from_sigma_c_and_ell
-  sigma_c: 170.0e+6   # Pa，取 sigma_c = sigma_u（PLAN.md 第 1 节原文）
-  ell: 4.0e-6        # m，数值正则化长度，取 ~a/5（a≈20.7 um，见 DECISIONS.md D-1）
-  # 导出：G_c = 8 sigma_c^2 ell/(3E) ≈ 4.47 J/m^2，
-  #       等效 K_IC = sqrt(G_c E/(1-nu^2)) ≈ 0.59 MPa*m^0.5。
+  sigma_c: 185.0e+6   # Pa，取 sigma_c = sigma_u（PLAN.md 第 1 节原文）
+  ell: 4.0e-6        # m，数值正则化长度。接触半宽 a = 2 R p0/E*，
+                     # R_wire = 1.875 mm（JL1/LHA1-465/210 的铝单线）时 a ≈ 24.2 um，
+                     # 故 a/ell ≈ 6，满足 D-1 要求的 ell <~ a/5。
+  # 导出：G_c = 8 sigma_c^2 ell/(3E) ≈ 5.29 J/m^2，
+  #       等效 K_IC = sqrt(G_c E/(1-nu^2)) ≈ 0.64 MPa*m^0.5。
   # 注意：这是 *effective phase-field fracture energy*，比铝的真实韧性低约 3 个量级，
   # 后果是一旦萌生扩展极快、寿命几乎全部来自萌生阶段。论文中必须如实说明。
 
@@ -32,9 +35,15 @@ sources:
   E: "PLAN.md 第 1 节（TODO：换 ASM Handbook Vol.2 / IEC 60889 原始值）"
   nu: "PLAN.md 第 1 节（TODO：同上）"
   sigma_u: >-
-    PLAN.md 第 1 节 sigma_u ≈ 170 MPa。TODO：按 IEC 60889 中 d = 3.2 mm
-    对应行核对——该标准的抗拉强度随直径下降，需确认 170 MPa 是否对应本直径。
+    185 MPa，取自 1350-H19 单丝疲劳文献一致报道的实测值（E = 69 GPa,
+    sigma_y = 165 MPa, sigma_u = 185 MPa），见 configs/sn_al1350_reference.yaml
+    的 sources.material_properties（doi:10.1007/s40430-020-02498-w 等）。
+    注意与 RTS 计算用的 GB/T 17048 规范最小值 160 MPa 不同：后者是验收下限，
+    此处需要的是实测强度。PLAN.md 原写 170 MPa，已按文献改为 185。
   sigma_c: "取 sigma_c ≈ sigma_u，PLAN.md 第 1 节"
   ell: "DECISIONS.md D-1：ell ≈ a/5，a 由 Hertz 的 a = 2 R p0/E* 给出"
   Gc: "由 AT1 关系导出，非独立输入；AT1 关系见 Tanne et al. 2018, JMPS 110:80-99"
-  alpha_T: "Phase 2.3 标定，待用户提供 Al 1350-H19 单丝 S-N 数据（DECISIONS.md D-3）"
+  alpha_T: >-
+    Phase 2.3 标定，靶曲线见 configs/sn_al1350_reference.yaml（代理曲线，
+    非实测，见 DECISIONS.md D-3）。
+  sigma_y: "同 sigma_u 的来源"

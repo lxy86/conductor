@@ -200,13 +200,14 @@ def test_load_material_al1350():
     assert m.name == "Al 1350-H19"
     assert m.elastic.E == pytest.approx(69.0e9)
     assert m.elastic.nu == pytest.approx(0.33)
-    assert m.sigma_u == pytest.approx(170.0e6)
+    assert m.sigma_u == pytest.approx(185.0e6)
     # yaml 选的是 from_sigma_c_and_ell，故 G_c 是导出量
     assert m.fracture.derived == "Gc"
     assert m.fracture.ell == pytest.approx(4.0e-6)
-    assert m.fracture.sigma_c == pytest.approx(170.0e6)
-    assert m.fracture.Gc == pytest.approx(4.468, rel=1e-3)
-    assert m.fracture.kic_equivalent == pytest.approx(0.588e6, rel=1e-2)
+    assert m.fracture.sigma_c == pytest.approx(185.0e6)
+    # 手算锚点：8*(185e6)^2*4e-6/(3*69e9) = 5.291 J/m^2
+    assert m.fracture.Gc == pytest.approx(5.291, rel=1e-3)
+    assert m.fracture.kic_equivalent == pytest.approx(0.640e6, rel=1e-2)
     # AT1 关系必须在载入后仍严格成立
     assert m.fracture.sigma_c == pytest.approx(
         mat.at1_sigma_c_from_gc_ell(m.elastic.E, m.fracture.Gc, m.fracture.ell),
