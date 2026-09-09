@@ -11,6 +11,17 @@
    而韧带段同一位置无跳跃。这是功能性验证，比只看拓扑更有说服力；
 5. 物理组标签可用于施加边界条件，且尺寸场生效（加密带内单元明显小于带外）;
 6. 参数校验：缺口不得贯穿、h_fine 不得大于 h_coarse 等。
+
+CT 试样（验证 2，Carrara 2020 Fig. 12a）
+--------------------------------------
+7. 派生几何量与原文标注逐条对表（1.25W / 1.2W / Ø0.25W / ±0.275W / W/16、
+   a0 自**载荷线**量起）—— 这些是「几何搭错了」最容易出的地方；
+8. 面积：矩形 − 两销孔 − 缺口槽。注意销孔是多边形离散的，网格面积必然**略大于**
+   解析值（内接多边形挖得少），故只能给上界并检查符号；
+   而**外边界周长**是直线段构成的，可以精确对表（矩形周长 − 缺口开口宽）；
+9. 缺口是**有宽度的机加槽**（与 SENT 的零厚度切缝不同）：槽内是挖空的，
+   故缺口段中线上不应有任何单元，而韧带段中线必须连通；
+10. 销孔周长与解析弧长比对（差应等于弦/弧比，由 facet 数决定）。
 """
 
 from __future__ import annotations
@@ -224,3 +235,184 @@ def test_spec_validation():
         pfmesh.SentSpec(W=-1.0)
     with pytest.raises(ValueError, match="加密带"):
         pfmesh.SentSpec(H=1.0e-3, refine_halfheight=1.0e-3)
+
+
+# --------------------------------------------------------------------------
+# CT 试样（验证 2）
+# --------------------------------------------------------------------------
+CT_COARSE = pfmesh.CtSpec(
+    h_fine=0.4e-3, h_coarse=3.0e-3, refine_halfheight=2.0e-3
+)
+
+
+@pytest.fixture(scope="module")
+def ct():
+    return pfmesh.ct_mesh(CT_COARSE)
+
+
+def test_ct_spec_matches_carrara_fig12a():
+    """派生几何量与原文 Fig. 12a 的标注逐条对表。"""
+    s = pfmesh.CtSpec()
+    assert s.W == pytest.approx(50.0e-3)
+    # 总宽 1.25W、总高 1.2W
+    assert s.x_back - s.x_front == pytest.approx(1.25 * s.W)
+    assert 2.0 * s.halfheight == pytest.approx(1.2 * s.W)
+    # 原点在载荷线上 -> 前端面在 -0.25W，背面在 +W
+    assert s.x_front == pytest.approx(-0.25 * s.W)
+    assert s.x_back == pytest.approx(s.W)
+    # 销孔 Ø = 0.25W、孔心距裂纹面 ±0.275W
+    assert 2.0 * s.hole_radius == pytest.approx(0.25 * s.W)
+    assert s.hole_offset == pytest.approx(0.275 * s.W)
+    # 缺口槽高 W/16
+    assert 2.0 * s.notch_half_height == pytest.approx(s.W / 16.0)
+    # a0 自载荷线量起，a0/W = 0.22 -> 尖端 x 坐标就是 a0
+    assert s.a0 == pytest.approx(0.22 * s.W)
+    assert s.a0 == pytest.approx(11.0e-3)
+
+
+def test_ct_area_bounded_by_hole_faceting(ct):
+    """网格面积应略大于解析面积，差由销孔的多边形离散解释。"""
+    msh = ct.mesh
+    spec = ct.spec
+    area = msh.comm.allreduce(
+        fem.assemble_scalar(fem.form(fem.Constant(msh, 1.0) * ufl.dx)), op=MPI.SUM
+    )
+    # 内接多边形挖掉的面积小于圆 -> 网格面积必然偏大
+    assert area > spec.area, (
+        "网格面积 %.6e 不大于解析面积 %.6e —— 销孔多边形应挖得比圆少" % (area, spec.area)
+    )
+    # 上界：两个销孔各自最多少挖 (1 - 3/π 的量级)，这里给宽松但有意义的 1%
+    assert (area - spec.area) / spec.area < 1.0e-2
+
+
+def test_ct_outer_perimeter_is_exact(ct):
+    """外边界全是直线段，可精确对表：矩形周长 − 缺口开口宽。"""
+    msh = ct.mesh
+    spec = ct.spec
+    ds = ufl.Measure("ds", domain=msh, subdomain_data=ct.facet_tags)
+    L = msh.comm.allreduce(
+        fem.assemble_scalar(
+            fem.form(fem.Constant(msh, 1.0) * ds(pfmesh.CT_TAG_OUTER))
+        ),
+        op=MPI.SUM,
+    )
+    rect = 2.0 * (spec.x_back - spec.x_front) + 2.0 * (2.0 * spec.halfheight)
+    expected = rect - 2.0 * spec.notch_half_height  # 前端面被缺口开口挖掉一段
+    assert L == pytest.approx(expected, rel=1e-9)
+
+
+def test_ct_hole_perimeters_match_chord_length(ct):
+    """销孔周长应是内接多边形的弦长和：短于弧长，且与等弦估计同量级。
+
+    不能对「等弦公式」2 n r sin(pi/n) 取机器精度 —— gmsh 在圆上布点并不严格均匀
+    （实测差 6.5e-4），那是网格生成器的自由度，不是几何错误。
+    真正的不变量是「内接 => 短于弧长」，以及半径正确时二者只差 O(1/n²)。
+    半径若搭错，偏差是百分数量级，本判据照样能抓住。
+    """
+    msh = ct.mesh
+    spec = ct.spec
+    arc = 2.0 * np.pi * spec.hole_radius
+    ds = ufl.Measure("ds", domain=msh, subdomain_data=ct.facet_tags)
+    for tag in (pfmesh.CT_TAG_HOLE_TOP, pfmesh.CT_TAG_HOLE_BOTTOM):
+        n = msh.comm.allreduce(int(ct.facet_tags.find(tag).size), op=MPI.SUM)
+        L = msh.comm.allreduce(
+            fem.assemble_scalar(fem.form(fem.Constant(msh, 1.0) * ds(tag))), op=MPI.SUM
+        )
+        assert n > 8, "销孔只有 %d 个 facet，太粗" % n
+        assert L < arc, "周长 %.6f 不短于弧长 %.6f —— 多边形应内接于圆" % (L, arc)
+        equal_chord = 2.0 * n * spec.hole_radius * np.sin(np.pi / n)
+        assert L == pytest.approx(equal_chord, rel=5.0e-3)
+        # n 个弦时弦/弧比为 sin(pi/n)/(pi/n)，据此给出周长的下界
+        assert L > arc * np.sin(np.pi / n) / (np.pi / n) * 0.99
+
+
+def test_ct_notch_is_a_hollow_slot_and_ligament_is_connected(ct):
+    """CT 缺口是**挖空的槽**：槽内中线上不该有单元；韧带段中线必须连通。"""
+    msh = ct.mesh
+    spec = ct.spec
+    fdim = msh.topology.dim - 1
+    tol = 0.2 * spec.h_fine
+
+    def in_slot(x):
+        return np.isclose(x[1], 0.0, atol=tol) & (
+            x[0] < spec.a0 - spec.taper_length - tol
+        )
+
+    def in_ligament(x):
+        return np.isclose(x[1], 0.0, atol=tol) & (x[0] > spec.a0 + tol)
+
+    n_slot = msh.comm.allreduce(
+        dmesh.locate_entities_boundary(msh, fdim, in_slot).size, op=MPI.SUM
+    )
+    n_lig = msh.comm.allreduce(
+        dmesh.locate_entities_boundary(msh, fdim, in_ligament).size, op=MPI.SUM
+    )
+    assert n_slot == 0, (
+        "槽内中线上出现了 %d 个边界 facet —— 槽没被挖空（若做成了零厚度切缝也会这样）"
+        % n_slot
+    )
+    assert n_lig == 0, "韧带段中线上出现外边界 facet —— 试样被切断了"
+
+
+def test_ct_physical_groups_present(ct):
+    present = set(np.unique(ct.facet_tags.values).tolist())
+    for tag in (
+        pfmesh.CT_TAG_HOLE_TOP,
+        pfmesh.CT_TAG_HOLE_BOTTOM,
+        pfmesh.CT_TAG_NOTCH,
+        pfmesh.CT_TAG_OUTER,
+    ):
+        assert tag in present, "缺少物理组 %d" % tag
+
+
+def test_ct_refines_the_crack_path_band(ct):
+    """加密带（自缺口尖端到背面的水平带）内单元应显著小于带外。"""
+    msh = ct.mesh
+    spec = ct.spec
+    V0 = fem.functionspace(msh, ("DG", 0))
+    area = fem.Function(V0)
+    area.interpolate(
+        fem.Expression(ufl.CellVolume(msh), V0.element.interpolation_points)
+    )
+    ycen = fem.Function(V0)
+    ycen.interpolate(
+        fem.Expression(ufl.SpatialCoordinate(msh)[1], V0.element.interpolation_points)
+    )
+    xcen = fem.Function(V0)
+    xcen.interpolate(
+        fem.Expression(ufl.SpatialCoordinate(msh)[0], V0.element.interpolation_points)
+    )
+    n_local = V0.dofmap.index_map.size_local
+    A = area.x.array[:n_local]
+    y = ycen.x.array[:n_local]
+    x = xcen.x.array[:n_local]
+    inside = (np.abs(y) < 0.5 * spec.refine_halfheight) & (x > spec.a0)
+    outside = np.abs(y) > 0.7 * spec.halfheight
+
+    def mean(mask):
+        tot = msh.comm.allreduce(float(A[mask].sum()), op=MPI.SUM)
+        cnt = msh.comm.allreduce(int(mask.sum()), op=MPI.SUM)
+        return tot / max(cnt, 1)
+
+    mean_in, mean_out = mean(inside), mean(outside)
+    assert mean_in < 0.5 * mean_out, (
+        "加密带没生效：带内平均单元面积 %.3e vs 带外 %.3e" % (mean_in, mean_out)
+    )
+    assert np.sqrt(2.0 * mean_in) == pytest.approx(spec.h_fine, rel=0.6)
+
+
+def test_ct_spec_validation():
+    with pytest.raises(ValueError, match="贯穿到背面"):
+        pfmesh.CtSpec(a0_over_W=1.2)
+    with pytest.raises(ValueError, match="锥收长度"):
+        pfmesh.CtSpec(a0_over_W=0.01)
+    with pytest.raises(ValueError, match="销孔超出"):
+        pfmesh.CtSpec(hole_offset_over_W=0.55)
+    with pytest.raises(ValueError, match="相交"):
+        pfmesh.CtSpec(notch_height_over_W=0.5)
+    with pytest.raises(ValueError, match="h_fine"):
+        pfmesh.CtSpec(h_fine=5.0e-3)
+    with pytest.raises(ValueError, match="必须为有限正数"):
+        pfmesh.CtSpec(W=-1.0)
+    with pytest.raises(ValueError, match="notch_taper_length"):
+        pfmesh.CtSpec(notch_taper_length=-1.0)

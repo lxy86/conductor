@@ -13,8 +13,13 @@ model:
 solver:
   u_solver: newton      # spectral 分解没有冻结形式，必须走精确非线性路径
   tol_d: 1.0e-4
-  max_iter: 500     # 临界点附近交错收敛率趋于 1，实测 50 次不够
-                    # （迭代数 16->41 陡增后失败），必须放宽
+  max_iter: 2000    # 欠松弛后每步迭代数约翻倍；极限点那一步实测要 1168 次
+  relaxation: 0.5   # 极限点附近交错格式振荡（‖Δd‖_inf 停在 4e-2 不降）。
+                    # omega<1 压住振荡，而**不动点不变**，故不改变解；
+                    # 且 d_prev 与 d_solved 都 >= d_old，凸组合仍 >= d_old，
+                    # 不可逆约束自动满足。实测：not_converged -> past_peak（D-18）。
+                    # 注意收敛判据量的是**松弛后**的增量，故 omega<1 使判据
+                    # 实际严了 1/omega 倍（偏安全方向）。
 
 mesh:
   type: sent
