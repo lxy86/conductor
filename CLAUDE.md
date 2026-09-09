@@ -34,6 +34,18 @@ cd /root/pf-wire   # 指向 C:\Users\Administrator\Desktop\疲劳寿命 的 ASCI
    不为"跑通"随意调参。
 7. 不做 PLAN.md 明确排除的内容。
 
+## 已知陷阱（踩过的，别再踩）
+1. **BC 必须建在求解器自己的函数空间上**。在外部另建一个结构相同的空间做 DirichletBC，
+   dolfinx 装配时不认，矩阵缺约束变奇异，而 MUMPS/preonly 仍返回 `KSPConvergedReason>0`，
+   得到 1e8 量级的垃圾解。`PhaseFieldSolver` 已在构造时用 `FunctionSpace.contains` 拒绝；
+   BC 一律写成 `bcs_u=lambda V: [...]` 的可调用形式。
+   注意 `DirichletBC.function_space` 返回 cpp 对象，需用 `V._cpp_object.contains(...)`。
+2. **PyYAML 是 YAML 1.1**：`500e6` / `1.0e8`（指数不带符号）会被解析成字符串。
+3. **并行下不要写按 rank 局部的断言**：`facets.size > 0`、`x.array.size`（含 ghost）
+   都依赖分区，要用 `allreduce` 或 `index_map.size_global`。
+4. Amor/spectral 分解使 u 问题实际非线性；用 `u_solver="linear"` 时必须确认
+   `sign_flips == 0`（χ 的不动点已收敛），否则解不满足真正的平衡方程。
+
 ## 工作流
 - 每个子任务：先给出函数签名和测试意图 → 用户确认 → 实现 → `pytest -q` → 汇报
   （通过/失败、耗时、遗留问题）。

@@ -146,7 +146,10 @@ pf-wire/
       SNES `vinewtonrsls` 可用；`pytest tests/test_env.py` 在 1/2/4 进程均通过。
 
 ### Phase 1 — 相场疲劳求解器（第 2–5 周）
-- [ ] 1.1 静态 AT1 + Amor 分解 + 交错求解 + SNES VI 不可逆；
+- [x] 1.1 静态 AT1 + Amor 分解 + 交错求解 + SNES VI 不可逆；
+      `src/pfwire/phasefield.py`；36 项单测。均匀单轴算例与 AT1 闭式解
+      d = max(0, 1-(σ_c/σ)²) 吻合到机器精度（相对差 ~1e-15）；
+      amor/spectral 能量一致性、各向同性、不可逆、界约束、linear vs newton 一致性均测住；
 - [ ] 1.2 Carrara 疲劳退化，ᾱ 存 Quadrature 空间；
 - [ ] 1.3 cycle-jump；
 - [ ] 1.4 失效判据与裂纹长度提取（沿 d ≥ 0.95 区域最深点）；
