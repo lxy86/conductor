@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pfwire"
+version = "0.1.0"
+description = "FEniCSx 相场疲劳模型：输电导线铝单丝微动疲劳寿命预测"
+requires-python = ">=3.12"
+# 运行期依赖由 conda 环境（environment.yml）提供，此处不重复声明，
+# 避免 pip 覆盖 conda 装的 dolfinx/petsc4py。安装方式：pip install -e . --no-deps
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

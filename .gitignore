@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+# 算例输出：体积大且可重算，不入库（result.json 除外，见下）
+data/**/fields.bp/
+data/**/*.bp/
+data/_tmp_gmsh/
+*.msh
+*.xdmf
+*.h5

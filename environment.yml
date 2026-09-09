@@ -1,0 +1,27 @@
+# pf-wire — FEniCSx 相场疲劳 / 铝单丝微动疲劳
+# 版本 pin 依据：本机 WSL2 Ubuntu-26 已解出并验证的组合（见 DECISIONS.md D-0）
+# dolfinx 0.11.0（用户 2026-09-09 决定，替代 PLAN 原定 0.9.0）；PETSc 必须为 real 变体
+name: pf-wire
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - fenics-dolfinx=0.11.0
+  - petsc=3.25.*=real_*      # real scalar，非 complex；test_env.py 会断言
+  - petsc4py=3.25.*
+  - mpich                    # 与 another-env 缓存一致，避免 openmpi/mpich 混装
+  - gmsh=4.15.*
+  - python-gmsh=4.15.*
+  - adios2=*=mpi_mpich_*     # adios4dolfinx 的后端（含 python bindings）
+  - pyvista=0.48.*
+  - numpy=2.5.*
+  - scipy=1.18.*
+  - matplotlib-base=3.11.*
+  - pyyaml=6.0.*
+  - pytest
+  - pytest-timeout
+  - pip
+# 注意：adios4dolfinx 不在此文件里。conda-forge 的版本最高只到 0.10.*
+# （硬要求 fenics-dolfinx 0.10.*），与 0.11.0 冲突；0.11 兼容版只在 PyPI 上。
+# 它必须用 `pip install --no-deps` 装（adios2 由 conda 提供，不能让 pip 覆盖）。
+# 因此完整建环境请用 scripts/setup_env.sh，而不是裸跑 conda env create。

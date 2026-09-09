@@ -1,0 +1,40 @@
+# Al 1350-H19 硬拉铝单丝材料卡。单位一律 SI。
+# 每个数值必须有 source（硬约束 2/3）。标 TODO 的项在论文定稿前必须换成
+# 可引用的原始文献值，不得留 PLAN.md 作为最终出处。
+name: Al 1350-H19
+
+elastic:
+  E: 69.0e+9          # Pa
+  nu: 0.33
+
+strength:
+  sigma_u: 170.0e+6   # Pa，抗拉强度
+
+# 断裂参数三角（G_c / ell / sigma_c 只有两个独立，见 DECISIONS.md D-2）。
+# mode 指明哪两个是输入：
+#   from_sigma_c_and_ell -> 导出 G_c   （当前选择）
+#   from_gc_and_ell      -> 导出 sigma_c（D-2 的备选路线）
+#   from_gc_and_sigma_c  -> 导出 ell
+# 冗余项若同时给出会做一致性校验，不自洽直接报错。
+fracture:
+  mode: from_sigma_c_and_ell
+  sigma_c: 170.0e+6   # Pa，取 sigma_c = sigma_u（PLAN.md 第 1 节原文）
+  ell: 4.0e-6        # m，数值正则化长度，取 ~a/5（a≈20.7 um，见 DECISIONS.md D-1）
+  # 导出：G_c = 8 sigma_c^2 ell/(3E) ≈ 4.47 J/m^2，
+  #       等效 K_IC = sqrt(G_c E/(1-nu^2)) ≈ 0.59 MPa*m^0.5。
+  # 注意：这是 *effective phase-field fracture energy*，比铝的真实韧性低约 3 个量级，
+  # 后果是一旦萌生扩展极快、寿命几乎全部来自萌生阶段。论文中必须如实说明。
+
+fatigue:
+  alpha_T: null      # Phase 2.3 标定，未标定时任何工况读取即报错（D-3）
+
+sources:
+  E: "PLAN.md 第 1 节（TODO：换 ASM Handbook Vol.2 / IEC 60889 原始值）"
+  nu: "PLAN.md 第 1 节（TODO：同上）"
+  sigma_u: >-
+    PLAN.md 第 1 节 sigma_u ≈ 170 MPa。TODO：按 IEC 60889 中 d = 3.2 mm
+    对应行核对——该标准的抗拉强度随直径下降，需确认 170 MPa 是否对应本直径。
+  sigma_c: "取 sigma_c ≈ sigma_u，PLAN.md 第 1 节"
+  ell: "DECISIONS.md D-1：ell ≈ a/5，a 由 Hertz 的 a = 2 R p0/E* 给出"
+  Gc: "由 AT1 关系导出，非独立输入；AT1 关系见 Tanne et al. 2018, JMPS 110:80-99"
+  alpha_T: "Phase 2.3 标定，待用户提供 Al 1350-H19 单丝 S-N 数据（DECISIONS.md D-3）"
