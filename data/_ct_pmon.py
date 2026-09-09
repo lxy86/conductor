@@ -33,12 +33,17 @@ comm = MPI.COMM_WORLD
 is_root = comm.rank == 0
 
 h_fine = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0e-4
+# 锥收长度 L 与缺口半高 nh = W/32 决定尖端半角 atan(nh/L)：
+#   L = 1.5625 mm -> 45°（默认，钝）    L = 6.25 mm -> 14°（细长，尖）
+# 即**锥收越长尖端越尖**。缺口越钝、应力集中越弱、峰值载荷越高。
+taper = float(sys.argv[2]) if len(sys.argv) > 2 else 1.5625e-3
+dP = float(sys.argv[3]) if len(sys.argv) > 3 else 10.0
 spec = pfmesh.CtSpec(
     h_fine=h_fine,
     h_coarse=1.5e-3,
     refine_halfheight=1.0e-3,
     refine_x_margin=2.0e-3,
-    notch_taper_length=1.5625e-3,
+    notch_taper_length=taper,
 )
 t0 = time.perf_counter()
 ct = pfmesh.ct_mesh(spec, comm)
@@ -48,6 +53,8 @@ n_cells = msh.topology.index_map(msh.topology.dim).size_global
 if is_root:
     print("网格 %d 单元，h_fine = %.4g m = ell/%.2f，耗时 %.1f s"
           % (n_cells, h_fine, 2.0e-4 / h_fine, time.perf_counter() - t0))
+    print("锥收 L = %.4g m -> 尖端半角 %.1f°，载荷步 %.4g N"
+          % (taper, np.degrees(np.arctan(spec.notch_half_height / taper)), dP))
 
 material = load_material("configs/material_carrara.yaml")
 model = PhaseFieldModel(material=material, split="spectral", k_res=1.0e-6,
@@ -88,7 +95,7 @@ def set_P(P):
 # 先粗扫到失败，再在最后一个成功点附近细扫
 last_ok = 0.0
 t0 = time.perf_counter()
-for P in np.arange(20.0, 320.0, 10.0):
+for P in np.arange(dP, 320.0, dP):
     set_P(float(P))
     res = solver.solve_step()
     if not res.converged:
@@ -105,4 +112,5 @@ if is_root:
     print()
     print("最后收敛的 P = %.1f N   靶值 P_mon ≈ %.1f N   偏差 %+.1f%%"
           % (last_ok, P_TARGET, 100.0 * (last_ok - P_TARGET) / P_TARGET))
-    print("（力控下越过极限点即无解，故这是 P_mon 的下界；步长 10 N ≈ 7%）")
+    print("（力控下越过极限点即无解，故 P_mon ∈ (%.1f, %.1f]）"
+          % (last_ok, last_ok + dP))

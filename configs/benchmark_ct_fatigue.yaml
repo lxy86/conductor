@@ -38,7 +38,13 @@ mesh:
 loading:
   type: ct_pin_force
   delta_P: 20.0         # N，原文 Tab. 2 的参考行
-  P_min: 0.0            # 原文参考算例不含平均载荷效应（Pmean 的影响见其 Fig. 15）
+  P_min: 5.0            # = 0.25 dP，即 **R = Pmin/Pmax = 0.2**（见 DECISIONS.md D-19）。
+                        # 原文没直接写 R，是反解出来的：Tab. 2 的 Pmax/Pmon 与 dP 严格
+                        # 成正比（11 行一致），说明 R 固定；再用 Fig. 12b 数字化的
+                        # Pmon = 186.4 N 定标，得 R = 1 - 148.6/186.4 = 0.203。
+                        # 用 R = 0.2 回算 11 行，最大偏差仅 0.33 个百分点。
+                        # **不能想当然取 P_min = 0**：那会让 Pmax 少 25%、psi+ 少 36%，
+                        # 寿命完全对不上（psi+ 正比于 P^2）。
   cycle:
     n_sub: 8            # 原文 p20：每周期 8 个载荷步已收敛
     dN_init: 50.0
