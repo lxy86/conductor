@@ -59,6 +59,8 @@ from .material import Material, bulk_modulus, lame_parameters
 
 __all__ = [
     "SPLITS",
+    "FATIGUE_FORMS",
+    "fatigue_degradation",
     "PhaseFieldModel",
     "SolverConfig",
     "StaggeredResult",
@@ -84,6 +86,10 @@ USolver = Literal["linear", "newton"]
 BCSpec = (
     "Sequence[fem.DirichletBC] | Callable[[fem.FunctionSpace], Sequence[fem.DirichletBC]]"
 )
+
+#: 支持的疲劳退化函数形式。PLAN.md 第 2 节只给了 asymptotic 一种，
+#: 其余形式不凭记忆补（硬约束 2），需要时再按文献添加。
+FATIGUE_FORMS: tuple[str, ...] = ("asymptotic",)
 
 #: 2D 主应变闭式解里 sqrt 的正则化项。应变量级 ~1e-3，其平方 ~1e-6，
 #: 故 1e-30 远低于任何物理量，只用来避免 sqrt(0) 处导数发散。
@@ -170,6 +176,36 @@ def elastic_energy_density(eps, d, material: Material, split, dim, k_res, *, fre
         eps, material, split, dim, freeze_from=freeze_from
     )
     return degradation(d, k_res) * psi_plus + psi_minus
+
+
+def fatigue_degradation(alpha_bar, alpha_T: float, form: str = "asymptotic"):
+    """Carrara et al. 2020 的疲劳退化函数 f(alpha_bar)。PLAN.md 第 2 节：
+
+        f = 1                          (alpha_bar <= alpha_T)
+        f = (2 alpha_T/(alpha_bar+alpha_T))^2   (alpha_bar >  alpha_T)
+
+    实现上写成 ``f = min(1, (2 a_T/(a+a_T))^2)``，与分段定义**严格等价**：
+    因 alpha_bar >= 0（按构造只累加非负增量），(2a_T/(a+a_T))^2 >= 1 当且仅当
+    a <= a_T。这样避免 conditional，UFL 侧更平滑。在 a = a_T 处 f = 1 连续。
+
+    ``alpha_bar`` 可以是 float（单测直接算）或 UFL 表达式/Function（进变分形式）。
+    """
+    if form not in FATIGUE_FORMS:
+        raise NotImplementedError(
+            "疲劳退化形式只实现了 %r（PLAN.md 第 2 节给的 asymptotic），收到 %r。"
+            "要加别的形式必须先给出文献出处。" % (FATIGUE_FORMS, form)
+        )
+    if alpha_T is None:
+        raise ValueError("alpha_T 为 None：未标定的 alpha_T 不得进入计算（DECISIONS.md D-3）")
+    alpha_T = float(alpha_T)
+    if alpha_T <= 0.0:
+        raise ValueError("alpha_T 必须为正，收到 %r" % (alpha_T,))
+    ratio_sq = (2.0 * alpha_T / (alpha_bar + alpha_T)) ** 2
+    if isinstance(alpha_bar, (int, float)):
+        if alpha_bar < 0.0:
+            raise ValueError("alpha_bar 不能为负，收到 %r" % (alpha_bar,))
+        return min(1.0, ratio_sq)
+    return ufl.min_value(1.0, ratio_sq)
 
 
 def dissipation_density(d, material: Material, f_alpha):

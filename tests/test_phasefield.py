@@ -272,6 +272,7 @@ class UniaxialStrainCase:
                 ),
             ]
 
+        self.make_bcs = make_bcs  # 供 test_cyclejump 复用同一套边界条件
         self.solver = pf.PhaseFieldSolver(self.msh, model, bcs_u=make_bcs, config=cfg)
 
     @property

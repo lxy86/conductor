@@ -150,7 +150,12 @@ pf-wire/
       `src/pfwire/phasefield.py`；36 项单测。均匀单轴算例与 AT1 闭式解
       d = max(0, 1-(σ_c/σ)²) 吻合到机器精度（相对差 ~1e-15）；
       amor/spectral 能量一致性、各向同性、不可逆、界约束、linear vs newton 一致性均测住；
-- [ ] 1.2 Carrara 疲劳退化，ᾱ 存 Quadrature 空间；
+- [x] 1.2 Carrara 疲劳退化，ᾱ 存 **DG-2**（非 quadrature，见 D-7）；
+      `phasefield.fatigue_degradation` + `cyclejump.FatigueState`；12 项单测。
+      循环算例与解析寿命 N = 2Eα_T(2/s−1)/(s²σ_c²) 吻合（起裂循环数与 d(N) 均对）；
+      ᾱ/ψ⁺_prev 的 checkpoint 往返已测通（硬约束 5）。
+      **发现**：该模型均匀极限的 S–N 斜率固定 ~1/3，单个 α_T 拟合不了 4 个标定点，
+      标定改为长寿命端两点 + 声明适用 N ≥ 1e6，见 DECISIONS.md D-14（待确认）。
 - [ ] 1.3 cycle-jump；
 - [ ] 1.4 失效判据与裂纹长度提取（沿 d ≥ 0.95 区域最深点）；
 - [ ] 验证 1：SENT 拉伸（Miehe 2010 几何），峰值载荷与文献偏差 < 5%，
