@@ -16,7 +16,9 @@ cd /root/pf-wire   # 指向 C:\Users\Administrator\Desktop\疲劳寿命 的 ASCI
 
 建/更新环境用 `bash scripts/setup_env.sh`，**不要**裸跑 `conda env create`
 （adios4dolfinx 0.11 只在 PyPI 上，须 `pip install --no-deps`，见 DECISIONS.md D-0）。
-机器：12 核 / 47 GB。并行策略：单工况 MPI 4 核，sweep 同时 3 个工况（见 D-4）。
+机器：12 核 / 47 GB。并行策略：**单工况用满 12 个 MPI 进程**并设 `OMP_NUM_THREADS=1`
+（纯 MPI 比 MPI+BLAS 线程混用更快、也不抢核）；sweep 阶段再按实测权衡
+「单工况多进程」与「多工况并发」。**不设单工况耗时上限**（用户 2026-09-09 指示），见 D-4。
 
 ## 硬约束
 1. dolfinx 锁定 **0.11.0**（用户 2026-09-09 改，原为 0.9.0）。不确定 API 先查源码/`help()`，

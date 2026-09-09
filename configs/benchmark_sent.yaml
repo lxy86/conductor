@@ -12,7 +12,8 @@ model:
 solver:
   u_solver: newton      # spectral 分解没有冻结形式，必须走精确非线性路径
   tol_d: 1.0e-4
-  max_iter: 50
+  max_iter: 500     # 临界点附近交错收敛率趋于 1，实测 50 次不够
+                    # （迭代数 16->41 陡增后失败），必须放宽
 
 mesh:
   type: sent
@@ -29,10 +30,15 @@ loading:
   type: tension_y       # 底边全约束，顶边给竖向位移
   # 原文 Δu = 1e-5 mm（前 500 步）后转 1e-6 mm；这里弹性段用更粗的步长省时间，
   # 峰值附近（u ≈ 5.6e-6 m）再细化，保证峰值分辨率。
+  # 峰值在 u ≈ 5.6e-6 m（原文 0.0056 mm）。弹性段线性，粗步走完即可；
+  # 只在峰值邻域细化，峰后跌 20% 就停 —— 验证 1 只需要峰值。
   stages:
-    - {du: 1.0e-7, n: 45}    # 到 u = 4.5e-6 m，仍在弹性段
-    - {du: 5.0e-9, n: 400}   # 到 u = 6.5e-6 m，覆盖峰值与峰后
+    - {du: 2.0e-7, n: 26}    # 到 u = 5.2e-6 m，弹性段
+    - {du: 2.0e-8, n: 20}    # 到 u = 5.6e-6 m，接近峰值
+    - {du: 4.0e-9, n: 350}   # 到 u = 7.0e-6 m；真峰值位置未知，留足余量，
+                             # 由 stop_after_peak_drop 自行终止
   stop_damage: 0.99
+  stop_after_peak_drop: 0.2
 
 output:
   dir: data/benchmark_sent

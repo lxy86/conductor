@@ -1,0 +1,34 @@
+case_type: static
+material: configs/material_miehe.yaml
+model:
+  split: spectral
+  dissipation: AT2
+  ell: 7.5e-06
+  k_res: 1.0e-06
+solver:
+  u_solver: newton
+  tol_d: 0.0001
+  max_iter: 50
+mesh:
+  type: sent
+  W: 0.001
+  H: 0.001
+  notch_length: 0.0005
+  thickness: 0.001
+  h_fine: 3.75e-06
+  h_coarse: 3.0e-05
+  refine_halfheight: 6.0e-05
+loading:
+  type: tension_y
+  stages:
+  - du: 2.0e-07
+    n: 26
+  - du: 2.0e-08
+    n: 20
+  - du: 4.0e-09
+    n: 150
+  stop_damage: 0.99
+  stop_after_peak_drop: 0.2
+output:
+  dir: data/benchmark_sent
+  save_fields_every: 0

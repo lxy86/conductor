@@ -222,11 +222,28 @@ def run_static(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, An
     载荷方式（``loading.type = "tension_y"``）：底边全约束，顶边给竖向位移，
     支反力由 :meth:`PhaseFieldSolver.reaction` 沿 +y 探针提取。
     """
-    _require_keys(dict(cfg.loading), {"type", "stages", "stop_damage"}, "loading")
+    _require_keys(
+        dict(cfg.loading),
+        {"type", "stages", "stop_damage", "stop_after_peak_drop"},
+        "loading",
+    )
     loading_type = str(cfg.loading.get("type", "tension_y"))
     if loading_type != "tension_y":
         raise NotImplementedError("目前只实现 loading.type='tension_y'")
     stop_damage = float(cfg.loading.get("stop_damage", 0.99))
+    # 峰后跌到 (1 - stop_after_peak_drop)·F_peak 以下即停：验证 1 只要峰值，
+    # 峰后那段「brutal」下降对验收无用却很费时。None 表示不启用。
+    peak_drop = cfg.loading.get("stop_after_peak_drop")
+    peak_drop = None if peak_drop is None else float(peak_drop)
+    if peak_drop is not None and not 0.0 < peak_drop < 1.0:
+        raise ValueError("stop_after_peak_drop 须在 (0,1) 内，收到 %r" % (peak_drop,))
+    f_peak_so_far = -np.inf
+
+    is_root = comm.rank == 0
+
+    def log(level, msg, *args):
+        if is_root:
+            getattr(logger, level)(msg, *args)
 
     t_start = time.perf_counter()
     sent = _build_mesh(cfg, comm)
@@ -260,12 +277,16 @@ def run_static(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, An
     solver = PhaseFieldSolver(msh, cfg.model, bcs_u=make_bcs, config=cfg.solver)
     probe = solver.make_probe(make_probe_bcs)
 
+    stages = _load_stages(cfg.loading)
+    n_total = sum(n for _, n in stages)
+    progress_every = max(1, n_total // 20)  # 约 20 条进度行
     curve: list[dict[str, float]] = []
     u_value = 0.0
     step = 0
     stopped = "completed"
     t_solve = time.perf_counter()
-    for du, n_steps in _load_stages(cfg.loading):
+    log("info", "开始加载：%d 个阶段共 %d 步，网格 %d 单元", len(stages), n_total, n_cells)
+    for du, n_steps in stages:
         for _ in range(n_steps):
             u_value += du
             u_applied.value = u_value
@@ -273,7 +294,7 @@ def run_static(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, An
             step += 1
             if not result.converged:
                 stopped = "not_converged"
-                logger.error("第 %d 步未收敛：%s", step, result.failure_mode)
+                log("error", "第 %d 步未收敛：%s", step, result.failure_mode)
                 break
             solver.commit_step()
             curve.append(
@@ -286,6 +307,33 @@ def run_static(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, An
                     "iterations": result.iterations,
                 }
             )
+            f_now = curve[-1]["F"]
+            f_peak_so_far = max(f_peak_so_far, f_now)
+            if step % progress_every == 0 or result.max_d > 0.0:
+                log(
+                    "info",
+                    "步 %d/%d  u=%.4e m  F=%.6g N  max_d=%.4f  交错 %d 次  已用 %.0f s",
+                    step,
+                    n_total,
+                    u_value,
+                    curve[-1]["F"],
+                    result.max_d,
+                    result.iterations,
+                    time.perf_counter() - t_solve,
+                )
+            if (
+                peak_drop is not None
+                and f_peak_so_far > 0.0
+                and f_now < (1.0 - peak_drop) * f_peak_so_far
+            ):
+                stopped = "past_peak"
+                log(
+                    "info",
+                    "峰后已跌至峰值的 %.0f%%，停止（峰值 %.6g N）",
+                    100.0 * f_now / f_peak_so_far,
+                    f_peak_so_far,
+                )
+                break
             if result.max_d >= stop_damage:
                 stopped = "damage_limit"
                 break
@@ -296,6 +344,17 @@ def run_static(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, An
     forces = np.array([c["F"] for c in curve])
     displacements = np.array([c["u"] for c in curve])
     peak_index = int(np.argmax(forces)) if forces.size else -1
+    # **诚实报告**：若"峰值"就是最后一个记录点、且运行不是因为过峰/损伤上限而停，
+    # 那它只是载荷的**下界**（曲线还在上升就被打断了），绝不能当峰值用。
+    peak_is_interior = 0 <= peak_index < len(curve) - 1
+    peak_reliable = bool(
+        peak_is_interior and stopped in ("completed", "past_peak", "damage_limit")
+    )
+    peak_note = (
+        "峰值可信：其后有载荷更低的步"
+        if peak_reliable
+        else "**不是真峰值**：曲线到最后一步仍在上升（status=%s），此值只是下界" % stopped
+    )
     result: dict[str, Any] = {
         "case": cfg.path.name,
         "case_type": cfg.case_type,
@@ -312,6 +371,8 @@ def run_static(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, An
         "mesh": {"type": "sent", "n_cells": int(n_cells), **cfg.mesh_cfg},
         "thickness": cfg.thickness,
         "peak": {
+            "reliable": peak_reliable,
+            "note": peak_note,
             "F": float(forces[peak_index]) if peak_index >= 0 else None,
             "F_per_thickness": (
                 float(forces[peak_index] / cfg.thickness) if peak_index >= 0 else None
@@ -368,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
                 result["timing_s"]["solve"],
             )
         )
-    return 0 if result["status"] in ("completed", "damage_limit") else 1
+    return 0 if result["status"] in ("completed", "damage_limit", "past_peak") else 1
 
 
 if __name__ == "__main__":  # pragma: no cover

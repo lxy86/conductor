@@ -1,0 +1,46 @@
+# 验证 1：单边缺口拉伸（SENT），复现 Miehe et al. 2010 第 5.1 节。
+# 网格无关性（PLAN 验证 1 第二条）：ell = 0.0150 mm 固定，h = ell/4。
+# 验收：h = ell/4 与 ell/8 的峰值载荷差 < 3%。
+case_type: static
+material: configs/material_miehe.yaml
+
+model:
+  split: spectral       # 该文正是提出主应变分解的
+  dissipation: AT2
+  ell: 15.0e-6          # 原文的 ell_1
+  k_res: 1.0e-6
+
+solver:
+  u_solver: newton      # spectral 分解没有冻结形式，必须走精确非线性路径
+  tol_d: 1.0e-4
+  max_iter: 500     # 临界点附近交错收敛率趋于 1，实测 50 次不够
+                    # （迭代数 16->41 陡增后失败），必须放宽
+
+mesh:
+  type: sent
+  W: 1.0e-3
+  H: 1.0e-3
+  notch_length: 0.5e-3
+  thickness: 1.0e-3     # 原文板厚 T = 1 mm。二维算出的是单位厚度反力(N/m)，
+                        # 乘厚度才得到与原文可比的 kN
+  h_fine: 3.75e-06        # = ell/4
+  h_coarse: 3.0e-5
+  refine_halfheight: 6.0e-5
+
+loading:
+  type: tension_y       # 底边全约束，顶边给竖向位移
+  # 原文 Δu = 1e-5 mm（前 500 步）后转 1e-6 mm；这里弹性段用更粗的步长省时间，
+  # 峰值附近（u ≈ 5.6e-6 m）再细化，保证峰值分辨率。
+  # 峰值在 u ≈ 5.6e-6 m（原文 0.0056 mm）。弹性段线性，粗步走完即可；
+  # 只在峰值邻域细化，峰后跌 20% 就停 —— 验证 1 只需要峰值。
+  stages:
+    - {du: 2.0e-7, n: 26}    # 到 u = 5.2e-6 m，弹性段
+    - {du: 2.0e-8, n: 20}    # 到 u = 5.6e-6 m，接近峰值
+    - {du: 4.0e-9, n: 350}   # 到 u = 7.0e-6 m；真峰值位置未知，留足余量，
+                             # 由 stop_after_peak_drop 自行终止
+  stop_damage: 0.99
+  stop_after_peak_drop: 0.2
+
+output:
+  dir: data/benchmark_sent_h4
+  save_fields_every: 0
