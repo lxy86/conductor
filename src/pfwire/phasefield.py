@@ -696,15 +696,25 @@ class PhaseFieldSolver:
                 logger.info(
                     "交错迭代 %d: ||Δd||_inf=%.3e, chi 翻转 %d", iteration, delta, flips
                 )
-            if delta < cfg.tol_d and flips == 0:
+            # chi 只在 linear 路径里被冻结；newton 路径直接解精确残差，
+            # tr eps 的符号翻转对它毫无意义，把它写进收敛判据会无故阻止收敛。
+            chi_ok = flips == 0 or cfg.u_solver != "linear"
+            if delta < cfg.tol_d and chi_ok:
                 converged = True
                 break
 
         if failure is None and not converged:
             failure = (
-                "交错迭代 %d 次未收敛：最后 ‖Δd‖_inf=%.3e（阈值 %.1e），"
-                "chi 翻转 %d 个单元。不要把这个解当结果用。"
-                % (iteration, delta, cfg.tol_d, flips)
+                "交错迭代 %d 次未收敛：最后 ‖Δd‖_inf=%.3e（阈值 %.1e）"
+                "%s。不要把这个解当结果用。"
+                % (
+                    iteration,
+                    delta,
+                    cfg.tol_d,
+                    "，chi 翻转 %d 个单元" % flips
+                    if cfg.u_solver == "linear"
+                    else "（chi 翻转 %d 个单元，仅诊断，newton 路径不参与判据）" % flips,
+                )
             )
         return StaggeredResult(
             converged=converged,
