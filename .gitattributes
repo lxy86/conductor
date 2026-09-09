@@ -1,0 +1,6 @@
+# 仓库在 Windows 侧，但所有命令在 WSL2 里执行：一律用 LF，
+# 否则 scripts/*.sh 被 checkout 成 CRLF 后 bash 会报 $'\r' 错误。
+* text=auto eol=lf
+*.png binary
+*.pdf binary
+*.bp binary
