@@ -354,6 +354,16 @@ class CycleJumpDriver:
         self._psi_integral = fem.form(psi_plus * solver.dx)
 
     # ---------------- 内部工具 ----------------
+    def _log(self, level: str, msg: str, *args) -> None:
+        """只在 rank 0 打日志。
+
+        并行下不加守卫的话每条消息会打 comm.size 遍。这不只是刷屏：连续几条
+        **一模一样**的「拒绝 ΔN=12.5」会让人以为自适应的减半根本没生效
+        （实际是不同 rank 各打了一遍），排查时反倒被误导。
+        """
+        if self.solver.comm.rank == 0:
+            getattr(logger, level)(msg, *args)
+
     def _psi_plus_total(self) -> float:
         return self.solver.comm.allreduce(
             fem.assemble_scalar(self._psi_integral), op=MPI.SUM
@@ -456,7 +466,8 @@ class CycleJumpDriver:
                 )
                 if max_dd <= cfg.dd_max or delta_N <= cfg.dN_min:
                     if max_dd > cfg.dd_max:
-                        logger.warning(
+                        self._log(
+                            "warning",
                             "ΔN 已到下界 %g 但 max Δd = %.4f 仍超过 %.4f："
                             "裂纹扩展太快，考虑减小 dd_max 或加密网格",
                             cfg.dN_min,
@@ -477,7 +488,7 @@ class CycleJumpDriver:
                     "ΔN 已降到下界 %g 仍失败（%s）。这不是可以忽略的告警："
                     "结果不可用，请检查网格/载荷或降低 dd_max。" % (cfg.dN_min, reason)
                 )
-                logger.error(failure)
+                self._log("error", "%s", failure)
                 report = JumpReport(
                     N=self.N,
                     delta_N=delta_N,
@@ -495,7 +506,7 @@ class CycleJumpDriver:
                 self.reports.append(report)
                 return report
             self.delta_N = max(cfg.dN_min, self.delta_N / cfg.factor)
-            logger.info("拒绝 ΔN=%g（%s），减半重试", delta_N, reason)
+            self._log("info", "拒绝 ΔN=%g（%s），减半重试", delta_N, reason)
 
         # 接受
         self.N += delta_N
