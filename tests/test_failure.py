@@ -17,6 +17,13 @@ B. ``DamageGrid.sample`` 的采样正确性 —— 用**线性**场，P1 插值�
    且没有采样点落在域外。
 C. ``FailureCriterion`` 的配置解析：depth 与 depth_fraction 只能给一个，
    两个都给或都不给必须报错（不许静默选一个）。
+D. ``CrackPathGrid``（验证 2 的 CT 用，生长方向任意）：
+   1. **与 DamageGrid 对拍** —— 取 growth_dir = (0,−1) 时两者语义等价，
+      同一个 d 场上必须给出同一个深度。这是最强的一条：它保证新类没有
+      引入方向/索引错误，而不是只自证其说；
+   2. 沿 +x 的水平裂纹（CT 的真实方向）长度正确 —— DamageGrid 表达不了这个；
+   3. 45° 方向的裂纹用旋转后的 growth_dir 也能正确量出，验证方向抽象没写反；
+   4. 参数校验：spacing 过粗、零向量、伸出计算域。
 """
 
 from __future__ import annotations
@@ -267,3 +274,174 @@ def test_failure_criterion_validation():
     with pytest.raises(ValueError, match="depth"):
         fl.FailureCriterion(depth=0.0)
     assert "0.95" in fl.FailureCriterion().describe()
+
+
+# --------------------------------------------------------------------------
+# D. CrackPathGrid（任意生长方向）
+# --------------------------------------------------------------------------
+PG_L = 40.0e-6  # 测试域边长
+
+
+@pytest.fixture(scope="module")
+def square_mesh():
+    """[-L/2, L/2]^2 的方域，用于 CrackPathGrid 的采样测试。"""
+    return dmesh.create_rectangle(
+        MPI.COMM_WORLD,
+        [np.array([-0.5 * PG_L, -0.5 * PG_L]), np.array([0.5 * PG_L, 0.5 * PG_L])],
+        [40, 40],
+        dmesh.CellType.triangle,
+    )
+
+
+def strip_damage(msh, *, along: str, length: float, halfwidth: float):
+    """造一个「条带损伤」场：沿指定方向从原点延伸 length、半宽 halfwidth 内 d = 1。
+
+    用 P1 插值一个分段常数会被平滑，故这里直接按节点坐标赋值 —— 采样点落在
+    单元内时取的是 P1 插值，条带边界附近会有过渡，测试的容差按 spacing 给。
+    """
+    V = fem.functionspace(msh, ("Lagrange", 1))
+    d = fem.Function(V)
+    coords = V.tabulate_dof_coordinates()
+    x, y = coords[:, 0], coords[:, 1]
+    if along == "+x":
+        inside = (x >= 0.0) & (x <= length) & (np.abs(y) <= halfwidth)
+    elif along == "-y":
+        inside = (y <= 0.0) & (y >= -length) & (np.abs(x) <= halfwidth)
+    elif along == "45":
+        # 沿 (1,1)/sqrt(2)：投影 s 在 [0,length]，横向 |t| <= halfwidth
+        s = (x + y) / np.sqrt(2.0)
+        t = (-x + y) / np.sqrt(2.0)
+        inside = (s >= 0.0) & (s <= length) & (np.abs(t) <= halfwidth)
+    else:
+        raise ValueError(along)
+    d.x.array[:] = np.where(inside, 1.0, 0.0)
+    d.x.scatter_forward()
+    return d
+
+
+def test_crack_path_grid_agrees_with_damage_grid(square_mesh):
+    """**对拍**：growth_dir = (0,−1) 时与 DamageGrid 语义等价，深度必须一致。"""
+    msh = square_mesh
+    spacing = PG_L / 40.0
+    length, halfwidth = 12.0e-6, 3.0e-6
+    d = strip_damage(msh, along="-y", length=length, halfwidth=halfwidth)
+
+    # DamageGrid：表面在 y = 0，向下取深度
+    gs = fl.GridSpec(
+        x_min=-10.0e-6,
+        x_max=10.0e-6,
+        depth_max=18.0e-6,
+        spacing=spacing,
+        y_surface=0.0,
+    )
+    dg = fl.DamageGrid(msh, gs)
+    m_dg = fl.extract_crack(dg.sample(d), dg.x_coords, dg.depth_coords, threshold=0.95)
+
+    # CrackPathGrid：同一起点、生长方向 −y
+    pg = fl.CrackPathGrid(
+        msh,
+        origin=(0.0, 0.0),
+        growth_length=18.0e-6,
+        halfwidth=10.0e-6,
+        spacing=spacing,
+        growth_dir=(0.0, -1.0),
+    )
+    m_pg = pg.crack_extension(d, threshold=0.95)
+
+    assert m_pg.depth == pytest.approx(m_dg.depth, abs=1e-15)
+    assert m_pg.has_surface_crack == m_dg.has_surface_crack
+
+
+def test_crack_path_grid_measures_horizontal_crack(square_mesh):
+    """沿 +x 的裂纹（CT 的真实方向）——DamageGrid 的 −y 约定表达不了。"""
+    msh = square_mesh
+    spacing = PG_L / 40.0
+    length, halfwidth = 12.0e-6, 3.0e-6
+    d = strip_damage(msh, along="+x", length=length, halfwidth=halfwidth)
+    pg = fl.CrackPathGrid(
+        msh,
+        origin=(0.0, 0.0),
+        growth_length=18.0e-6,
+        halfwidth=10.0e-6,
+        spacing=spacing,
+        growth_dir=(1.0, 0.0),
+    )
+    m = pg.crack_extension(d, threshold=0.95)
+    assert m.has_surface_crack
+    # 分辨率是 spacing，故容差给一个间距
+    assert m.depth == pytest.approx(length, abs=spacing)
+
+
+def test_crack_path_grid_handles_rotated_direction(square_mesh):
+    """45° 方向：用旋转后的 growth_dir 必须量出同样的长度。"""
+    msh = square_mesh
+    spacing = PG_L / 40.0
+    length, halfwidth = 12.0e-6, 3.0e-6
+    d = strip_damage(msh, along="45", length=length, halfwidth=halfwidth)
+    pg = fl.CrackPathGrid(
+        msh,
+        origin=(0.0, 0.0),
+        growth_length=16.0e-6,
+        halfwidth=6.0e-6,
+        spacing=spacing,
+        growth_dir=(1.0, 1.0),  # 不必是单位向量，内部归一化
+    )
+    m = pg.crack_extension(d, threshold=0.95)
+    assert m.has_surface_crack
+    assert m.depth == pytest.approx(length, abs=2.0 * spacing)
+
+
+def test_crack_path_grid_no_damage_gives_zero(square_mesh):
+    msh = square_mesh
+    V = fem.functionspace(msh, ("Lagrange", 1))
+    d = fem.Function(V)  # 全 0
+    pg = fl.CrackPathGrid(
+        msh,
+        origin=(0.0, 0.0),
+        growth_length=15.0e-6,
+        halfwidth=6.0e-6,
+        spacing=PG_L / 40.0,
+    )
+    m = pg.crack_extension(d)
+    assert m.depth == 0.0
+    assert not m.has_surface_crack
+
+
+def test_crack_path_grid_validation(square_mesh):
+    msh = square_mesh
+    spacing = PG_L / 40.0
+    with pytest.raises(ValueError, match="太粗"):
+        fl.CrackPathGrid(
+            msh, origin=(0.0, 0.0), growth_length=spacing, halfwidth=5e-6, spacing=spacing
+        )
+    with pytest.raises(ValueError, match="零向量"):
+        fl.CrackPathGrid(
+            msh,
+            origin=(0.0, 0.0),
+            growth_length=15e-6,
+            halfwidth=5e-6,
+            spacing=spacing,
+            growth_dir=(0.0, 0.0),
+        )
+    with pytest.raises(ValueError, match="必须为正"):
+        fl.CrackPathGrid(
+            msh, origin=(0.0, 0.0), growth_length=-1.0, halfwidth=5e-6, spacing=spacing
+        )
+    with pytest.raises(ValueError, match="h_fine"):
+        fl.CrackPathGrid(
+            msh,
+            origin=(0.0, 0.0),
+            growth_length=15e-6,
+            halfwidth=5e-6,
+            spacing=spacing,
+            h_fine=0.1 * spacing,
+        )
+    # 伸出计算域必须报错，而不是静默把域外点当无损伤
+    with pytest.raises(ValueError, match="计算域之外"):
+        fl.CrackPathGrid(
+            msh,
+            origin=(0.0, 0.0),
+            growth_length=5.0 * PG_L,
+            halfwidth=5e-6,
+            spacing=spacing,
+        )

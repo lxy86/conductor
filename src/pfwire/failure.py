@@ -21,6 +21,15 @@
 构造时会检查并在 spacing 过大时报错。连通性用 8 连通（含对角），
 否则网格上的斜裂纹会被判成断开的一串孤立点。
 
+两种采样网格
+-----------
+- :class:`DamageGrid`：裂纹自试样**上表面向下**（−y）生长 —— 微动疲劳的口径；
+- :class:`CrackPathGrid`：生长方向是**任意单位向量** —— 验证 2 的 CT 试样裂纹
+  自缺口尖端沿 +x 生长，用 DamageGrid 的 −y 约定就表达不出来。
+
+两者的采样结果都是 (n_行, n_列) 数组，行方向即生长方向、行 0 是起始面，
+故可直接交给同一个 :func:`extract_crack`。
+
 单位：SI。深度自表面向下为正（表面在 y = y_surface，体内 y 减小）。
 """
 
@@ -38,6 +47,7 @@ from scipy import ndimage
 __all__ = [
     "GridSpec",
     "DamageGrid",
+    "CrackPathGrid",
     "CrackMetrics",
     "FailureCriterion",
     "extract_crack",
@@ -52,6 +62,64 @@ _CONNECTIVITY_8 = np.ones((3, 3), dtype=bool)
 #: （如 100 µm 配 1 µm 间距），不吸收这点噪声会让失效判定晚整整一行。
 #: 1e-12 的相对容差远低于任何物理分辨率，只用来抹平浮点误差。
 _DEPTH_RTOL = 1.0e-12
+
+
+def _locate_points(mesh: dmesh.Mesh, points: np.ndarray, spacing: float):
+    """把采样点定位到单元上，返回本 rank 拥有的 (点下标, 单元)。
+
+    这段是并行正确性的关键：每个 rank 只认领落在自己分区里的点，采样时再取
+    全局 MAX 合并（见 :func:`_sample_points`）。定位只做一次、结果缓存复用。
+    最后做一次**全局**检查：任何点若没被任何 rank 认领，说明采样网格伸出了
+    计算域 —— 这必须报错，否则那些点会永远保持 −inf 并被当成「无损伤」。
+    """
+    # 起始面那一行常正好落在边界上，给 bb_tree 一点 padding 免得浮点误差漏掉
+    padding = 1.0e-6 * spacing
+    tree = geometry.bb_tree(mesh, mesh.topology.dim, padding=padding)
+    candidates = geometry.compute_collisions_points(tree, points)
+    colliding = geometry.compute_colliding_cells(mesh, candidates, points)
+    owned_idx: list[int] = []
+    owned_cells: list[int] = []
+    for i in range(points.shape[0]):
+        links = colliding.links(i)
+        if links.size > 0:
+            owned_idx.append(i)
+            owned_cells.append(links[0])
+    owned_idx_arr = np.asarray(owned_idx, dtype=np.int32)
+
+    claimed = np.zeros(points.shape[0], dtype=np.int32)
+    claimed[owned_idx_arr] = 1
+    total = np.zeros_like(claimed)
+    mesh.comm.Allreduce(claimed, total, op=MPI.SUM)
+    missing = int(np.count_nonzero(total == 0))
+    if missing:
+        raise ValueError(
+            "采样网格有 %d/%d 个点落在计算域之外（采样区域超出了网格范围）。"
+            % (missing, points.shape[0])
+        )
+    return owned_idx_arr, np.asarray(owned_cells, dtype=np.int32)
+
+
+def _sample_points(
+    comm,
+    function: fem.Function,
+    points: np.ndarray,
+    owned_idx: np.ndarray,
+    owned_cells: np.ndarray,
+    shape: tuple[int, int],
+) -> np.ndarray:
+    """在缓存好的采样点上求值，allreduce 成所有 rank 一致的 (n_行, n_列) 数组。
+
+    未被本 rank 拥有的点填 −inf，再取全局 MAX —— 于是每个点由拥有它的 rank
+    提供真值。（用 MAX 而不是 SUM：ghost 区域可能被多个 rank 同时认领，
+    SUM 会把值加倍。）
+    """
+    local = np.full(points.shape[0], -np.inf)
+    if owned_idx.size:
+        values = function.eval(points[owned_idx], owned_cells)
+        local[owned_idx] = np.asarray(values).ravel()
+    glob = np.empty_like(local)
+    comm.Allreduce(local, glob, op=MPI.MAX)
+    return glob.reshape(shape)
 
 
 @dataclass(frozen=True)
@@ -107,47 +175,23 @@ class DamageGrid:
         points[:, 0] = xx.ravel()
         points[:, 1] = spec.y_surface - dd.ravel()
         self._points = points
-
-        # 表面那一行正好落在边界上，给 bb_tree 一点 padding 免得浮点误差漏掉
-        padding = 1.0e-6 * spec.spacing
-        tree = geometry.bb_tree(mesh, mesh.topology.dim, padding=padding)
-        candidates = geometry.compute_collisions_points(tree, points)
-        colliding = geometry.compute_colliding_cells(mesh, candidates, points)
-        owned_idx: list[int] = []
-        owned_cells: list[int] = []
-        for i in range(points.shape[0]):
-            links = colliding.links(i)
-            if links.size > 0:
-                owned_idx.append(i)
-                owned_cells.append(links[0])
-        self._owned_idx = np.asarray(owned_idx, dtype=np.int32)
-        self._owned_cells = np.asarray(owned_cells, dtype=np.int32)
-
-        # 全局检查：每个采样点都必须被某个 rank 认领，否则网格区域超出了计算域
-        claimed = np.zeros(points.shape[0], dtype=np.int32)
-        claimed[self._owned_idx] = 1
-        total = np.zeros_like(claimed)
-        self.comm.Allreduce(claimed, total, op=MPI.SUM)
-        missing = int(np.count_nonzero(total == 0))
-        if missing:
-            raise ValueError(
-                "采样网格有 %d/%d 个点落在计算域之外（GridSpec 超出了网格范围）。"
-                "请检查 x_min/x_max/depth_max 与 y_surface。"
-                % (missing, points.shape[0])
-            )
+        self._owned_idx, self._owned_cells = _locate_points(
+            mesh, points, spec.spacing
+        )
 
     def sample(self, function: fem.Function) -> np.ndarray:
         """返回形状 (n_depth, n_x) 的全局数组，所有 rank 上一致。
 
         行 0 是表面，行 i 对应深度 i*spacing。
         """
-        local = np.full(self._points.shape[0], -np.inf)
-        if self._owned_idx.size:
-            values = function.eval(self._points[self._owned_idx], self._owned_cells)
-            local[self._owned_idx] = np.asarray(values).ravel()
-        glob = np.empty_like(local)
-        self.comm.Allreduce(local, glob, op=MPI.MAX)
-        return glob.reshape(self.shape)
+        return _sample_points(
+            self.comm,
+            function,
+            self._points,
+            self._owned_idx,
+            self._owned_cells,
+            self.shape,
+        )
 
 
 @dataclass(frozen=True)
@@ -318,3 +362,95 @@ class FailureCriterion:
 
     def describe(self) -> str:
         return "d >= %.3g 的表面连通裂纹深度 >= %.4g m" % (self.d_threshold, self.depth)
+
+
+class CrackPathGrid:
+    """沿**任意方向**生长的裂纹的采样网格（验证 2 的 CT 试样用）。
+
+    :class:`DamageGrid` 把「深度」写死成 −y 方向（微动件表面在上、裂纹向下），
+    而 CT 的裂纹自缺口尖端沿 +x 生长，用那套约定表达不出来。本类把生长方向
+    抽象成单位向量 ``growth_dir``，横向方向取其左旋 90°：
+
+        point(i, j) = origin + s_i · g + t_j · n,
+        s_i = i·spacing  (i = 0..n_growth)，t_j = −halfwidth + j·spacing
+
+    于是 :meth:`sample` 返回的 (n_行, n_列) 数组里**行方向就是生长方向**、
+    行 0 是起始面（CT 里即缺口尖端所在的横截面），可直接交给
+    :func:`extract_crack` —— 它返回的 ``depth`` 就是裂纹自 ``origin`` 沿
+    ``growth_dir`` 的**扩展量**。
+
+    注意 ``halfwidth``：它决定横向能容纳多宽的裂纹带，必须显著大于相场带宽
+    （几个 ℓ），否则裂纹一偏折就跑出采样区、长度被低估；但也不能大到伸出
+    计算域（构造时有全局检查会报错）。
+    """
+
+    def __init__(
+        self,
+        mesh: dmesh.Mesh,
+        *,
+        origin: tuple[float, float],
+        growth_length: float,
+        halfwidth: float,
+        spacing: float,
+        growth_dir: tuple[float, float] = (1.0, 0.0),
+        h_fine: float | None = None,
+    ) -> None:
+        if growth_length <= 0.0 or halfwidth <= 0.0 or spacing <= 0.0:
+            raise ValueError("growth_length、halfwidth、spacing 必须为正")
+        if spacing > 0.5 * growth_length:
+            raise ValueError(
+                "spacing (%g) 相对 growth_length (%g) 太粗，至少要能分出 2 行"
+                % (spacing, growth_length)
+            )
+        if h_fine is not None and spacing > h_fine:
+            raise ValueError(
+                "采样间距 spacing = %g 大于网格尺寸 h_fine = %g，会低估裂纹长度。"
+                "请把 spacing 取到 h_fine 或更细。" % (spacing, h_fine)
+            )
+        norm = math.hypot(growth_dir[0], growth_dir[1])
+        if norm <= 0.0:
+            raise ValueError("growth_dir 不能是零向量")
+
+        self.mesh = mesh
+        self.comm = mesh.comm
+        self.origin = (float(origin[0]), float(origin[1]))
+        self.spacing = float(spacing)
+        gx, gy = growth_dir[0] / norm, growth_dir[1] / norm
+        self.growth_dir = (gx, gy)
+        nx, ny = -gy, gx  # 左旋 90°
+
+        n_growth = int(math.floor(growth_length / spacing)) + 1
+        n_trans = 2 * int(math.floor(halfwidth / spacing)) + 1
+        self.growth_coords = spacing * np.arange(n_growth)
+        self.transverse_coords = spacing * (
+            np.arange(n_trans) - (n_trans - 1) // 2
+        )
+        self.shape = (n_growth, n_trans)
+
+        ss, tt = np.meshgrid(self.growth_coords, self.transverse_coords, indexing="ij")
+        points = np.zeros((ss.size, 3))
+        points[:, 0] = self.origin[0] + gx * ss.ravel() + nx * tt.ravel()
+        points[:, 1] = self.origin[1] + gy * ss.ravel() + ny * tt.ravel()
+        self._points = points
+        self._owned_idx, self._owned_cells = _locate_points(mesh, points, spacing)
+
+    def sample(self, function: fem.Function) -> np.ndarray:
+        """返回形状 (n_growth, n_transverse) 的全局数组，所有 rank 上一致。"""
+        return _sample_points(
+            self.comm,
+            function,
+            self._points,
+            self._owned_idx,
+            self._owned_cells,
+            self.shape,
+        )
+
+    def crack_extension(self, d: fem.Function, *, threshold: float = 0.95) -> CrackMetrics:
+        """采样 d 并提取裂纹几何。``metrics.depth`` 即自 origin 的扩展量。"""
+        values = self.sample(d)
+        return extract_crack(
+            values,
+            self.transverse_coords,
+            self.growth_coords,
+            threshold=threshold,
+        )
