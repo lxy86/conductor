@@ -1,5 +1,10 @@
 """Phase 1.2 单测：f(alpha_bar)、alpha_bar 累积、疲劳寿命解析锚点、checkpoint。
 
+本文件的解析锚点建立在「ᾱ 累积**退化前** psi+」的规则上（PLAN.md 第 2 节的写法），
+故一律显式传 alpha_source="undegraded"。默认值已按 Carrara 2020 Eq. (13) 改为
+degraded（= g(d) psi+_0），两者在 d = 0 时相同，其差异由
+test_fatigue_forms.py::test_alpha_source_agrees_while_undamaged_and_differs_after 覆盖。
+
 测试意图
 --------
 1. f(alpha_bar) 的性质：alpha_bar <= alpha_T 时恒为 1、在 alpha_T 处连续、
@@ -55,7 +60,7 @@ def test_fatigue_degradation_rejects_uncalibrated_or_bad_input():
     with pytest.raises(ValueError, match="alpha_bar"):
         pf.fatigue_degradation(-1.0, 1.0e6)
     with pytest.raises(NotImplementedError):
-        pf.fatigue_degradation(1.0, 1.0e6, form="logarithmic")
+        pf.fatigue_degradation(1.0, 1.0e6, form="parabolic")  # 无文献出处的形式
 
 
 # --------------------------------------------------------------------------
@@ -65,7 +70,8 @@ def test_accumulation_only_counts_rising_psi_plus():
     """升 -> 累加、降 -> 不变、再升 -> 再累加。"""
     a_T = 1.0e6
     case = UniaxialStrainCase()
-    state = cj.FatigueState(case.msh, case.solver.model, alpha_T=a_T)
+    state = cj.FatigueState(
+        case.msh, case.solver.model, alpha_source="undegraded", alpha_T=a_T)
     state.bind_displacement(case.solver.u)
 
     def hold(s: float):
@@ -91,7 +97,8 @@ def test_full_cycle_accumulates_exactly_psi_plus_max():
     a_T = 1.0e12  # 取大值使 f = 1、d 全程为 0，纯看累积
     s = 0.6
     case = UniaxialStrainCase()
-    state = cj.FatigueState(case.msh, case.solver.model, alpha_T=a_T)
+    state = cj.FatigueState(
+        case.msh, case.solver.model, alpha_source="undegraded", alpha_T=a_T)
     state.bind_displacement(case.solver.u)
 
     psi_max = 0.5 * (s * SIGMA_C) ** 2 / case.material.elastic.E
@@ -109,7 +116,8 @@ def test_full_cycle_accumulates_exactly_psi_plus_max():
 
 def test_accumulate_without_binding_raises():
     case = UniaxialStrainCase()
-    state = cj.FatigueState(case.msh, case.solver.model, alpha_T=1.0e6)
+    state = cj.FatigueState(
+        case.msh, case.solver.model, alpha_source="undegraded", alpha_T=1.0e6)
     with pytest.raises(RuntimeError, match="bind_displacement"):
         state.accumulate()
 
@@ -117,12 +125,14 @@ def test_accumulate_without_binding_raises():
 def test_fatigue_state_rejects_uncalibrated_alpha_T():
     case = UniaxialStrainCase()
     with pytest.raises(ValueError, match="alpha_T"):
-        cj.FatigueState(case.msh, case.solver.model, alpha_T=None)
+        cj.FatigueState(
+        case.msh, case.solver.model, alpha_source="undegraded", alpha_T=None)
 
 
 def test_alpha_bar_lives_on_dg2():
     case = UniaxialStrainCase()
-    state = cj.FatigueState(case.msh, case.solver.model, alpha_T=1.0e6)
+    state = cj.FatigueState(
+        case.msh, case.solver.model, alpha_source="undegraded", alpha_T=1.0e6)
     # DG：自由度不跨单元共享 -> 全局自由度数 = 单元数 * 每单元自由度数（三角形 P2 为 6）
     n_cells = case.msh.topology.index_map(case.msh.topology.dim).size_global
     assert state.V.dofmap.index_map.size_global == n_cells * 6
@@ -168,7 +178,8 @@ def test_cyclic_nucleation_matches_analytic_life():
     )
 
     case = UniaxialStrainCase()
-    state = cj.FatigueState(case.msh, case.solver.model, alpha_T=a_T)
+    state = cj.FatigueState(
+        case.msh, case.solver.model, alpha_source="undegraded", alpha_T=a_T)
     # 把疲劳退化接进求解器：重建一个带 f(alpha_bar) 的求解器
     case.solver = pf.PhaseFieldSolver(
         case.msh,
@@ -216,7 +227,8 @@ def test_fatigue_state_checkpoint_round_trip(tmp_path):
     集合操作 —— 路径不一致会直接死锁（本测试初版就是这么挂住的）。
     """
     case = UniaxialStrainCase()
-    state = cj.FatigueState(case.msh, case.solver.model, alpha_T=1.0e6)
+    state = cj.FatigueState(
+        case.msh, case.solver.model, alpha_source="undegraded", alpha_T=1.0e6)
     state.bind_displacement(case.solver.u)
     case.u_applied.value = 0.7 * case.strain_c * case.L
     case.solver.solve_displacement()
@@ -239,6 +251,7 @@ def test_fatigue_state_checkpoint_round_trip(tmp_path):
 
 def test_extrapolate_rejects_negative_dN():
     case = UniaxialStrainCase()
-    state = cj.FatigueState(case.msh, case.solver.model, alpha_T=1.0e6)
+    state = cj.FatigueState(
+        case.msh, case.solver.model, alpha_source="undegraded", alpha_T=1.0e6)
     with pytest.raises(ValueError, match="ΔN"):
         state.extrapolate(-1.0, np.zeros_like(state.alpha_bar.x.array))

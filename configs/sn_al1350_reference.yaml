@@ -38,17 +38,20 @@ calibration_targets:
   - {sigma_a: 55.0e+6, N_target: 4.90e+6}
   - {sigma_a: 45.0e+6, N_target: 2.20e+7}
 
-# 验收口径（DECISIONS.md D-3，区间按 D-14 收窄）
+# 验收口径（DECISIONS.md D-3 / D-14）
 acceptance:
   metric: mean_abs_log10_error
-  tolerance: 0.30           # 寿命平均偏差在 2 倍以内
-  # D-14：相场疲劳模型均匀极限的 S-N 斜率固定在 ~1/3，与本曲线的 b = 0.1336 不符，
-  # 单个 alpha_T 无法同时拟合 4 点（反解 alpha_T 极差 19.3 倍，平均偏差 0.434）。
-  # 故标定只用长寿命端两点，并声明模型适用 N >= 1e6：
-  fit_targets: [55.0e+6, 45.0e+6]   # Pa，用于拟合 alpha_T 的应力水平
-  validity_N_min: 1.0e+6
-  alpha_T_initial_guess: 2.9e+10    # J/m^3，由解析寿命公式反解（见 D-14），供标定初值
-  # 90 与 70 MPa 两点仍算出来并报告偏差，但不参与拟合、不作验收依据。
+  tolerance: 0.30           # 4 个点的寿命平均偏差在 2 倍以内
+  fit_targets: all          # 全部 4 个点都参与拟合，无适用区间限制
+  # D-14：asymptotic 形式（单参数 alpha_T）的 S-N 斜率被锁死在 ~1/3，拟合不了本曲线的
+  # b = 0.1336（反解 alpha_T 极差 19.3 倍、平均偏差 0.434）。改用 Carrara 2020 Eq. (38)
+  # 的对数型后，(alpha_T, kappa) 两参数可覆盖完整曲线。解析预拟合结果：
+  alpha_T_initial_guess: 3.407e+6   # J/m^3
+  kappa_initial_guess: 0.14888      # 无量纲
+  # -> 4 点 |Δlog10 N| = 0.053/0.077/0.045/0.070，平均 0.061、最大 0.077；
+  #    局部 Basquin 指数 b 从 0.105(90 MPa) 到 0.174(45 MPa)，跨过目标 0.1336。
+  # 注意：拟合观测量必须是**起裂/短裂纹**寿命。若改用「d 达到 0.95」，
+  # s 依赖退化为 N ∝ s^-2、kappa 失去杠杆（见 D-14）。
 
 # 合理性交叉检查（不是标定输入，只是防止代理曲线离谱）
 plausibility_check:

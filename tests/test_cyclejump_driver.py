@@ -1,5 +1,8 @@
 """Phase 1.3 单测：cycle-jump（显式循环 + ΔN 外推 + ΔN 自适应）。
 
+本文件的解析锚点同样建立在「ᾱ 累积退化前 psi+」的规则上，故显式传
+alpha_source="undegraded"（默认已按 Carrara 2020 Eq. 13 改为 degraded）。
+
 测试意图
 --------
 1. **显式循环的解析锚点**：正弦 R = -1 载荷、nu = 0 的均匀单轴算例下，
@@ -33,7 +36,9 @@ from test_phasefield import SIGMA_C, UniaxialStrainCase, make_material
 def make_sinusoidal_case(s: float, alpha_T: float, n_sub: int = 8, **cfg_kwargs):
     """均匀单轴算例 + 正弦 R = -1 载荷 + 疲劳状态 + cycle-jump 驱动器。"""
     case = UniaxialStrainCase()
-    state = cj.FatigueState(case.msh, case.solver.model, alpha_T=alpha_T)
+    state = cj.FatigueState(
+        case.msh, case.solver.model, alpha_T=alpha_T, alpha_source="undegraded"
+    )
     case.solver = pf.PhaseFieldSolver(
         case.msh,
         case.solver.model,
@@ -219,7 +224,9 @@ def test_persistent_nonconvergence_fails_hard_not_silently():
     increment = analytic_cycle_increment(s, material)
     alpha_T = 10.0 * increment / (2.0 / s - 1.0)
     case = UniaxialStrainCase(max_iter=1)  # 交错只允许 1 次迭代 -> 必不收敛
-    state = cj.FatigueState(case.msh, case.solver.model, alpha_T=alpha_T)
+    state = cj.FatigueState(
+        case.msh, case.solver.model, alpha_T=alpha_T, alpha_source="undegraded"
+    )
     case.solver = pf.PhaseFieldSolver(
         case.msh,
         case.solver.model,

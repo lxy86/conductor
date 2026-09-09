@@ -270,11 +270,15 @@ class Material:
     sigma_u: float
     alpha_T: float | None
     sources: dict[str, Any]
+    fatigue_form: str = "asymptotic"
+    kappa: float | None = None
 
     def __post_init__(self) -> None:
         _coerce(self, "sigma_u", lambda v: _require_positive(v, "sigma_u"))
         if self.alpha_T is not None:
             _coerce(self, "alpha_T", lambda v: _require_positive(v, "alpha_T"))
+        if self.kappa is not None:
+            _coerce(self, "kappa", lambda v: _require_positive(v, "kappa"))
 
     def require_alpha_T(self) -> float:
         """取 alpha_T，未标定时直接报错（DECISIONS.md D-3：不用默认值蒙）。"""
@@ -285,6 +289,20 @@ class Material:
                 "或在工况 yaml 的 fatigue.alpha_T 中显式给值。" % (self.name,)
             )
         return self.alpha_T
+
+    def require_fatigue_params(self) -> tuple[float, str, float | None]:
+        """取 (alpha_T, form, kappa)，缺一即报错。
+
+        logarithmic 形式（Carrara 2020 Eq. 38）必须同时给 kappa——它是控制
+        S-N 斜率的第二个标定参数，见 DECISIONS.md D-14。
+        """
+        alpha_T = self.require_alpha_T()
+        if self.fatigue_form == "logarithmic" and self.kappa is None:
+            raise ValueError(
+                "材料 %r 选了 fatigue.form='logarithmic' 但 kappa 未标定。"
+                "kappa 控制 S-N 斜率，不能缺省（DECISIONS.md D-14）。" % (self.name,)
+            )
+        return alpha_T, self.fatigue_form, self.kappa
 
 
 # --------------------------------------------------------------------------
@@ -391,7 +409,14 @@ def load_material(path: str | Path) -> Material:
         sigma_c=frac_cfg.get("sigma_c"),
         rtol=float(frac_cfg.get("rtol", 1e-6)),
     )
-    alpha_T = raw["fatigue"].get("alpha_T", None)
+    fatigue_cfg = raw["fatigue"]
+    unknown_fatigue = set(fatigue_cfg) - {"alpha_T", "form", "kappa"}
+    if unknown_fatigue:
+        raise KeyError(
+            "%s 的 fatigue 段有未知键 %r" % (path, sorted(unknown_fatigue))
+        )
+    alpha_T = fatigue_cfg.get("alpha_T", None)
+    kappa = fatigue_cfg.get("kappa", None)
     return Material(
         name=str(raw["name"]),
         elastic=elastic,
@@ -399,4 +424,6 @@ def load_material(path: str | Path) -> Material:
         sigma_u=_require_positive(raw["strength"]["sigma_u"], "sigma_u"),
         alpha_T=None if alpha_T is None else _require_positive(alpha_T, "alpha_T"),
         sources=dict(raw.get("sources", {})),
+        fatigue_form=str(fatigue_cfg.get("form", "asymptotic")),
+        kappa=None if kappa is None else _require_positive(kappa, "kappa"),
     )

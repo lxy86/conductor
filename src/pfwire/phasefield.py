@@ -44,6 +44,7 @@ PETSc 收敛原因，交错循环记录逐次迭代日志，未收敛时 ``Stagg
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
@@ -61,6 +62,7 @@ __all__ = [
     "SPLITS",
     "FATIGUE_FORMS",
     "fatigue_degradation",
+    "inverse_fatigue_degradation",
     "PhaseFieldModel",
     "SolverConfig",
     "StaggeredResult",
@@ -87,9 +89,12 @@ BCSpec = (
     "Sequence[fem.DirichletBC] | Callable[[fem.FunctionSpace], Sequence[fem.DirichletBC]]"
 )
 
-#: 支持的疲劳退化函数形式。PLAN.md 第 2 节只给了 asymptotic 一种，
-#: 其余形式不凭记忆补（硬约束 2），需要时再按文献添加。
-FATIGUE_FORMS: tuple[str, ...] = ("asymptotic",)
+#: 支持的疲劳退化函数形式。两者均为 Carrara, Ambati, Alessi & De Lorenzis 2020,
+#: CMAME 361:112731（预印本 arXiv:1811.02244）的 Eq. (37) 与 Eq. (38)。
+#: PLAN.md 第 2 节只写了 asymptotic；logarithmic 按 DECISIONS.md D-14 补入，
+#: 因为只有它能把 S-N 斜率调到铝的实测值（原文：κ 提供 "a further degree of
+#: freedom when simulating real material behaviors"）。
+FATIGUE_FORMS: tuple[str, ...] = ("asymptotic", "logarithmic")
 
 #: 2D 主应变闭式解里 sqrt 的正则化项。应变量级 ~1e-3，其平方 ~1e-6，
 #: 故 1e-30 远低于任何物理量，只用来避免 sqrt(0) 处导数发散。
@@ -178,21 +183,10 @@ def elastic_energy_density(eps, d, material: Material, split, dim, k_res, *, fre
     return degradation(d, k_res) * psi_plus + psi_minus
 
 
-def fatigue_degradation(alpha_bar, alpha_T: float, form: str = "asymptotic"):
-    """Carrara et al. 2020 的疲劳退化函数 f(alpha_bar)。PLAN.md 第 2 节：
-
-        f = 1                          (alpha_bar <= alpha_T)
-        f = (2 alpha_T/(alpha_bar+alpha_T))^2   (alpha_bar >  alpha_T)
-
-    实现上写成 ``f = min(1, (2 a_T/(a+a_T))^2)``，与分段定义**严格等价**：
-    因 alpha_bar >= 0（按构造只累加非负增量），(2a_T/(a+a_T))^2 >= 1 当且仅当
-    a <= a_T。这样避免 conditional，UFL 侧更平滑。在 a = a_T 处 f = 1 连续。
-
-    ``alpha_bar`` 可以是 float（单测直接算）或 UFL 表达式/Function（进变分形式）。
-    """
+def _check_fatigue_args(alpha_bar, alpha_T, form, kappa):
     if form not in FATIGUE_FORMS:
         raise NotImplementedError(
-            "疲劳退化形式只实现了 %r（PLAN.md 第 2 节给的 asymptotic），收到 %r。"
+            "疲劳退化形式只支持 %r（Carrara et al. 2020 的 Eq. 37/38），收到 %r。"
             "要加别的形式必须先给出文献出处。" % (FATIGUE_FORMS, form)
         )
     if alpha_T is None:
@@ -200,12 +194,88 @@ def fatigue_degradation(alpha_bar, alpha_T: float, form: str = "asymptotic"):
     alpha_T = float(alpha_T)
     if alpha_T <= 0.0:
         raise ValueError("alpha_T 必须为正，收到 %r" % (alpha_T,))
-    ratio_sq = (2.0 * alpha_T / (alpha_bar + alpha_T)) ** 2
-    if isinstance(alpha_bar, (int, float)):
-        if alpha_bar < 0.0:
-            raise ValueError("alpha_bar 不能为负，收到 %r" % (alpha_bar,))
-        return min(1.0, ratio_sq)
-    return ufl.min_value(1.0, ratio_sq)
+    if form == "logarithmic":
+        if kappa is None:
+            raise ValueError("form='logarithmic' 必须给 kappa（Carrara 2020 Eq. 38 的材料参数）")
+        kappa = float(kappa)
+        if kappa <= 0.0:
+            raise ValueError("kappa 必须为正，收到 %r" % (kappa,))
+    if isinstance(alpha_bar, (int, float)) and alpha_bar < 0.0:
+        raise ValueError("alpha_bar 不能为负，收到 %r" % (alpha_bar,))
+    return alpha_T, (None if kappa is None else float(kappa))
+
+
+def fatigue_degradation(
+    alpha_bar, alpha_T: float, form: str = "asymptotic", kappa: float | None = None
+):
+    """疲劳退化函数 f(alpha_bar)。
+
+    出处：Carrara, Ambati, Alessi & De Lorenzis 2020, CMAME 361:112731，
+    预印本 arXiv:1811.02244 的 Eq. (37)（asymptotic，即 PLAN.md 第 2 节所写）与
+    Eq. (38)（logarithmic）。Table 1 亦列出这两式。
+
+    asymptotic（Eq. 37）::
+
+        f = 1                                   if a <= a_T
+        f = (2 a_T/(a + a_T))^2                 if a >= a_T
+
+    实现写成 ``min(1, (2a_T/(a+a_T))^2)``，与分段定义**严格等价**（因 a >= 0 时
+    该平方项 >= 1 当且仅当 a <= a_T），避免 conditional。a = a_T 处 f = 1 连续。
+
+    logarithmic（Eq. 38）::
+
+        f = 1                                   if a <= a_T
+        f = [1 - kappa log10(a/a_T)]^2          if a_T <= a <= a_T 10^(1/kappa)
+        f = 0                                   if a >= a_T 10^(1/kappa)
+
+    对数取 **10 为底**：这由原文的截止点 a_T·10^(1/kappa) 自洽确定
+    （代入得 [1 - kappa·(1/kappa)]^2 = 0）。实现上把 log 的自变量夹到 >= 1
+    （``max(a, a_T)/a_T``），于是 a <= a_T 时自动给出 f = 1，既省一层 conditional
+    又避免 a = 0 处 log 发散；截止之后由 conditional 强制归零（否则平方项会回升）。
+
+    kappa 只对 logarithmic 有意义，它调的正是 S-N 曲线的斜率——asymptotic 形式的
+    斜率被锁死在 1/3，与铝实测的 ~0.13 不符，见 DECISIONS.md D-14。
+
+    ``alpha_bar`` 可以是 float（单测直接算）或 UFL 表达式/Function（进变分形式）。
+    """
+    alpha_T, kappa = _check_fatigue_args(alpha_bar, alpha_T, form, kappa)
+    is_scalar = isinstance(alpha_bar, (int, float))
+
+    if form == "asymptotic":
+        ratio_sq = (2.0 * alpha_T / (alpha_bar + alpha_T)) ** 2
+        return min(1.0, ratio_sq) if is_scalar else ufl.min_value(1.0, ratio_sq)
+
+    # logarithmic
+    cutoff = alpha_T * 10.0 ** (1.0 / kappa)
+    if is_scalar:
+        if alpha_bar >= cutoff:
+            return 0.0
+        return (1.0 - kappa * math.log10(max(alpha_bar, alpha_T) / alpha_T)) ** 2
+    ratio = ufl.max_value(alpha_bar, alpha_T) / alpha_T
+    value = (1.0 - kappa * ufl.ln(ratio) / math.log(10.0)) ** 2
+    return ufl.conditional(ufl.ge(alpha_bar, cutoff), 0.0, value)
+
+
+def inverse_fatigue_degradation(
+    f_target: float,
+    alpha_T: float,
+    form: str = "asymptotic",
+    kappa: float | None = None,
+) -> float:
+    """给定 f 求 alpha_bar（f 单调不增，故解唯一）。解析寿命公式要用。
+
+    asymptotic:   a = a_T (2/sqrt(f) - 1)
+    logarithmic:  a = a_T 10^((1 - sqrt(f))/kappa)
+    两式由 Eq. (37)/(38) 直接反解，f = 1 时都给 a = a_T。
+    """
+    alpha_T, kappa = _check_fatigue_args(0.0, alpha_T, form, kappa)
+    f_target = float(f_target)
+    if not 0.0 < f_target <= 1.0:
+        raise ValueError("f_target 必须在 (0,1] 内，收到 %r" % (f_target,))
+    root = math.sqrt(f_target)
+    if form == "asymptotic":
+        return alpha_T * (2.0 / root - 1.0)
+    return alpha_T * 10.0 ** ((1.0 - root) / kappa)
 
 
 def dissipation_density(d, material: Material, f_alpha):

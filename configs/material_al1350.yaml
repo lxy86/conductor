@@ -29,7 +29,17 @@ fracture:
   # 后果是一旦萌生扩展极快、寿命几乎全部来自萌生阶段。论文中必须如实说明。
 
 fatigue:
-  alpha_T: null      # Phase 2.3 标定，未标定时任何工况读取即报错（D-3）
+  # 退化函数形式（Carrara et al. 2020, CMAME 361:112731 / arXiv:1811.02244）：
+  #   asymptotic  = Eq. (37)，PLAN.md 第 2 节原写的那个。只有 alpha_T 一个参数，
+  #                 均匀极限 S-N 斜率被锁死在 1/3，拟合不了铝的 b ≈ 0.13。
+  #   logarithmic = Eq. (38)，多一个 kappa 调斜率。**本项目采用**，见 DECISIONS.md D-14。
+  form: logarithmic
+  alpha_T: null      # J/m^3，Phase 2.3 标定；未标定时任何工况读取即报错（D-3）
+  kappa: null        # 无量纲，与 alpha_T 一起标定（form=logarithmic 时必需）
+  # 解析预拟合（均匀单轴 + R=-1，对 configs/sn_al1350_reference.yaml 的 4 个点）：
+  #   alpha_T ≈ 3.407e+6 J/m^3,  kappa ≈ 0.1489
+  #   -> 4 点平均 |Δlog10 N| = 0.061、最大 0.077（对照 asymptotic 单参数：0.434）
+  # 这只是初值，最终值由 Phase 2.3 用真实有限元算例标定后写回本文件。
 
 sources:
   E: "PLAN.md 第 1 节（TODO：换 ASM Handbook Vol.2 / IEC 60889 原始值）"

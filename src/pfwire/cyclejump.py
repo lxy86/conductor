@@ -50,12 +50,23 @@ from .phasefield import (
     PhaseFieldModel,
     PhaseFieldSolver,
     StaggeredResult,
+    degradation,
     energy_split,
     fatigue_degradation,
+    inverse_fatigue_degradation,
     strain,
 )
 
+#: ᾱ 累积的是哪个 psi+。Carrara et al. 2020 的 Eq. (13) 定义
+#: psi_el = g(d) psi+_el,0 + psi-_el,0 = psi+_el(eps,d) + psi-_el(eps)，
+#: 而 Table 1 的累积式写的是 psi+_el —— 即**退化后**的那个（= g(d) psi+_0）。
+#: PLAN.md 第 2 节只写 psi+ 未加限定。两者在 d = 0（起裂前）完全相同，
+#: 故对 S-N 曲线无影响，只影响起裂之后的演化速度。默认按原文取 degraded。
+#: 见 DECISIONS.md D-15。
+ALPHA_SOURCES: tuple[str, ...] = ("degraded", "undegraded")
+
 __all__ = [
+    "ALPHA_SOURCES",
     "FatigueState",
     "AccumulationReport",
     "CycleJumpConfig",
@@ -97,12 +108,22 @@ class FatigueState:
         model: PhaseFieldModel,
         *,
         alpha_T: float,
+        form: str = "asymptotic",
+        kappa: float | None = None,
         degree: int = 2,
+        alpha_source: str = "degraded",
     ) -> None:
         self.mesh = mesh
         self.model = model
         self.comm = mesh.comm
         self.degree = int(degree)
+        self.form = form
+        self.kappa = kappa
+        if alpha_source not in ALPHA_SOURCES:
+            raise ValueError(
+                "alpha_source 只能取 %r，收到 %r" % (ALPHA_SOURCES, alpha_source)
+            )
+        self.alpha_source = alpha_source
         if alpha_T is None:
             raise ValueError(
                 "alpha_T 为 None：未标定的 alpha_T 不得进入计算（DECISIONS.md D-3）。"
@@ -111,6 +132,8 @@ class FatigueState:
         if float(alpha_T) <= 0.0:
             raise ValueError("alpha_T 必须为正，收到 %r" % (alpha_T,))
         self.alpha_T = float(alpha_T)
+        # 提前校验 form/kappa 组合，别等到装配时才炸
+        fatigue_degradation(0.0, self.alpha_T, form, kappa)
         self.V = fem.functionspace(mesh, ("DG", self.degree))
         self.alpha_bar = fem.Function(self.V, name="alpha_bar")
         self.psi_plus_prev = fem.Function(self.V, name="psi_plus_prev")
@@ -118,14 +141,25 @@ class FatigueState:
         self._psi_expression: fem.Expression | None = None
 
     # ---------------- 绑定与采样 ----------------
-    def bind_displacement(self, u: fem.Function) -> None:
-        """绑定位移场，之后才能采样 psi+。"""
+    def bind_displacement(self, u: fem.Function, d: fem.Function | None = None) -> None:
+        """绑定位移场（与 alpha_source="degraded" 时所需的 d），之后才能采样 psi+。"""
         psi_plus, _ = energy_split(
             strain(u), self.model.material, self.model.split, self.mesh.geometry.dim
         )
+        if self.alpha_source == "degraded":
+            if d is None:
+                raise ValueError(
+                    "alpha_source='degraded' 需要同时绑定 d（Carrara 2020 Eq. 13 的 "
+                    "psi+_el = g(d) psi+_el,0）。请用 bind_solver(solver) 或传入 d。"
+                )
+            psi_plus = degradation(d, self.model.k_res) * psi_plus
         self._psi_expression = fem.Expression(
             psi_plus, self.V.element.interpolation_points
         )
+
+    def bind_solver(self, solver: PhaseFieldSolver) -> None:
+        """便捷绑定：从求解器取 u 与 d。"""
+        self.bind_displacement(solver.u, solver.d)
 
     def _require_bound(self) -> fem.Expression:
         if self._psi_expression is None:
@@ -182,7 +216,9 @@ class FatigueState:
         return AccumulationReport(
             max_increment=max_inc,
             max_alpha_bar=max_alpha,
-            min_f_alpha=fatigue_degradation(max_alpha, self.alpha_T),
+            min_f_alpha=fatigue_degradation(
+                max_alpha, self.alpha_T, self.form, self.kappa
+            ),
         )
 
     def max_alpha_bar(self) -> float:
@@ -194,7 +230,9 @@ class FatigueState:
     @property
     def f_alpha(self):
         """f(alpha_bar) 的 UFL 表达式，直接传给 PhaseFieldSolver。"""
-        return fatigue_degradation(self.alpha_bar, self.alpha_T)
+        return fatigue_degradation(
+            self.alpha_bar, self.alpha_T, self.form, self.kappa
+        )
 
     # ---------------- checkpoint（硬约束 5） ----------------
     def save(self, path: str | Path) -> None:
@@ -513,6 +551,8 @@ def homogeneous_cycles_to_damage(
     material: Material,
     d_target: float = 0.0,
     delta_alpha_per_cycle: float | None = None,
+    form: str = "asymptotic",
+    kappa: float | None = None,
 ) -> float:
     """均匀单轴状态下，达到 d = d_target 所需的循环数（闭式）。
 
@@ -551,7 +591,10 @@ def homogeneous_cycles_to_damage(
     alpha_T = float(alpha_T)
     E = material.elastic.E
     sigma_c = material.fracture.sigma_c
-    alpha_needed = alpha_T * (2.0 / (s * math.sqrt(1.0 - d_target)) - 1.0)
+    # f = s^2 (1 - d_target) 时达到 d_target，反解所需的 alpha_bar
+    alpha_needed = inverse_fatigue_degradation(
+        s**2 * (1.0 - d_target), alpha_T, form, kappa
+    )
     increment = (
         0.5 * (s * sigma_c) ** 2 / E
         if delta_alpha_per_cycle is None
@@ -568,6 +611,8 @@ def homogeneous_damage_after_cycles(
     material: Material,
     n_cycles: float,
     delta_alpha_per_cycle: float | None = None,
+    form: str = "asymptotic",
+    kappa: float | None = None,
 ) -> float:
     """:func:`homogeneous_cycles_to_damage` 的反函数：给定循环数返回 d。
 
@@ -584,5 +629,5 @@ def homogeneous_damage_after_cycles(
         else float(delta_alpha_per_cycle)
     )
     alpha_bar = float(n_cycles) * increment
-    f = fatigue_degradation(alpha_bar, alpha_T)
+    f = fatigue_degradation(alpha_bar, alpha_T, form, kappa)
     return max(0.0, 1.0 - f / s**2)
