@@ -16,3 +16,8 @@ data/_tmp_gmsh/
 data/_*.png
 data/_*.jpeg
 data/_*.json
+
+# 验证 2 的 CT 疲劳算例正在跑，result.json 每 50 步被中途快照覆盖。
+# 提交一个跑到一半的快照会误导（status=running 但看起来像定稿），
+# 故先忽略；**算例跑完后要删掉这一行并提交最终结果**。
+data/benchmark_ct_fatigue/
