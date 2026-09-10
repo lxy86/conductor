@@ -688,8 +688,14 @@ def run_fatigue(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, A
         2.0 * np.pi * spec.hole_radius,
     )
 
+    # 分项计时：裂纹采样每个 jump 步都做一次，网格细化后它可能反客为主，
+    # 而只看总耗时是分辨不出「求解慢」还是「量裂纹慢」的。
+    timers = {"record": 0.0}
+
     def record(report) -> None:
+        t_rec = time.perf_counter()
         metrics = grid.crack_extension(solver.d, threshold=threshold)
+        timers["record"] += time.perf_counter() - t_rec
         a = spec.a0 + metrics.depth
         history.append(
             {
@@ -709,17 +715,24 @@ def run_fatigue(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, A
     def stop(report) -> bool:
         record(report)
         last = history[-1]
-        if len(history) % 10 == 0 or last["a_over_W"] >= stop_at:
+        # 前 5 步逐步打：长算例最怕「起步就卡住却看不见」，而每 10 步一行时
+        # 第一行要等 10 步才出现，卡在第 3 步就完全没有输出可看。
+        if len(history) <= 5 or len(history) % 10 == 0 or last["a_over_W"] >= stop_at:
+            elapsed = time.perf_counter() - t_solve
             log(
                 "info",
-                "N=%.4g  ΔN=%.4g  a=%.4f mm (a/W=%.3f)  max_d=%.4f  ᾱ_max=%.4g  已用 %.0f s",
+                "N=%.4g  ΔN=%.4g  a=%.4f mm (a/W=%.3f)  max_d=%.4f  ᾱ_max=%.4g  "
+                "已用 %.0f s（其中取裂纹长度 %.0f s = %.0f%%，%d 步）",
                 report.N,
                 report.delta_N,
                 1e3 * last["a"],
                 last["a_over_W"],
                 report.max_d,
                 report.max_alpha_bar,
-                time.perf_counter() - t_solve,
+                elapsed,
+                timers["record"],
+                100.0 * timers["record"] / max(elapsed, 1e-12),
+                len(history),
             )
         return last["a_over_W"] >= stop_at
 

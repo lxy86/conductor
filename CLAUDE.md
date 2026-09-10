@@ -16,9 +16,16 @@ cd /root/pf-wire   # 指向 C:\Users\Administrator\Desktop\疲劳寿命 的 ASCI
 
 建/更新环境用 `bash scripts/setup_env.sh`，**不要**裸跑 `conda env create`
 （adios4dolfinx 0.11 只在 PyPI 上，须 `pip install --no-deps`，见 DECISIONS.md D-0）。
-机器：12 核 / 47 GB。并行策略：**单工况用满 12 个 MPI 进程**并设 `OMP_NUM_THREADS=1`
+机器：Xeon E5-1650 v4，**6 物理核 / 12 线程**（`nproc` 报 12 是超线程数，不是核数）/ 47 GB。
+并行策略：**单工况用 `mpirun -n 6`**（一核一 rank）并设 `OMP_NUM_THREADS=1`
 （纯 MPI 比 MPI+BLAS 线程混用更快、也不抢核）；sweep 阶段再按实测权衡
 「单工况多进程」与「多工况并发」。**不设单工况耗时上限**（用户 2026-09-09 指示），见 D-4。
+
+⚠️ **绝对不要用 `-n 12`**：那是按超线程数超订物理核，MPICH 忙等下会塌方。
+2026-09-10 实测（CT 疲劳算例，跑 5 个 jump 步）：
+`-n 6` 21 s、`-n 2` 49 s、`-n 4` 70 s、**`-n 12` 约 700 s（慢 33 倍）**。
+各进程数结果逐位相同，只是慢，所以**不会报错、只会白等**——这正是它难发现的地方。
+本项目早期的长算例都误用了 `-n 12`，白白多花了几十倍时间（见 D-21）。
 
 ## 硬约束
 1. dolfinx 锁定 **0.11.0**（用户 2026-09-09 改，原为 0.9.0）。不确定 API 先查源码/`help()`，
