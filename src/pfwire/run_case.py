@@ -551,6 +551,7 @@ def run_fatigue(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, A
             "crack",
             "stop_at_a_over_W",
             "paris_delta_a",
+            "dump_every",
         },
         "loading",
     )
@@ -569,6 +570,8 @@ def run_fatigue(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, A
             "与 Carrara §5.2 的参考算例一致"
         )
     stop_at = float(cfg.loading.get("stop_at_a_over_W", 0.7))
+    #: 每多少个 jump 步把中途结果落盘一次；<= 0 表示只在结束时写
+    dump_every = int(cfg.loading.get("dump_every", 50))
 
     is_root = comm.rank == 0
 
@@ -712,9 +715,70 @@ def run_fatigue(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, A
             }
         )
 
+    def make_result(status: str, n_jumps: int, solve_seconds: float) -> dict[str, Any]:
+        """组装结果字典。中途快照与最终结果共用，避免两处逻辑漂移。"""
+        out: dict[str, Any] = {
+            "case": cfg.path.name,
+            "case_type": cfg.case_type,
+            "status": status,
+            "material": cfg.material.name,
+            "model": {
+                "split": cfg.model.split,
+                "dissipation": cfg.model.dissipation,
+                "k_res": cfg.model.k_res,
+                "ell": cfg.material.fracture.ell,
+                "Gc": cfg.material.fracture.Gc,
+                "sigma_c": cfg.material.fracture.sigma_c,
+                "alpha_T": alpha_T,
+                "fatigue_form": form,
+                "kappa": kappa,
+            },
+            "mesh": {"type": "ct", "n_cells": int(n_cells), **cfg.mesh_cfg},
+            "thickness": cfg.thickness,
+            "loading": {
+                "delta_P": delta_P,
+                "P_min": P_min,
+                "hole_length_mesh": float(hole_length),
+                "hole_length_analytic": float(2.0 * np.pi * spec.hole_radius),
+            },
+            "n_jumps": n_jumps,
+            "N_final": float(history[-1]["N"]) if history else 0.0,
+            "timing_s": {"mesh": t_mesh, "solve": solve_seconds},
+            "history": history,
+        }
+        if status == "running":
+            out["note"] = _partial_result_note(status)
+        # Paris 拟合。点数不足时**不报错、只记原因** —— 算例本身可能只是还没跑到
+        # 稳定扩展段，那不是 bug，但也绝不能悄悄给个假的 C/m。
+        out["paris"] = _fit_paris_or_explain(history, spec, cfg, delta_P)
+        return out
+
+    def write_result(out: dict[str, Any]) -> None:
+        if comm.rank != 0:
+            return
+        cfg.output_dir.mkdir(parents=True, exist_ok=True)
+        # 先写临时文件再 rename：中途落盘时进程可能随时被打断，
+        # 直接覆盖会留下一个截断的 JSON，比没有还糟（读的人以为是完整结果）。
+        tmp = cfg.output_dir / "result.json.tmp"
+        tmp.write_text(
+            json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        tmp.replace(cfg.output_dir / "result.json")
+        (cfg.output_dir / "config.yaml").write_text(
+            yaml.safe_dump(cfg.raw, sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+
     def stop(report) -> bool:
         record(report)
         last = history[-1]
+        # 周期性落盘：疲劳算例动辄跑几小时到一天，只在结束时写 result.json
+        # 意味着任何中断都让全部 history 化为乌有（日志里每 10 步一条只是残影）。
+        if dump_every > 0 and len(history) % dump_every == 0:
+            write_result(
+                make_result("running", len(driver.reports),
+                            time.perf_counter() - t_solve)
+            )
         # 前 5 步逐步打：长算例最怕「起步就卡住却看不见」，而每 10 步一行时
         # 第一行要等 10 步才出现，卡在第 3 步就完全没有输出可看。
         if len(history) <= 5 or len(history) % 10 == 0 or last["a_over_W"] >= stop_at:
@@ -748,50 +812,16 @@ def run_fatigue(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, A
     elif history and history[-1]["a_over_W"] >= stop_at:
         stopped = "crack_limit"
 
-    result: dict[str, Any] = {
-        "case": cfg.path.name,
-        "case_type": cfg.case_type,
-        "status": stopped,
-        "material": cfg.material.name,
-        "model": {
-            "split": cfg.model.split,
-            "dissipation": cfg.model.dissipation,
-            "k_res": cfg.model.k_res,
-            "ell": cfg.material.fracture.ell,
-            "Gc": cfg.material.fracture.Gc,
-            "sigma_c": cfg.material.fracture.sigma_c,
-            "alpha_T": alpha_T,
-            "fatigue_form": form,
-            "kappa": kappa,
-        },
-        "mesh": {"type": "ct", "n_cells": int(n_cells), **cfg.mesh_cfg},
-        "thickness": cfg.thickness,
-        "loading": {
-            "delta_P": delta_P,
-            "P_min": P_min,
-            "hole_length_mesh": float(hole_length),
-            "hole_length_analytic": float(2.0 * np.pi * spec.hole_radius),
-        },
-        "n_jumps": len(reports),
-        "N_final": float(final.N) if final is not None else 0.0,
-        "timing_s": {"mesh": t_mesh, "solve": t_solve},
-        "history": history,
-    }
-
-    # Paris 拟合。点数不足时**不报错、只记原因** —— 算例本身可能只是还没跑到
-    # 稳定扩展段，那不是 bug，但也绝不能悄悄给个假的 C/m。
-    result["paris"] = _fit_paris_or_explain(history, spec, cfg, delta_P)
-
-    if comm.rank == 0:
-        cfg.output_dir.mkdir(parents=True, exist_ok=True)
-        (cfg.output_dir / "result.json").write_text(
-            json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
-        (cfg.output_dir / "config.yaml").write_text(
-            yaml.safe_dump(cfg.raw, sort_keys=False, allow_unicode=True),
-            encoding="utf-8",
-        )
+    result = make_result(stopped, len(reports), t_solve)
+    write_result(result)
     return result
+
+
+def _partial_result_note(status: str) -> str:
+    return (
+        "**这是运行中的快照，不是最终结果**（status=%s）。算例还在跑，"
+        "history 与 paris 都只反映已完成的部分；ΔK 跨度不足时拟合出的 m 会偏。" % status
+    )
 
 
 def _fit_paris_or_explain(history, spec, cfg: CaseConfig, delta_P: float) -> dict:

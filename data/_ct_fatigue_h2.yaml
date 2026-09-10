@@ -61,6 +61,10 @@ loading:
     halfwidth: 8.0e-4   # = 4 ell，容得下相场带宽
     growth_length: 2.6e-2   # 自 a0 = 11 mm 量到 37 mm（a/W = 0.74），覆盖停止阈值
   stop_at_a_over_W: 0.7
+  dump_every: 50        # 每 50 个 jump 步把中途结果落盘一次。疲劳算例动辄跑
+                        # 几小时到一天，只在结束时写 result.json 意味着任何
+                        # 中断都让全部 history 化为乌有。写的是临时文件再 rename，
+                        # 免得被打断时留下截断的 JSON（那比没有还糟）。
   paris_delta_a: 0.25e-3   # 原文 Eq. B.1 / ASTM E647 建议的固定裂纹增量
 
 output:
