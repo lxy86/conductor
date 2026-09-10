@@ -1,0 +1,89 @@
+# 验证 2 系列算例：ct_a050_dp20
+# a0/W=0.50：ΔK 自 0.864 起，最便宜的一档
+# 原文 Tab. 2 该行 N_u = 512。系列的用意见 DECISIONS.md D-23：
+# 单条曲线的 ΔK 跨度天生太窄，必须像原文 Fig. 13 那样把多条叠起来。
+# 验收（PLAN Phase 1）：da/dN-ΔK 曲线的 Paris 斜率与原文同量级。
+# 原文 Tab. 2（a0/W = 0.22、ΔP = 20 N）：N_u = 7288、C = 2.01e-2、m = 3.42
+# （C 的口径是 mm/cycle-MPa√m，对表要看 result.json 里的 paris.C_mm_MPa）。
+case_type: fatigue
+material: configs/material_carrara.yaml
+
+model:
+  split: spectral       # 原文 p19-20：其余部分一律用 spectral 分解
+  dissipation: AT2      # 原文 p17
+  k_res: 1.0e-6
+
+solver:
+  u_solver: newton      # spectral 分解没有冻结形式，必须走精确非线性路径
+  tol_d: 1.0e-4
+  max_iter: 2000    # 欠松弛后每步迭代数增加
+  relaxation: 0.5   # 2026-09-10 打开。第一次跑（无欠松弛）在 a/W = 0.355 进入
+                    # **失稳扩展**分支后失败：单个周期内 max Δd 达 0.73，
+                    # u 的 Newton 线搜索崩掉（SNES=-6）。欠松弛让每次交错迭代
+                    # 只前进一半，u 求解每次吸收的 d 变化随之减半；
+                    # omega<1 不改变不动点，故不影响解（见 D-18，SENT 极限点已验证）。
+
+mesh:
+  type: ct
+  W: 50.0e-3            # 载荷线到背面（**不是**试样总宽），原文 W = 50 mm
+  thickness: 1.0e-3     # 原文 T = 1 mm。二维算的是单位厚度量，力要乘厚度
+  a0_over_W: 0.50       # 见 DECISIONS.md D-23
+  total_width_over_W: 1.25
+  halfheight_over_W: 0.6
+  hole_diameter_over_W: 0.25
+  hole_offset_over_W: 0.275
+  notch_height_over_W: 0.0625      # = 1/16，原文标的 W/16
+  notch_taper_length: 1.5625e-3    # = W/32，即 45° V 尖（原文未标尺寸，见 D-19）
+  h_fine: 1.0e-4        # = ell/2。三条依据（见 DECISIONS.md D-20）：
+                        # 1. **实测**：本试样的 P_mon 在 h = ell/2 与 ell/4 下**完全相同**
+                        #    （都是 190 N），说明该量已网格收敛；
+                        # 2. 原文 p20 明确：alpha 取 psi+ 时 h = ell/3 即已收敛
+                        #    （alpha = ||eps|| 才会强烈依赖网格，我们用的是 psi+）；
+                        # 3. D-17 的 h <= ell/4 是**静态峰值载荷**的结论（SENT），
+                        #    那里 h = ell/2 高估 5%；此处已用 (1) 直接验过，不必照搬。
+                        # 代价上 ell/4 每步贵约 4 倍、整个疲劳算例要按天计。
+  h_coarse: 1.5e-3
+  refine_halfheight: 1.0e-3        # = 5 ell，容得下相场带宽 + 裂纹偏折
+  refine_x_margin: 2.0e-3          # 加密带自 a0 - 2 mm 起，缺口尖端也在带内
+
+loading:
+  type: ct_pin_force
+  delta_P: 20.0         # N
+  P_min: 5.00            # = 0.25 dP，即 **R = Pmin/Pmax = 0.2**（见 DECISIONS.md D-19）。
+                        # 原文没直接写 R，是反解出来的：Tab. 2 的 Pmax/Pmon 与 dP 严格
+                        # 成正比（11 行一致），说明 R 固定；再用 Fig. 12b 数字化的
+                        # Pmon = 186.4 N 定标，得 R = 1 - 148.6/186.4 = 0.203。
+                        # 用 R = 0.2 回算 11 行，最大偏差仅 0.33 个百分点。
+                        # **不能想当然取 P_min = 0**：那会让 Pmax 少 25%、psi+ 少 36%，
+                        # 寿命完全对不上（psi+ 正比于 P^2）。
+  cycle:
+    n_sub: 8            # 原文 p20：每周期 8 个载荷步已收敛
+    dN_init: 50.0
+    dN_min: 1.0
+    dN_max: 2.0e+3       # N_u ≈ 7288，ΔN 上限取其 ~1/4，保证 a(N) 有足够采样点
+    dd_max: 0.02
+    grow_below: 0.5
+    factor: 2.0
+    N_max: 5.0e+4        # 远大于 N_u = 7288；跑到 a/W 上限就会先停
+    peak_phase: null    # 自动取 ∫psi+ dx 最大的子步（三角波下应为 0.5）
+  crack:
+    threshold: 0.95
+    spacing: 2.5e-5     # = h_fine/2 = Δa/10。**必须远细于 paris_delta_a**：
+                        # 采样间距就是 a 的量化步长，而 da/dN = Δa/ΔN 靠 a 越过每个
+                        # Δa 边界的时刻定出。实测 spacing = 0.1 mm 配 Δa = 0.25 mm
+                        # （每区间仅 2.5 个采样步）时 da/dN 完全是阶梯噪声：
+                        # 速率在 1.3e-3~4.9e-3 之间乱跳、R^2 = 0.002、m 拟成 0.74。
+                        # d 是 P1 场，亚单元采样由线性插值给出真实的 0.95 等值面位置，
+                        # 不是虚假精度。
+    halfwidth: 8.0e-4   # = 4 ell，容得下相场带宽
+    growth_length: 0.019   # a0 = 25.0 mm，量到 44.0 mm（< 背面 50 mm）
+  stop_at_a_over_W: 0.7
+  dump_every: 50        # 每 50 个 jump 步把中途结果落盘一次。疲劳算例动辄跑
+                        # 几小时到一天，只在结束时写 result.json 意味着任何
+                        # 中断都让全部 history 化为乌有。写的是临时文件再 rename，
+                        # 免得被打断时留下截断的 JSON（那比没有还糟）。
+  paris_delta_a: 0.25e-3   # 原文 Eq. B.1 / ASTM E647 建议的固定裂纹增量
+
+output:
+  dir: data/ct_a050_dp20
+  save_fields_every: 0

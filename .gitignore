@@ -21,3 +21,6 @@ data/_*.json
 # 提交一个跑到一半的快照会误导（status=running 但看起来像定稿），
 # 故先忽略；**算例跑完后要删掉这一行并提交最终结果**。
 data/benchmark_ct_fatigue/
+data/ct_a050_dp20/
+data/ct_a022_dp40/
+data/ct_a040_dp20/
