@@ -163,6 +163,38 @@ def main(argv: list[str]) -> int:
     if ms:
         print("各算例 m：%s  ->  均值 %.3f（原文 CT+TPB 平均 %.2f）"
               % (", ".join("%.3f" % x for x in ms), float(np.mean(ms)), REF_M_MEAN))
+
+    # ---- 合并拟合 ----
+    # Paris 理论的核心主张是 C、m 与 ΔP、a0 无关，故把**所有**算例的点并到一起
+    # 拟合才是对这一主张的直接检验（原文 Fig. 13 也是这样叠着看的）。
+    # 仍按原文口径只取合并后 ΔK 跨度的中间三分之一。
+    pk, pr_rate = [], []
+    for _, r, _ in loaded:
+        p = r.get("paris", {})
+        if p.get("ok"):
+            pk.extend(np.array(p["delta_K"]) / 1e6)
+            pr_rate.extend(np.array(p["da_dN"]) * 1e3)
+    if len(pk) >= 4:
+        pk = np.array(pk)
+        pr_rate = np.array(pr_rate)
+        lo, hi = pk.min(), pk.max()
+        span = hi - lo
+        sel = (pk >= lo + span / 3.0) & (pk <= lo + 2.0 * span / 3.0)
+        if int(sel.sum()) >= 2:
+            x, y = np.log10(pk[sel]), np.log10(pr_rate[sel])
+            m_all, logc = np.polyfit(x, y, 1)
+            resid = y - (m_all * x + logc)
+            ss = float(np.sum((y - y.mean()) ** 2))
+            r2 = 1.0 - float(np.sum(resid**2)) / ss if ss > 0 else 1.0
+            print()
+            print("**合并拟合**（全部算例的点并在一起，仍取中间三分之一窗口，%d 点）："
+                  % int(sel.sum()))
+            print("  m = %.3f（原文 CT+TPB 平均 %.2f，%+.1f%%）   C_mm_MPa = %.4g"
+                  "（原文 %.4g，%.2f 倍）   R^2 = %.3f"
+                  % (m_all, REF_M_MEAN, 100 * (m_all - REF_M_MEAN) / REF_M_MEAN,
+                     10.0**logc, REF_C_MEAN, 10.0**logc / REF_C_MEAN, r2))
+            print("  合并窗口 %.3f ~ %.3f MPa√m"
+                  % (lo + span / 3.0, lo + 2.0 * span / 3.0))
     return 0
 
 

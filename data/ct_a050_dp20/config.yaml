@@ -1,0 +1,51 @@
+case_type: fatigue
+material: configs/material_carrara.yaml
+model:
+  split: spectral
+  dissipation: AT2
+  k_res: 1.0e-06
+solver:
+  u_solver: newton
+  tol_d: 0.0001
+  max_iter: 2000
+  relaxation: 0.5
+mesh:
+  type: ct
+  W: 0.05
+  thickness: 0.001
+  a0_over_W: 0.5
+  total_width_over_W: 1.25
+  halfheight_over_W: 0.6
+  hole_diameter_over_W: 0.25
+  hole_offset_over_W: 0.275
+  notch_height_over_W: 0.0625
+  notch_taper_length: 0.0015625
+  h_fine: 0.0001
+  h_coarse: 0.0015
+  refine_halfheight: 0.001
+  refine_x_margin: 0.002
+loading:
+  type: ct_pin_force
+  delta_P: 20.0
+  P_min: 5.0
+  cycle:
+    n_sub: 8
+    dN_init: 50.0
+    dN_min: 1.0
+    dN_max: 2000.0
+    dd_max: 0.02
+    grow_below: 0.5
+    factor: 2.0
+    N_max: 50000.0
+    peak_phase: null
+  crack:
+    threshold: 0.95
+    spacing: 2.5e-05
+    halfwidth: 0.0008
+    growth_length: 0.019
+  stop_at_a_over_W: 0.7
+  dump_every: 50
+  paris_delta_a: 0.00025
+output:
+  dir: data/ct_a050_dp20
+  save_fields_every: 0
