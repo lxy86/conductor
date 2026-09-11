@@ -56,7 +56,7 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-CASE_TYPES = ("static", "fatigue")
+CASE_TYPES = ("static", "fatigue", "fretting")
 
 
 def _require_keys(cfg: dict, allowed: set[str], where: str) -> None:
@@ -191,7 +191,12 @@ def load_case(path: str | Path) -> CaseConfig:
         raise ValueError("%s 不是 mapping" % (path,))
     _require_keys(
         raw,
-        {"case_type", "material", "model", "solver", "mesh", "loading", "output"},
+        {
+            "case_type", "material", "model", "solver", "mesh", "loading",
+            "output",
+            # fretting 工况专有：接触参数与失效判据各自成段
+            "contact", "failure",
+        },
         str(path),
     )
 
@@ -322,8 +327,15 @@ def _build_mesh(cfg: CaseConfig, comm: MPI.Comm):
         )
         spec = pfmesh.CtSpec(**{k: float(v) for k, v in mesh_cfg.items()})
         return pfmesh.ct_mesh(spec, comm)
+    if mesh_type == "fretting":
+        # 微动试样的 a 由 loads 从 (p0, R, E*) 算出后传入，不走这里（见 D-25）；
+        # fretting.run_fretting 自己建网格，故这里不该被调用到。
+        raise RuntimeError(
+            "mesh.type='fretting' 的网格由 fretting.run_fretting 建（a 需与面力同源，"
+            "见 DECISIONS.md D-25），不应经由 _build_mesh"
+        )
     raise NotImplementedError(
-        "mesh.type 只支持 'sent'（验证 1）与 'ct'（验证 2）。微动试样属 Phase 2.1。"
+        "mesh.type 只支持 'sent'（验证 1）、'ct'（验证 2）与 'fretting'（Phase 2）。"
     )
 
 
@@ -867,11 +879,31 @@ def run_case(path: str | Path, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any
         return run_static(cfg, comm)
     if cfg.case_type == "fatigue":
         return run_fatigue(cfg, comm)
+    if cfg.case_type == "fretting":
+        from .fretting import run_fretting
+
+        return run_fretting(cfg, comm)
     raise NotImplementedError("未知 case_type: %r" % (cfg.case_type,))
 
 
 def _summarize(result: dict[str, Any]) -> str:
-    """一行汇总。static 报峰值载荷，fatigue 报寿命与 Paris 参数。"""
+    """一行汇总。static 报峰值载荷，fatigue 报寿命与 Paris 参数，fretting 报关卡。"""
+    if result.get("case_type") == "fretting":
+        gate = result.get("gate", {})
+        hist = result.get("history") or []
+        depth = hist[-1]["depth"] * 1e6 if hist else float("nan")
+        return (
+            "状态=%s  jump 步数=%d  N=%.6g  裂纹深度=%.2f µm  "
+            "关卡=%s（滑移区萌生 %s，初始倾斜 %s，转向 %s）  耗时 %.1f s"
+            % (
+                result["status"], result["n_jumps"], result["N_final"], depth,
+                "通过" if gate.get("passed") else "**未通过**",
+                gate.get("nucleates_in_slip_zone"),
+                gate.get("initially_tilted"),
+                gate.get("turns_toward_normal"),
+                result["timing_s"]["solve"],
+            )
+        )
     if result.get("case_type") == "fatigue":
         paris = result.get("paris", {})
         tail = (
@@ -922,7 +954,8 @@ def main(argv: list[str] | None = None) -> int:
     return (
         0
         if result["status"]
-        in ("completed", "damage_limit", "past_peak", "crack_limit", "runout")
+        in ("completed", "damage_limit", "past_peak", "crack_limit", "runout",
+            "failed")
         else 1
     )
 

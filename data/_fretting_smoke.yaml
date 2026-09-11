@@ -1,0 +1,72 @@
+# Phase 2.4 基准微动疲劳工况。**这是整个项目的硬关卡**：
+# 必须复现「裂纹在接触边缘 x ≈ ±a 附近（滑移区）萌生，初始倾斜，
+# 随后转向垂直于本体应力方向」。若不满足，停下报告，**不得调参凑结果**（硬约束 6）。
+#
+# 参数来源：PLAN.md Phase 2.4，几何/尺度按 DECISIONS.md D-1 修订
+# （R_wire 1.6 -> 1.875 mm、ell = 4 µm、失效改绝对深度 100 µm）。
+case_type: fretting
+material: configs/material_al1350.yaml
+
+model:
+  split: spectral       # D-8 应急 ①：amor 在接触中心留下越门槛的 ψ⁺
+  dissipation: AT1      # 硬约束 1
+  k_res: 1.0e-6
+
+solver:
+  u_solver: newton      # spectral 没有冻结形式
+  tol_d: 1.0e-4
+  max_iter: 300
+
+contact:
+  # 接触半宽 a 由 loads 从 (p0, R, E*) 算出，**不在这里写死** —— 见 D-25：
+  # 网格用的 a 与面力用的 a 必须同源，各算各的迟早会漂，而 a 一旦不一致，
+  # 「裂纹在 x ≈ ±a 萌生」这条判据就失去意义。
+  p0: 500.0e+6          # Pa，峰值接触压力
+  mu: 0.7               # 摩擦系数
+  Q_over_muP: 0.6       # Q/(μP)，部分滑移；c/a = sqrt(1-0.6) = 0.632
+  R_wire: 1.875e-3      # m，JL1/LHA1-465/210 的铝单线半径（D-6）
+  counterpart: aluminum # 铝-铝对偶 -> R = R_wire/2、E* 用两个铝
+
+mesh:
+  type: fretting
+  W: 6.4e-3             # = 2H，与 R_wire 挂钩（D-1）；W/a ≈ 265，满足 St. Venant
+  H: 3.2e-3
+  refine_halfwidth_factor: 3.0     # 加密区 |x| <= 3a（D-1）
+  refine_depth: 150.0e-6           # 失效判据是 100 µm，留 1.5 倍余量
+  h_fine: 4.0e-6
+  h_coarse: 2.0e-4
+  transition_factor: 8.0
+
+loading:
+  # 比例加载简化（PLAN 第 2 节，论文中说明）：法向压力恒定，
+  # 切向面力与本体应力同相位正弦往复。
+  #   q(x,t) = q(x) sin(2 pi t/T),  sigma_b(t) = sigma_a sin(2 pi t/T)
+  type: fretting_contact
+  sigma_a: 35.0e+6      # Pa，本体应力幅（零峰值幅值）
+  cycle:
+    n_sub: 8            # PLAN 第 2 节
+    dN_init: 100.0
+    dN_min: 1.0
+    dN_max: 1.0e+5
+    dd_max: 0.02
+    grow_below: 0.5
+    factor: 2.0
+    N_max: 2.0e+3
+    peak_phase: null    # 自动取 ∫psi+ dx 最大的子步
+  dump_every: 25
+
+failure:
+  # D-1：判据改为**绝对深度 100 µm**（≈4a），不是 0.5*R_wire = 937 µm。
+  # 理由：微动寿命由萌生与短裂纹主导；0.5R 需要约 40a 的扩展距离，
+  # 在 h = 1 µm 下不可行。N_f 的定义（萌生 + 短裂纹到 100 µm）必须写进论文。
+  d_threshold: 0.95
+  depth: 100.0e-6
+  # 裂纹采样网格（failure.DamageGrid：表面在 y=0、深度向下为正）
+  sample_halfwidth_factor: 3.0     # |x| <= 3a，与加密区同宽
+  sample_depth: 140.0e-6           # 略小于 refine_depth，保证采样点都在加密区内
+  sample_spacing: 4.0e-6
+  inclination_depth: 1.0e-5        # 量「初始倾角」的深度（≈2.5 ell），见 Phase 2.4 判据
+
+output:
+  dir: data/_fretting_smoke
+  save_fields_every: 0
