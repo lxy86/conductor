@@ -219,11 +219,35 @@ def test_load_material_al1350():
         assert key in m.sources and m.sources[key]
 
 
-def test_alpha_T_uncalibrated_raises_instead_of_defaulting():
-    m = mat.load_material(MATERIAL_YAML)
+def test_alpha_T_uncalibrated_raises_instead_of_defaulting(tmp_path):
+    """未标定的 alpha_T 必须报错，不得静默取默认值（D-3）。
+
+    这里用**临时材料卡**而不是生产卡：生产卡的 alpha_T 在 Phase 2.3 标定后
+    已经有值了，若继续断言它是 None，这条守卫就会随标定进度一起失效 ——
+    而它要守的是「未标定时不许蒙一个默认值」这个行为本身，与标定进度无关。
+    """
+    y = tmp_path / "uncalibrated.yaml"
+    y.write_text(
+        "name: t\n"
+        "elastic: {E: 69.0e+9, nu: 0.33}\n"
+        "strength: {sigma_u: 185.0e+6}\n"
+        "fracture: {mode: from_sigma_c_and_ell, sigma_c: 185.0e+6, ell: 4.0e-6}\n"
+        "fatigue: {alpha_T: null}\n",
+        encoding="utf-8",
+    )
+    m = mat.load_material(y)
     assert m.alpha_T is None
     with pytest.raises(ValueError, match="alpha_T"):
         m.require_alpha_T()
+
+
+def test_production_material_is_calibrated():
+    """生产材料卡在 Phase 2.3 之后必须带标定值，且能被 require_* 取出。"""
+    m = mat.load_material(MATERIAL_YAML)
+    alpha_T, form, kappa = m.require_fatigue_params()
+    assert alpha_T > 0.0
+    assert form == "logarithmic"
+    assert kappa is not None and kappa > 0.0
 
 
 def test_load_material_tolerates_yaml11_unsigned_exponent(tmp_path):

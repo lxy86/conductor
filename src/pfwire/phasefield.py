@@ -219,6 +219,21 @@ def _check_fatigue_args(alpha_bar, alpha_T, form, kappa):
     return alpha_T, (None if kappa is None else float(kappa))
 
 
+def _scalar_value(x):
+    """取标量值：float 原样返回，``fem.Constant`` 取 ``.value``，None 保持 None。
+
+    只用于**数值校验**与纯标量分支；进 UFL 的仍是原对象（见 fatigue_degradation）。
+    """
+    if x is None or isinstance(x, (int, float)):
+        return x
+    value = getattr(x, "value", None)
+    if value is None:
+        raise TypeError(
+            "alpha_T/kappa 只能是 float 或带 .value 的 fem.Constant，收到 %r" % (type(x),)
+        )
+    return float(value)
+
+
 def fatigue_degradation(
     alpha_bar, alpha_T: float, form: str = "asymptotic", kappa: float | None = None
 ):
@@ -251,20 +266,34 @@ def fatigue_degradation(
     斜率被锁死在 1/3，与铝实测的 ~0.13 不符，见 DECISIONS.md D-14。
 
     ``alpha_bar`` 可以是 float（单测直接算）或 UFL 表达式/Function（进变分形式）。
+
+    ``alpha_T`` 与 ``kappa`` 除了 float，也可以传 ``fem.Constant``。
+    **标定时必须传 Constant**：它们若以 Python float 进 UFL，就会被 FFCx 当成
+    字面量烘进 form 签名，每换一个试探值都要重新编译一遍（见 DECISIONS.md D-16，
+    实测一次编译数秒到数十秒），而 Phase 2.3 的标定要反复改这两个数。
+    传 Constant 时只改 ``.value``，form 不变、不触发编译。
     """
-    alpha_T, kappa = _check_fatigue_args(alpha_bar, alpha_T, form, kappa)
+    # fem.Constant 取 .value 做数值校验，但**进表达式的仍是 Constant 本身**
+    alpha_T_val = _scalar_value(alpha_T)
+    kappa_val = _scalar_value(kappa)
+    _check_fatigue_args(alpha_bar, alpha_T_val, form, kappa_val)
     is_scalar = isinstance(alpha_bar, (int, float))
+    if is_scalar:
+        # 纯标量分支：一律用数值，免得把 Constant 混进 math.log10
+        alpha_T, kappa = alpha_T_val, kappa_val
 
     if form == "asymptotic":
         ratio_sq = (2.0 * alpha_T / (alpha_bar + alpha_T)) ** 2
         return min(1.0, ratio_sq) if is_scalar else ufl.min_value(1.0, ratio_sq)
 
     # logarithmic
-    cutoff = alpha_T * 10.0 ** (1.0 / kappa)
     if is_scalar:
+        cutoff = alpha_T * 10.0 ** (1.0 / kappa)
         if alpha_bar >= cutoff:
             return 0.0
         return (1.0 - kappa * math.log10(max(alpha_bar, alpha_T) / alpha_T)) ** 2
+    # 符号分支：kappa 可能是 Constant，故 10^(1/kappa) 写成 exp(ln10/kappa)
+    cutoff = alpha_T * ufl.exp(math.log(10.0) / kappa)
     ratio = ufl.max_value(alpha_bar, alpha_T) / alpha_T
     value = (1.0 - kappa * ufl.ln(ratio) / math.log(10.0)) ** 2
     return ufl.conditional(ufl.ge(alpha_bar, cutoff), 0.0, value)

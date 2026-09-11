@@ -408,7 +408,7 @@ class Material:
         if self.alpha_T is None:
             raise ValueError(
                 "材料 %r 的 alpha_T 尚未标定（Phase 2.3）。请先运行 "
-                "scripts/calibrate_alphaT.py 并把结果写回材料 yaml，"
+                "scripts/calibrate_alpha_t.py 并把结果写回材料 yaml，"
                 "或在工况 yaml 的 fatigue.alpha_T 中显式给值。" % (self.name,)
             )
         return self.alpha_T

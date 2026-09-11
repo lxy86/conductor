@@ -255,3 +255,95 @@ def test_extrapolate_rejects_negative_dN():
         case.msh, case.solver.model, alpha_source="undegraded", alpha_T=1.0e6)
     with pytest.raises(ValueError, match="ΔN"):
         state.extrapolate(-1.0, np.zeros_like(state.alpha_bar.x.array))
+
+
+def test_plane_strain_uniaxial_psi_plus_carries_one_minus_nu_squared():
+    """**平面应变单轴拉伸下 ψ⁺ = (1−ν²)σ²/(2E)，不是一维的 σ²/(2E)。**
+
+    这是 Phase 2.3 标定时踩过的坑：D-14 的解析预拟合用的是一维式子，
+    而生产工况是 2D 平面应变，两者差 (1−ν²)。只改累积不改起裂阈值（或反之）
+    都会让闭式解与有限元系统性偏离，且偏离随应力下降而增大 ——
+    首次标定实测到 Δlog10 N 从 −0.5 一路到 −1.2。
+
+    起裂阈值同源：AT1 驻定条件 1 − d = f σ_c²/(2Eψ⁺)，代入上式得
+    d 起动于 f = (1−ν²)s²，故闭式里的 s 必须换成 γs、γ = sqrt(1−ν²)。
+    """
+    import numpy as np
+    import ufl
+    from dolfinx import default_scalar_type, fem
+    from dolfinx import mesh as dmesh
+    from mpi4py import MPI
+
+    from pfwire.phasefield import (
+        PhaseFieldModel,
+        PhaseFieldSolver,
+        SolverConfig,
+        energy_split,
+        strain,
+    )
+
+    comm = MPI.COMM_WORLD
+    L = 2.0e-5
+    msh = dmesh.create_rectangle(
+        comm, [np.array([0.0, 0.0]), np.array([L, L])], [4, 4],
+        dmesh.CellType.triangle,
+    )
+    material = make_material()
+    model = PhaseFieldModel(
+        material=material, split="amor", k_res=1.0e-6, dissipation="AT1"
+    )
+    fdim = msh.topology.dim - 1
+    sigma = 50.0e6
+    traction = fem.Constant(msh, default_scalar_type(sigma))
+    zero = fem.Constant(msh, default_scalar_type(0.0))
+
+    left = dmesh.locate_entities_boundary(
+        msh, fdim, lambda x: np.isclose(x[0], 0.0)
+    )
+    bottom = dmesh.locate_entities_boundary(
+        msh, fdim, lambda x: np.isclose(x[1], 0.0)
+    )
+    right = dmesh.locate_entities_boundary(msh, fdim, lambda x: np.isclose(x[0], L))
+    marker = dmesh.meshtags(
+        msh, fdim, np.sort(right), np.full(right.size, 1, dtype=np.int32)
+    )
+    ds_right = ufl.Measure("ds", domain=msh, subdomain_data=marker)(1)
+
+    def make_bcs(V):
+        Vx, Vy = V.sub(0), V.sub(1)
+        return [
+            fem.dirichletbc(
+                default_scalar_type(0.0),
+                fem.locate_dofs_topological(Vx, fdim, left),
+                Vx,
+            ),
+            fem.dirichletbc(
+                default_scalar_type(0.0),
+                fem.locate_dofs_topological(Vy, fdim, bottom),
+                Vy,
+            ),
+        ]
+
+    def make_work(V):
+        v = ufl.TestFunction(V)
+        return ufl.inner(ufl.as_vector([traction, zero]), v) * ds_right
+
+    solver = PhaseFieldSolver(
+        msh, model, bcs_u=make_bcs, external_work=make_work,
+        config=SolverConfig(u_solver="linear"),
+    )
+    solver.solve_displacement()
+
+    psi_plus, _ = energy_split(strain(solver.u), material, "amor", 2)
+    area = comm.allreduce(
+        fem.assemble_scalar(fem.form(fem.Constant(msh, 1.0) * ufl.dx)), op=MPI.SUM
+    )
+    psi = comm.allreduce(
+        fem.assemble_scalar(fem.form(psi_plus * ufl.dx)), op=MPI.SUM
+    ) / area
+
+    E, nu = material.elastic.E, material.elastic.nu
+    psi_1d = sigma**2 / (2.0 * E)
+    assert psi / psi_1d == pytest.approx(1.0 - nu**2, rel=1e-5)
+    # 一维式子会高估 ψ⁺，正是当初让闭式解偏离有限元的那一半原因
+    assert psi < psi_1d

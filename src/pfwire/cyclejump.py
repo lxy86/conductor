@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-from dolfinx import fem
+from dolfinx import default_scalar_type, fem
 from dolfinx import mesh as dmesh
 from mpi4py import MPI
 
@@ -134,6 +134,13 @@ class FatigueState:
         self.alpha_T = float(alpha_T)
         # 提前校验 form/kappa 组合，别等到装配时才炸
         fatigue_degradation(0.0, self.alpha_T, form, kappa)
+        # alpha_T / kappa 以 Constant 进 UFL：标定要反复改它们，
+        # 若以 float 进去每次都会触发 FFCx 重编译（DECISIONS.md D-16）。
+        self._alpha_T_const = fem.Constant(mesh, default_scalar_type(self.alpha_T))
+        self._kappa_const = (
+            None if kappa is None
+            else fem.Constant(mesh, default_scalar_type(float(kappa)))
+        )
         self.V = fem.functionspace(mesh, ("DG", self.degree))
         self.alpha_bar = fem.Function(self.V, name="alpha_bar")
         self.psi_plus_prev = fem.Function(self.V, name="psi_plus_prev")
@@ -229,10 +236,39 @@ class FatigueState:
 
     @property
     def f_alpha(self):
-        """f(alpha_bar) 的 UFL 表达式，直接传给 PhaseFieldSolver。"""
+        """f(alpha_bar) 的 UFL 表达式，直接传给 PhaseFieldSolver。
+
+        用的是 Constant 而非 float，故 :meth:`set_fatigue_params` 改参数后
+        **无需重建 form、也不会触发重编译**。
+        """
         return fatigue_degradation(
-            self.alpha_bar, self.alpha_T, self.form, self.kappa
+            self.alpha_bar, self._alpha_T_const, self.form, self._kappa_const
         )
+
+    def set_fatigue_params(
+        self, alpha_T: float | None = None, kappa: float | None = None
+    ) -> None:
+        """就地改 alpha_T / kappa（标定用）。
+
+        只写 Constant 的 ``.value``，变分形式原封不动 —— 这正是把它们做成
+        Constant 的目的（D-16）。改完下一次求解即生效。
+        """
+        if alpha_T is not None:
+            value = float(alpha_T)
+            if value <= 0.0:
+                raise ValueError("alpha_T 必须为正，收到 %r" % (alpha_T,))
+            self.alpha_T = value
+            self._alpha_T_const.value = value
+        if kappa is not None:
+            if self._kappa_const is None:
+                raise ValueError(
+                    "当前 form=%r 不使用 kappa，不能设置" % (self.form,)
+                )
+            value = float(kappa)
+            if value <= 0.0:
+                raise ValueError("kappa 必须为正，收到 %r" % (kappa,))
+            self.kappa = value
+            self._kappa_const.value = value
 
     # ---------------- checkpoint（硬约束 5） ----------------
     def save(self, path: str | Path) -> None:

@@ -39,12 +39,28 @@ fatigue:
   #                 均匀极限 S-N 斜率被锁死在 1/3，拟合不了铝的 b ≈ 0.13。
   #   logarithmic = Eq. (38)，多一个 kappa 调斜率。**本项目采用**，见 DECISIONS.md D-14。
   form: logarithmic
-  alpha_T: null      # J/m^3，Phase 2.3 标定；未标定时任何工况读取即报错（D-3）
-  kappa: null        # 无量纲，与 alpha_T 一起标定（form=logarithmic 时必需）
-  # 解析预拟合（均匀单轴 + R=-1，对 configs/sn_al1350_reference.yaml 的 4 个点）：
-  #   alpha_T ≈ 3.407e+6 J/m^3,  kappa ≈ 0.1489
-  #   -> 4 点平均 |Δlog10 N| = 0.061、最大 0.077（对照 asymptotic 单参数：0.434）
-  # 这只是初值，最终值由 Phase 2.3 用真实有限元算例标定后写回本文件。
+  # ===== Phase 2.3 标定结果（2026-09-11）=====
+  alpha_T: 1.411481e+06      # J/m^3
+  kappa: 0.140535           # 无量纲
+  #
+  # 来源：scripts/calibrate_alpha_t.py + configs/calib_tension.yaml，
+  #       靶曲线 configs/sn_al1350_reference.yaml 的 4 个标定点。
+  # **靶曲线是代理曲线（is_surrogate: true），不是实测数据** —— 论文中必须声明，
+  # 拿到实测 S-N 后只需替换该 yaml 并重跑本脚本（D-3）。
+  #
+  # 标定口径（**与生产工况一致：2D 平面应变**）：
+  #   - 观测量是**起裂寿命**（d 首次达 1e-3），不是完全断裂。用「d 达 0.95」的话
+  #     s 依赖退化成 N ∝ s^-2、kappa 失去杠杆（D-14）；
+  #   - 实测每周期累积 Δᾱ = 1.556098 · σ²/(2E)，其中
+  #       r = Δᾱ_cyc/ψ⁺_peak = 1.746270（R=-1、Amor 分解；docstring 里的 1.5 是 ν=0 的特例）
+  #       ψ⁺_peak/(σ²/2E) = 0.891099，与平面应变的 (1-ν²) 吻合到 1.3e-6；
+  #   - 起裂阈值为 f = (γs)²、γ = sqrt(1-ν²)，**不是**一维的 f = s²。
+  #
+  # 验收：4 点 mean |Δlog10 N| = 0.0612（D-3 阈值 0.30）；
+  #       有限元与闭式解互相吻合到 Δlog10 ≈ 0.004（即寿命差 < 1%）。
+  #
+  # 注意：D-14 记的解析预拟合 (3.407e+6, 0.1489) 是**一维口径**，
+  # 平面应变修正后 alpha_T 差约 2.4 倍。不要混用这两组值。
 
 sources:
   E: "PLAN.md 第 1 节（TODO：换 ASM Handbook Vol.2 / IEC 60889 原始值）"

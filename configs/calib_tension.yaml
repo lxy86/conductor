@@ -1,0 +1,65 @@
+# Phase 2.3：alpha_T / kappa 标定工况 —— **无接触纯拉伸**均匀试样。
+#
+# 用途：把模型的起裂寿命对齐 configs/sn_al1350_reference.yaml 的 4 个标定点。
+# 靶曲线是**代理曲线**（D-3，用户 2026-09-11 确认先用它），论文中必须声明。
+#
+# 为什么是均匀试样
+# ----------------
+# 1. 它有闭式解（cyclejump.homogeneous_cycles_to_damage），可作独立锚点对拍；
+# 2. 标定观测量必须是**起裂寿命**（d 刚开始长），不是完全断裂 ——
+#    若用「d 达到 0.95」，s 依赖退化为 N ∝ s^-2、kappa 失去杠杆（D-14）。
+#    均匀试样起裂后迅速失稳，故 N_f ≈ N_起裂 是合理近似。
+#
+# 应力状态的口径（**容易搞错，写清楚**）
+# ------------------------------------
+# 生产工况是 2D 平面应变。平面应变下沿 x 的单轴拉伸（σ_yy = 0、σ_zz = ν σ_xx）
+# 的应变能是 ψ = σ²(1−ν²)/(2E)，而不是一维杆的 σ²/(2E)。
+# 二者差 (1−ν²) = 0.891（ν = 0.33），对应寿命差约 1.12 倍、Δlog10 N ≈ 0.05。
+# D-14 的解析预拟合用的是一维式子，故本工况**必须用有限元实测每周期累积量**，
+# 不能直接照搬预拟合值 —— 标定要在与生产相同的设定里做。
+case_type: calibration
+material: configs/material_al1350.yaml
+sn_reference: configs/sn_al1350_reference.yaml
+
+model:
+  split: amor           # 生产工况用 amor（PLAN 第 2 节：拉压分解为必需项）
+  dissipation: AT1      # 生产工况是 AT1（硬约束 1）
+  k_res: 1.0e-6
+
+solver:
+  u_solver: linear      # amor 有冻结形式；均匀场下 chi 不翻转，linear 即精确
+  tol_d: 1.0e-4
+  max_iter: 200
+
+mesh:
+  # 均匀试样，场处处相同，网格只需够解析相场带宽即可。
+  # 取 ell = 4 µm 的 5 倍见方、h = ell，单元数很少 -> 标定可以反复跑。
+  type: plain
+  W: 2.0e-5
+  H: 2.0e-5
+  h: 4.0e-6
+
+loading:
+  # R = -1 对称循环（D-5：零平均应力）。注意 Amor 分解下压缩半周期的**偏量项
+  # 仍留在 psi+**，故一个整周期累积 1.5 倍的 psi+_peak 而不是 1 倍（见
+  # homogeneous_cycles_to_damage 的 docstring）。这一点由本工况实测复核。
+  type: uniaxial_cyclic
+  stress_ratio_R: -1.0
+  # 4 个标定应力水平取自 sn_al1350_reference.yaml 的 calibration_targets，
+  # 此处不重复写死，由脚本读参考卡获得（避免两处漂移）。
+  cycle:
+    n_sub: 8            # 每周期子步数（PLAN 第 2 节）
+    dN_init: 100.0
+    dN_min: 1.0
+    dN_max: 1.0e+6      # 标定点寿命到 2.2e7，ΔN 上限要够大否则跑不完
+    dd_max: 0.02
+    grow_below: 0.5
+    factor: 2.0
+    N_max: 1.0e+8
+    peak_phase: null
+  # 起裂判据：d 首次超过该阈值即记为起裂。取小值以贴近「d 刚开始长」的解析定义
+  # （闭式解取 d_target = 0）。
+  nucleation_d: 1.0e-3
+
+output:
+  dir: data/calib_tension

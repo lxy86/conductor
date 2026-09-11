@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+import ufl
 from dolfinx import fem
+from mpi4py import MPI
 
 from pfwire import cyclejump as cj
 from pfwire import phasefield as pf
@@ -271,3 +273,82 @@ def test_material_requires_kappa_when_logarithmic(tmp_path):
     y.write_text(base + "fatigue: {alpha_T: 1e10, kapa: 0.1}\n", encoding="utf-8")
     with pytest.raises(KeyError, match="fatigue"):
         mat.load_material(y)  # 拼错的键必须报错，不能静默忽略
+
+
+# --------------------------------------------------------------------------
+# alpha_T / kappa 以 fem.Constant 进 UFL（DECISIONS.md D-16 / Phase 2.3 前置）
+# --------------------------------------------------------------------------
+def _unit_state(form: str, alpha_T: float, kappa=None):
+    from dolfinx import mesh as dmesh
+    from mpi4py import MPI
+
+    from pfwire.cyclejump import FatigueState
+    from pfwire.material import load_material
+    from pfwire.phasefield import PhaseFieldModel
+
+    msh = dmesh.create_unit_square(MPI.COMM_WORLD, 4, 4)
+    material = load_material("configs/material_al1350.yaml")
+    model = PhaseFieldModel(
+        material=material, split="amor", k_res=1.0e-6, dissipation="AT1"
+    )
+    return msh, FatigueState(
+        msh, model, alpha_T=alpha_T, form=form, kappa=kappa
+    )
+
+
+def _integrate_f(msh, state):
+    """在单位面积域上积分 f(alpha_bar)，即得该常值处的 f。"""
+    return msh.comm.allreduce(
+        fem.assemble_scalar(fem.form(state.f_alpha * ufl.dx)), op=MPI.SUM
+    )
+
+
+@pytest.mark.parametrize(
+    "form,alpha_T,kappa",
+    [("asymptotic", 3.407e6, None), ("logarithmic", 3.407e6, 0.14888)],
+)
+def test_constant_backed_f_alpha_matches_float_formula(form, alpha_T, kappa):
+    """Constant 进 UFL 后，装配出来的 f 必须与 float 公式逐点一致。"""
+    msh, state = _unit_state(form, alpha_T, kappa)
+    alpha_value = 5.0e7
+    state.alpha_bar.x.array[:] = alpha_value
+    state.alpha_bar.x.scatter_forward()
+    got = _integrate_f(msh, state)
+    expected = pf.fatigue_degradation(alpha_value, alpha_T, form, kappa)
+    assert got == pytest.approx(expected, rel=1e-12, abs=1e-14)
+
+
+def test_set_fatigue_params_changes_result_without_rebuilding_form():
+    """**D-16 的要点**：改 alpha_T/kappa 只写 Constant.value，form 不重建。
+
+    这里用同一个 `fem.form` 对象连续装配三组参数 —— 若参数是以 float 烘进
+    form 的，改值根本不会生效（结果不变）；能变且与 float 公式一致，
+    就证明它们确实是活的 Constant。标定要反复改这两个数，没有这一条
+    每试一个值都要重新编译一遍（实测数秒到数十秒）。
+    """
+    msh, state = _unit_state("logarithmic", 3.407e6, 0.14888)
+    alpha_value = 5.0e7
+    state.alpha_bar.x.array[:] = alpha_value
+    state.alpha_bar.x.scatter_forward()
+    compiled = fem.form(state.f_alpha * ufl.dx)  # 只编译这一次
+
+    seen = []
+    for aT, kp in ((3.407e6, 0.14888), (1.0e7, 0.14888), (3.407e6, 0.30)):
+        state.set_fatigue_params(alpha_T=aT, kappa=kp)
+        got = msh.comm.allreduce(fem.assemble_scalar(compiled), op=MPI.SUM)
+        expected = pf.fatigue_degradation(alpha_value, aT, "logarithmic", kp)
+        assert got == pytest.approx(expected, rel=1e-12)
+        seen.append(got)
+    # 三组参数必须给出三个不同的值，否则说明根本没生效
+    assert len(set(round(v, 12) for v in seen)) == 3
+
+
+def test_set_fatigue_params_validates():
+    msh, state = _unit_state("logarithmic", 3.407e6, 0.14888)
+    with pytest.raises(ValueError, match="alpha_T"):
+        state.set_fatigue_params(alpha_T=-1.0)
+    with pytest.raises(ValueError, match="kappa"):
+        state.set_fatigue_params(kappa=0.0)
+    _, asym = _unit_state("asymptotic", 3.407e6)
+    with pytest.raises(ValueError, match="不使用 kappa"):
+        asym.set_fatigue_params(kappa=0.2)
