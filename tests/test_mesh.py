@@ -576,8 +576,12 @@ def test_fretting_refinement_bands(fret):
 def test_fretting_production_spec_meets_d1_resolution():
     """生产默认参数必须满足 D-1 的分辨率要求；这条只查 spec，不建网格。"""
     spec = pfmesh.FrettingSpec()
-    assert spec.h_fine == pytest.approx(4.0e-6 / 4.0)  # = ell/4，ell = 4 µm
-    assert spec.contact_halfwidth == pytest.approx(24.2e-6, rel=1e-3)
+    # D-28：p0 由 500 降到 240 MPa（静态门槛），a 随之由 24.2 -> 11.62 µm；
+    # 为保住 D-1 的 a >= 5 ell，ell 由 4 -> 2 µm，故 h_fine = ell/4 = 0.5 µm。
+    assert spec.h_fine == pytest.approx(2.0e-6 / 4.0)
+    assert spec.contact_halfwidth == pytest.approx(11.62e-6, rel=1e-3)
+    # D-1 的两条都要满足：接触区单元数，以及 a/ell >= 5
+    assert spec.contact_halfwidth / 2.0e-6 >= 5.0
     assert spec.elements_across_contact >= 40.0, (
         "接触区只有 %.0f 个单元，D-1 要求足够分辨 x ≈ ±a"
         % spec.elements_across_contact

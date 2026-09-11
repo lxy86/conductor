@@ -504,15 +504,15 @@ class FrettingSpec:
     """试样宽度。D-1：与 R_wire 挂钩取 W = 2H = 6.4 mm，W/a ≈ 265，
     满足 St. Venant，使左右边界的约束不干扰接触区。"""
     H: float = 3.2e-3
-    contact_halfwidth: float = 24.2e-6
+    contact_halfwidth: float = 11.62e-6
     """Hertz 接触半宽 a。这里只用来定加密区范围；a 的计算在 loads.py（Phase 2.2），
     两处必须用同一个值，故由配置传入而不是各算各的。"""
     refine_halfwidth_factor: float = 3.0
     """加密区半宽 = factor × a（D-1 取 3）。滑移区在 |x| ≈ a 附近，
     取 3a 是为了让裂纹萌生后还能在加密区内走一段再判断转向。"""
-    refine_depth: float = 150.0e-6
+    refine_depth: float = 130.0e-6
     """加密区深度（D-1）。失效判据是绝对深度 100 µm，留 1.5 倍余量。"""
-    h_fine: float = 1.0e-6
+    h_fine: float = 0.5e-6
     h_coarse: float = 2.0e-4
     transition_factor: float = 8.0
     """过渡带宽度 = factor × refine_depth，控制单元从 h_fine 长到 h_coarse 的距离。

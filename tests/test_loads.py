@@ -34,7 +34,8 @@ from pfwire.mesh import FrettingSpec
 
 # 生产工况（PLAN Phase 2.4 + D-1）
 E_AL, NU_AL, R_WIRE = 69.0e9, 0.33, 1.875e-3
-P0, MU, Q_RATIO = 500.0e6, 0.7, 0.6
+# D-28：基准 p0 由 500 降到 240 MPa（500 MPa 下接触区静态起裂，见 D-27）
+P0, MU, Q_RATIO = 240.0e6, 0.7, 0.6
 CONDUCTOR_YAML = "configs/conductor_jl1_lha1_465_210.yaml"
 
 
@@ -188,7 +189,7 @@ def test_contact_half_width_matches_mesh_spec(contact):
     而不是依赖这个默认值。
     """
     assert contact.a == pytest.approx(FrettingSpec().contact_halfwidth, rel=1e-3)
-    assert contact.a == pytest.approx(24.2e-6, rel=1e-3)
+    assert contact.a == pytest.approx(11.62e-6, rel=1e-3)
 
 
 # --------------------------------------------------------------------------

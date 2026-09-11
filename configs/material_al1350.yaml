@@ -25,7 +25,17 @@ fracture:
                      # 注意 sigma_c <-> (G_c, ell) 的换算随此项而变，模型必须与之一致。
   mode: from_sigma_c_and_ell
   sigma_c: 185.0e+6   # Pa，取 sigma_c = sigma_u（PLAN.md 第 1 节原文）
-  ell: 4.0e-6        # m，数值正则化长度。接触半宽 a = 2 R p0/E*，
+  ell: 2.0e-6
+  # 2026-09-11 由 4.0e-6 改为 2.0e-6（DECISIONS.md D-28）。
+  # 原因是两条约束方向相反、在 ell = 4 µm 下**无解**：
+  #   D-27 实测：接触区不静态起裂要求 p0 <= 约 260 MPa；
+  #   D-1 规定：a = 2 R p0/E* >= 5 ell，ell = 4 µm 时反过来要求 p0 >= 413 MPa。
+  # 取 ell = 2 µm 后可用窗口变成 p0 ∈ [206, 260] MPa，选 p0 = 240 MPa，
+  # 得 a = 11.62 µm、a/ell = 5.81、接触区 2a/h = 46.5 个单元，两条都满足。
+  # **标定值不受影响**：AT1 关系 3Gc/(8 ell) = sigma_c^2/E 与 ell 无关，
+  # 均匀试样的起裂门槛与每周期累积只依赖 sigma_c 与 E（已重跑 calibrate_alpha_t.py 复核）。
+  # 连带：G_c 由 5.291 变为 2.645 J/m^2、K_IC,eff 由 0.604 变为 0.427 MPa√m
+  # （均为 sigma_c = sigma_u 锚定下的导出量，见 D-2）。        # m，数值正则化长度。接触半宽 a = 2 R p0/E*，
                      # R_wire = 1.875 mm（JL1/LHA1-465/210 的铝单线）时 a ≈ 24.2 um，
                      # 故 a/ell ≈ 6，满足 D-1 要求的 ell <~ a/5。
   # 导出：G_c = 8 sigma_c^2 ell/(3E) ≈ 5.29 J/m^2，

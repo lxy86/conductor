@@ -203,11 +203,13 @@ def test_load_material_al1350():
     assert m.sigma_u == pytest.approx(185.0e6)
     # yaml 选的是 from_sigma_c_and_ell，故 G_c 是导出量
     assert m.fracture.derived == "Gc"
-    assert m.fracture.ell == pytest.approx(4.0e-6)
+    # ell 于 2026-09-11 由 4 µm 改为 2 µm（D-28：p0 降到 240 MPa 后，
+    # D-1 的 a >= 5 ell 与 D-27 的静态门槛在 ell = 4 µm 下无解）
+    assert m.fracture.ell == pytest.approx(2.0e-6)
     assert m.fracture.sigma_c == pytest.approx(185.0e6)
-    # 手算锚点：8*(185e6)^2*4e-6/(3*69e9) = 5.291 J/m^2
-    assert m.fracture.Gc == pytest.approx(5.291, rel=1e-3)
-    assert m.fracture.kic_equivalent == pytest.approx(0.640e6, rel=1e-2)
+    # 手算锚点：Gc = 8 sigma_c^2 ell/(3E) = 8*(185e6)^2*2e-6/(3*69e9) = 2.645 J/m^2
+    assert m.fracture.Gc == pytest.approx(2.645, rel=1e-3)
+    assert m.fracture.kic_equivalent == pytest.approx(0.4526e6, rel=1e-2)
     # AT1 关系必须在载入后仍严格成立
     assert m.fracture.sigma_c == pytest.approx(
         mat.at1_sigma_c_from_gc_ell(m.elastic.E, m.fracture.Gc, m.fracture.ell),
