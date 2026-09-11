@@ -5,6 +5,7 @@
 - :func:`sent_mesh`：单边缺口拉伸（SENT）试样，用于验证 1（Miehe et al. 2010 第 5.1 节）。
   几何为 W×H 方板，中高度处自左边缘向内的水平缺口。
 - :func:`ct_mesh`：紧凑拉伸（CT）试样，用于验证 2（Carrara et al. 2020 §5.2.1 Fig. 12a）。
+- :func:`fretting_mesh`：微动疲劳试样（PLAN Phase 2.1），接触区局部加密的矩形块。
 
 两个缺口的做法不一样，别混
 --------------------------
@@ -54,6 +55,14 @@ __all__ = [
     "CT_TAG_NOTCH",
     "CT_TAG_OUTER",
     "ct_mesh",
+    "FrettingSpec",
+    "FrettingMesh",
+    "FRETTING_TAG_DOMAIN",
+    "FRETTING_TAG_TOP",
+    "FRETTING_TAG_BOTTOM",
+    "FRETTING_TAG_LEFT",
+    "FRETTING_TAG_RIGHT",
+    "fretting_mesh",
 ]
 
 #: 物理组标签。facet 组用于施加边界条件，cell 组标识材料域。
@@ -67,6 +76,12 @@ CT_TAG_HOLE_TOP = 21
 CT_TAG_HOLE_BOTTOM = 22
 CT_TAG_NOTCH = 23
 CT_TAG_OUTER = 24
+
+FRETTING_TAG_DOMAIN = 3
+FRETTING_TAG_TOP = 31
+FRETTING_TAG_BOTTOM = 32
+FRETTING_TAG_LEFT = 33
+FRETTING_TAG_RIGHT = 34
 
 
 @dataclass(frozen=True)
@@ -457,6 +472,164 @@ def ct_mesh(
         gmsh.finalize()
 
     return CtMesh(
+        mesh=data.mesh,
+        cell_tags=data.cell_tags,
+        facet_tags=data.facet_tags,
+        spec=spec,
+    )
+
+
+@dataclass(frozen=True)
+class FrettingSpec:
+    """微动疲劳试样的几何与网格尺寸（PLAN Phase 2.1，取值按 DECISIONS.md D-1）。
+
+    几何是一块矩形本体，**上表面平整、没有任何缺口** —— 微动裂纹靠接触面力
+    自己萌生，预置缺口就等于把答案写进输入了（Phase 2.4 的硬关卡正是
+    「裂纹必须自己出现在 x ≈ ±a 的滑移区」）。
+    接触压力与切向力由 loads.py 以 x 的表达式施加在 TOP 上（Phase 2.2）。
+
+    坐标系：x ∈ [−W/2, W/2]，y ∈ [−H, 0]，**上表面在 y = 0**，深度向下为负，
+    接触中心在 x = 0。这与 failure.DamageGrid 的「表面在 y_surface、深度向下」
+    约定一致，Phase 2.4 取裂纹深度时可直接用。
+
+    **PLAN 与 D-1 冲突时以 D-1 为准**（CLAUDE.md 硬约束 2）：
+    PLAN §Phase 2.1 原写「加密区 |x| ≤ 1.5a、深 1 mm」，D-1 修订为
+    「|x| ≤ 3a、深 150 µm」，同时 R_wire 改为 1.875 mm（导线定型，D-6）、
+    a ≈ 24.2 µm、ℓ = 4 µm、h_fine = ℓ/4 = 1 µm。
+    深度从 1 mm 收到 150 µm 是因为失效判据已改成**绝对深度 100 µm**：
+    再深的区域裂纹根本走不到，铺 1 µm 的网格纯属浪费。
+    """
+
+    W: float = 6.4e-3
+    """试样宽度。D-1：与 R_wire 挂钩取 W = 2H = 6.4 mm，W/a ≈ 265，
+    满足 St. Venant，使左右边界的约束不干扰接触区。"""
+    H: float = 3.2e-3
+    contact_halfwidth: float = 24.2e-6
+    """Hertz 接触半宽 a。这里只用来定加密区范围；a 的计算在 loads.py（Phase 2.2），
+    两处必须用同一个值，故由配置传入而不是各算各的。"""
+    refine_halfwidth_factor: float = 3.0
+    """加密区半宽 = factor × a（D-1 取 3）。滑移区在 |x| ≈ a 附近，
+    取 3a 是为了让裂纹萌生后还能在加密区内走一段再判断转向。"""
+    refine_depth: float = 150.0e-6
+    """加密区深度（D-1）。失效判据是绝对深度 100 µm，留 1.5 倍余量。"""
+    h_fine: float = 1.0e-6
+    h_coarse: float = 2.0e-4
+    transition_factor: float = 8.0
+    """过渡带宽度 = factor × refine_depth，控制单元从 h_fine 长到 h_coarse 的距离。
+
+    这个数不能拍脑袋。网格尺寸每个单元最多长约 1.2 倍才不出畸形单元，
+    从 1 µm 长到 200 µm 需要 ln(200)/ln(1.2) ≈ 29 个单元，对应距离约
+    h_fine·(1.2^30 − 1)/0.2 ≈ 1.2 mm = 8 × refine_depth —— 这就是默认值的由来。
+    取太小会尺寸突变、单元质量差；取太大则过渡带里塞满中等尺寸单元、白白抬高
+    单元数（最初误取 20 倍，生产网格 74899 单元，远超 PLAN 的约 4 万目标）。
+    """
+
+    def __post_init__(self) -> None:
+        for name in ("W", "H", "contact_halfwidth", "refine_halfwidth_factor",
+                     "refine_depth", "h_fine", "h_coarse", "transition_factor"):
+            value = float(getattr(self, name))
+            if not np.isfinite(value) or value <= 0.0:
+                raise ValueError("%s 必须为有限正数，收到 %r" % (name, value))
+        if self.h_fine > self.h_coarse:
+            raise ValueError("h_fine 不应大于 h_coarse")
+        if self.refine_halfwidth >= 0.5 * self.W:
+            raise ValueError("加密区半宽已达试样半宽，检查 contact_halfwidth")
+        if self.refine_depth >= self.H:
+            raise ValueError("加密区深度已达试样深度，检查 refine_depth")
+        # 这条是 D-1 的立论：接触半宽必须由足够多的单元分辨，否则
+        # 「裂纹在 x ≈ ±a 萌生」在数值上被抹平，Phase 2.4 的关卡就失去意义。
+        if self.contact_halfwidth < 5.0 * self.h_fine:
+            raise ValueError(
+                "接触半宽 a = %g 不足 5 个 h_fine = %g，接触区分辨不出来；"
+                "见 DECISIONS.md D-1" % (self.contact_halfwidth, self.h_fine)
+            )
+
+    @property
+    def refine_halfwidth(self) -> float:
+        return self.refine_halfwidth_factor * self.contact_halfwidth
+
+    @property
+    def elements_across_contact(self) -> float:
+        """接触区（宽 2a）上的单元数，D-1 的分辨率指标。"""
+        return 2.0 * self.contact_halfwidth / self.h_fine
+
+
+@dataclass(frozen=True)
+class FrettingMesh:
+    """:func:`fretting_mesh` 的返回值。"""
+
+    mesh: object
+    cell_tags: object
+    facet_tags: object
+    spec: FrettingSpec
+
+
+def fretting_mesh(
+    spec: FrettingSpec | None = None,
+    comm: MPI.Comm = MPI.COMM_WORLD,
+    *,
+    verbose: bool = False,
+) -> FrettingMesh:
+    """生成微动疲劳试样网格（矩形本体 + 接触区局部加密）。
+
+    上表面 y = 0 平整无缺口；物理组见模块常量。
+    """
+    import gmsh
+
+    spec = spec or FrettingSpec()
+    half_w = 0.5 * spec.W
+
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 1 if verbose else 0)
+        gmsh.model.add("fretting")
+        geo = gmsh.model.geo
+
+        p1 = geo.addPoint(-half_w, -spec.H, 0.0)
+        p2 = geo.addPoint(half_w, -spec.H, 0.0)
+        p3 = geo.addPoint(half_w, 0.0, 0.0)
+        p4 = geo.addPoint(-half_w, 0.0, 0.0)
+        l_bottom = geo.addLine(p1, p2)
+        l_right = geo.addLine(p2, p3)
+        l_top = geo.addLine(p3, p4)
+        l_left = geo.addLine(p4, p1)
+        surf = geo.addPlaneSurface(
+            [geo.addCurveLoop([l_bottom, l_right, l_top, l_left])]
+        )
+        geo.synchronize()
+
+        gmsh.model.addPhysicalGroup(2, [surf], tag=FRETTING_TAG_DOMAIN)
+        gmsh.model.addPhysicalGroup(1, [l_top], tag=FRETTING_TAG_TOP)
+        gmsh.model.addPhysicalGroup(1, [l_bottom], tag=FRETTING_TAG_BOTTOM)
+        gmsh.model.addPhysicalGroup(1, [l_left], tag=FRETTING_TAG_LEFT)
+        gmsh.model.addPhysicalGroup(1, [l_right], tag=FRETTING_TAG_RIGHT)
+
+        # 尺寸场：接触区下方的小方块用 h_fine，外部渐变到 h_coarse。
+        # Thickness 给得比加密区本身大一个量级，避免尺寸突变造成畸形单元。
+        field = gmsh.model.mesh.field
+        box = field.add("Box")
+        field.setNumber(box, "XMin", -spec.refine_halfwidth)
+        field.setNumber(box, "XMax", spec.refine_halfwidth)
+        field.setNumber(box, "YMin", -spec.refine_depth)
+        field.setNumber(box, "YMax", 0.0)
+        field.setNumber(box, "ZMin", -1.0)
+        field.setNumber(box, "ZMax", 1.0)
+        field.setNumber(box, "VIn", spec.h_fine)
+        field.setNumber(box, "VOut", spec.h_coarse)
+        field.setNumber(
+            box, "Thickness", spec.transition_factor * spec.refine_depth
+        )
+        field.setAsBackgroundMesh(box)
+        gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+        gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+        gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+
+        gmsh.model.mesh.generate(2)
+        data = gmshio.model_to_mesh(gmsh.model, comm, 0, gdim=2)
+    finally:
+        gmsh.finalize()
+
+    return FrettingMesh(
         mesh=data.mesh,
         cell_tags=data.cell_tags,
         facet_tags=data.facet_tags,

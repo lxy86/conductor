@@ -22,6 +22,17 @@ CT 试样（验证 2，Carrara 2020 Fig. 12a）
 9. 缺口是**有宽度的机加槽**（与 SENT 的零厚度切缝不同）：槽内是挖空的，
    故缺口段中线上不应有任何单元，而韧带段中线必须连通；
 10. 销孔周长与解析弧长比对（差应等于弦/弧比，由 facet 数决定）。
+
+微动试样（Phase 2.1，DECISIONS.md D-1）
+--------------------------------------
+11. 面积与**四条边长全部可精确对表**（矩形，全是直线，没有圆弧/切缝那些离散误差）；
+12. **接触区分辨率**：上表面 |x| <= a 段的 facet 数必须 ≈ 2a/h_fine。
+    这是 D-1 把 ℓ 从 40 µm 改成 4 µm 的全部理由 —— 接触半宽分辨不出来，
+    「裂纹在 x ≈ ±a 的滑移区萌生」（Phase 2.4 的硬关卡）就在数值上被抹平；
+13. 上表面必须**平整无缺口**：所有 TOP facet 都在 y = 0 上。微动裂纹要靠接触
+    面力自己萌生，预置任何几何缺口都等于把答案写进输入；
+14. 加密区内外的单元尺寸分档正确；
+15. 生产默认参数必须满足 D-1 的分辨率要求（2a/h >= 40），这条只查 spec 不建网格。
 """
 
 from __future__ import annotations
@@ -92,10 +103,22 @@ def test_notch_faces_are_exterior_but_ligament_is_interior(sent):
     )
 
 
+def global_tag_set(msh, tags) -> set[int]:
+    """所有 rank 上出现过的物理组标签的**并集**。
+
+    并行下每个 rank 只拥有分区里的那部分边界，`np.unique(tags.values)` 是
+    rank 局部的：2 进程下可能一个 rank 看到 {11,13}、另一个看到 {12,13}，
+    于是「缺少物理组 12」这种假失败就冒出来了。
+    这正是 CLAUDE.md「已知陷阱 3：并行下不要写按 rank 局部的断言」。
+    """
+    local = set(np.unique(tags.values).tolist()) if tags.values.size else set()
+    return set().union(*msh.comm.allgather(local))
+
+
 def test_physical_groups_present(sent):
     tags = sent.facet_tags
     assert tags is not None
-    present = set(np.unique(tags.values).tolist())
+    present = global_tag_set(sent.mesh, tags)
     for tag in (
         pfmesh.SENT_TAG_BOTTOM,
         pfmesh.SENT_TAG_TOP,
@@ -355,7 +378,7 @@ def test_ct_notch_is_a_hollow_slot_and_ligament_is_connected(ct):
 
 
 def test_ct_physical_groups_present(ct):
-    present = set(np.unique(ct.facet_tags.values).tolist())
+    present = global_tag_set(ct.mesh, ct.facet_tags)
     for tag in (
         pfmesh.CT_TAG_HOLE_TOP,
         pfmesh.CT_TAG_HOLE_BOTTOM,
@@ -416,3 +439,165 @@ def test_ct_spec_validation():
         pfmesh.CtSpec(W=-1.0)
     with pytest.raises(ValueError, match="notch_taper_length"):
         pfmesh.CtSpec(notch_taper_length=-1.0)
+
+
+# --------------------------------------------------------------------------
+# 微动试样（Phase 2.1）
+# --------------------------------------------------------------------------
+#: 测试用的缩小试样：几何逻辑与绝对尺寸无关，但保持 a 与 h_fine 的**比例**，
+#: 这样接触区分辨率这条测的还是真实口径。
+FRET_TEST = pfmesh.FrettingSpec(
+    W=0.8e-3,
+    H=0.4e-3,
+    contact_halfwidth=24.2e-6,
+    refine_depth=60.0e-6,
+    h_fine=4.0e-6,
+    h_coarse=5.0e-5,
+)
+
+
+@pytest.fixture(scope="module")
+def fret():
+    return pfmesh.fretting_mesh(FRET_TEST)
+
+
+def test_fretting_area_and_edges_are_exact(fret):
+    """矩形试样全是直线，面积与四条边长都应精确到机器精度。"""
+    msh = fret.mesh
+    spec = fret.spec
+    area = msh.comm.allreduce(
+        fem.assemble_scalar(fem.form(fem.Constant(msh, 1.0) * ufl.dx)), op=MPI.SUM
+    )
+    assert area == pytest.approx(spec.W * spec.H, rel=1e-10)
+
+    ds = ufl.Measure("ds", domain=msh, subdomain_data=fret.facet_tags)
+    one = fem.Constant(msh, 1.0)
+    for tag, expected in (
+        (pfmesh.FRETTING_TAG_TOP, spec.W),
+        (pfmesh.FRETTING_TAG_BOTTOM, spec.W),
+        (pfmesh.FRETTING_TAG_LEFT, spec.H),
+        (pfmesh.FRETTING_TAG_RIGHT, spec.H),
+    ):
+        L = msh.comm.allreduce(
+            fem.assemble_scalar(fem.form(one * ds(tag))), op=MPI.SUM
+        )
+        assert L == pytest.approx(expected, rel=1e-10)
+
+
+def test_fretting_physical_groups_present(fret):
+    present = global_tag_set(fret.mesh, fret.facet_tags)
+    for tag in (
+        pfmesh.FRETTING_TAG_TOP,
+        pfmesh.FRETTING_TAG_BOTTOM,
+        pfmesh.FRETTING_TAG_LEFT,
+        pfmesh.FRETTING_TAG_RIGHT,
+    ):
+        assert tag in present, "缺少物理组 %d" % tag
+
+
+def test_fretting_contact_zone_is_resolved(fret):
+    """上表面 |x| <= a 段的 facet 数须 ≈ 2a/h_fine（D-1 的分辨率口径）。"""
+    msh = fret.mesh
+    spec = fret.spec
+    fdim = msh.topology.dim - 1
+    a = spec.contact_halfwidth
+    facets = dmesh.locate_entities_boundary(
+        msh,
+        fdim,
+        lambda x: np.isclose(x[1], 0.0, atol=0.1 * spec.h_fine)
+        & (np.abs(x[0]) <= a),
+    )
+    n = msh.comm.allreduce(int(facets.size), op=MPI.SUM)
+    expected = spec.elements_across_contact
+    assert n == pytest.approx(expected, rel=0.15), (
+        "接触区只有 %d 个 facet，预期约 %.0f —— 分辨不出 x ≈ ±a 的滑移区"
+        % (n, expected)
+    )
+
+
+def test_fretting_top_surface_is_flat(fret):
+    """上表面必须平整：所有 TOP facet 的节点都在 y = 0 上。
+
+    微动裂纹要靠接触面力**自己**萌生，预置几何缺口等于把答案写进输入
+    （Phase 2.4 的硬关卡就是「裂纹必须自己出现在 x ≈ ±a」）。
+    """
+    msh = fret.mesh
+    fdim = msh.topology.dim - 1
+    top = fret.facet_tags.find(pfmesh.FRETTING_TAG_TOP)
+    # **不要**用 topology.connectivity(fdim, 0) 的顶点号去索引 geometry.x：
+    # 拓扑顶点编号与几何节点编号只在串行下碰巧一致，并行下分区重排后就对不上，
+    # 取到的是别处的坐标（实测偏差 3.4e-6，看起来像「表面不平」的假故障）。
+    # facet 中点由 dolfinx 自己按几何算，没有这个坑，且直边 facet 的中点精确。
+    mids = dmesh.compute_midpoints(msh, fdim, top) if top.size else np.zeros((0, 3))
+    worst = float(np.abs(mids[:, 1]).max()) if mids.size else 0.0
+    worst = msh.comm.allreduce(worst, op=MPI.MAX)
+    assert worst < 1e-15, "TOP 上有 facet 中点偏离 y = 0 达 %.3e，上表面不是平的" % worst
+
+
+def test_fretting_refinement_bands(fret):
+    """加密区内 ≈ h_fine，远场 ≈ h_coarse。"""
+    msh = fret.mesh
+    spec = fret.spec
+    V0 = fem.functionspace(msh, ("DG", 0))
+    vol = fem.Function(V0)
+    vol.interpolate(
+        fem.Expression(ufl.CellVolume(msh), V0.element.interpolation_points)
+    )
+    xc = fem.Function(V0)
+    xc.interpolate(
+        fem.Expression(ufl.SpatialCoordinate(msh)[0], V0.element.interpolation_points)
+    )
+    yc = fem.Function(V0)
+    yc.interpolate(
+        fem.Expression(ufl.SpatialCoordinate(msh)[1], V0.element.interpolation_points)
+    )
+    n = V0.dofmap.index_map.size_local
+    A, x, y = vol.x.array[:n], xc.x.array[:n], yc.x.array[:n]
+
+    def mean_h(mask):
+        tot = msh.comm.allreduce(float(A[mask].sum()), op=MPI.SUM)
+        cnt = msh.comm.allreduce(int(mask.sum()), op=MPI.SUM)
+        return np.sqrt(2.0 * tot / max(cnt, 1))
+
+    inside = (np.abs(x) < 0.8 * spec.refine_halfwidth) & (
+        y > -0.8 * spec.refine_depth
+    )
+    far = (np.abs(x) > 0.3 * spec.W) & (y < -0.5 * spec.H)
+    h_in, h_out = mean_h(inside), mean_h(far)
+    assert h_in == pytest.approx(spec.h_fine, rel=0.35)
+    # 远场**不能**要求正好等于 h_coarse：从 h_fine 长到 h_coarse 需要一段
+    # 有限的过渡距离（见 FrettingSpec.transition_factor 的推导），
+    # 而这个缩小的测试试样还没来得及长完就到边界了。
+    # 真正该测的是「分档确实生效」且远场不超过 h_coarse。
+    assert h_out > 5.0 * h_in
+    assert h_out <= spec.h_coarse * 1.05
+
+
+def test_fretting_production_spec_meets_d1_resolution():
+    """生产默认参数必须满足 D-1 的分辨率要求；这条只查 spec，不建网格。"""
+    spec = pfmesh.FrettingSpec()
+    assert spec.h_fine == pytest.approx(4.0e-6 / 4.0)  # = ell/4，ell = 4 µm
+    assert spec.contact_halfwidth == pytest.approx(24.2e-6, rel=1e-3)
+    assert spec.elements_across_contact >= 40.0, (
+        "接触区只有 %.0f 个单元，D-1 要求足够分辨 x ≈ ±a"
+        % spec.elements_across_contact
+    )
+    # 加密区要盖住滑移区并留出转向余量
+    assert spec.refine_halfwidth >= 2.0 * spec.contact_halfwidth
+    # 失效判据是绝对深度 100 µm，加密区必须比它深
+    assert spec.refine_depth > 100.0e-6
+    # St. Venant：左右边界离接触区足够远
+    assert spec.W / spec.contact_halfwidth > 100.0
+
+
+def test_fretting_spec_validation():
+    with pytest.raises(ValueError, match="h_fine"):
+        pfmesh.FrettingSpec(h_fine=1.0)
+    with pytest.raises(ValueError, match="接触区分辨不出来"):
+        pfmesh.FrettingSpec(contact_halfwidth=2.0e-6)
+    with pytest.raises(ValueError, match="加密区深度"):
+        pfmesh.FrettingSpec(refine_depth=4.0e-3)
+    with pytest.raises(ValueError, match="加密区半宽"):
+        pfmesh.FrettingSpec(contact_halfwidth=2.0e-3)
+    with pytest.raises(ValueError, match="必须为有限正数"):
+        pfmesh.FrettingSpec(W=-1.0)
