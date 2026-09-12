@@ -722,7 +722,9 @@ def run_fatigue(cfg: CaseConfig, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, A
                 "crack_extension": metrics.depth,
                 "max_d": report.max_d,
                 "max_alpha_bar": report.max_alpha_bar,
-                "max_dd": report.max_dd,
+                # 失败步的 max_dd 是 NaN，裸 NaN 不是合法 JSON
+                "max_dd": (None if report.max_dd != report.max_dd
+                           else float(report.max_dd)),
                 "rejections": report.rejections,
                 "n_surface_components": metrics.n_surface_components,
             }

@@ -115,6 +115,11 @@ def _make_bcs(msh, tags, fdim):
     return make
 
 
+def _json_number(value: float) -> float | None:
+    """NaN -> None。裸 NaN 不是合法 JSON。"""
+    return None if value != value else float(value)
+
+
 def _gate_report(
     history, contact: pfloads.ContactLoads, *, judge_depth_over_a: float = 2.0
 ) -> dict[str, Any]:
@@ -378,7 +383,10 @@ def run_fretting(
         history.append({
             "N": report.N, "delta_N": report.delta_N,
             "max_d": report.max_d, "max_alpha_bar": report.max_alpha_bar,
-            "max_dd": report.max_dd, "rejections": report.rejections,
+            # 失败的那一步 max_dd 是 NaN；裸 NaN 不是合法 JSON
+            # （Python 读得回来，JSON.parse 之类会炸），统一写成 null。
+            "max_dd": _json_number(report.max_dd),
+            "rejections": report.rejections,
             "depth": metrics.depth,
             "depth_over_a": metrics.depth / contact.a,
             "x_surface": metrics.x_surface,

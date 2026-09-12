@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 
@@ -135,3 +137,18 @@ def test_judge_depth_is_configurable(contact):
     h = history(deps, [-17.0] * 10, [-20.0] * 10)
     assert _gate_report(h, contact)["verdict"] == "inconclusive"
     assert _gate_report(h, contact, judge_depth_over_a=1.0)["verdict"] == "fail"
+
+
+def test_nan_max_dd_becomes_null_not_bare_nan():
+    """失败步的 max_dd 是 NaN；写进 result.json 必须是 null。
+
+    裸 NaN 不是合法 JSON —— Python 读得回来，别的解析器会炸。
+    这一步以前根本不进 history（driver.run 在失败/runout 上先 break），
+    现在进了，所以要堵住。
+    """
+    from pfwire.fretting import _json_number
+
+    assert _json_number(float("nan")) is None
+    assert _json_number(0.0) == 0.0
+    assert _json_number(1.5) == 1.5
+    assert json.dumps({"max_dd": _json_number(float("nan"))}) == '{"max_dd": null}'
