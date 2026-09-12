@@ -65,24 +65,23 @@ _DEPTH_RTOL = 1.0e-12
 
 
 def _locate_points(mesh: dmesh.Mesh, points: np.ndarray, spacing: float):
-    """把采样点定位到单元上，返回本 rank 拥有的 (点下标, 单元)。
+    """把采样点定位到单元上，返回 (点下标, 单元, 该点到该单元的距离平方)。
 
-    这段是并行正确性的关键：每个 rank 只认领落在自己分区里的点，采样时再取
-    全局 MAX 合并（见 :func:`_sample_points`）。定位只做一次、结果缓存复用。
+    这段是并行正确性的关键：每个 rank 认领落在自己分区（含 ghost 层）里的点，
+    采样时按「距离最小者胜」合并（见 :func:`_sample_points`）。
+    定位只做一次、结果缓存复用。
     最后做一次**全局**检查：任何点若没被任何 rank 认领，说明采样网格伸出了
     计算域 —— 这必须报错，否则那些点会永远保持 −inf 并被当成「无损伤」。
     """
     # 起始面那一行常正好落在边界上，给 bb_tree 一点 padding 免得浮点误差漏掉
     padding = 1.0e-6 * spacing
     tdim = mesh.topology.dim
-    # 「距离为 0」的判定容差：只用来吸收几何舍入（坐标 ~1e-3 m 时约 1e-19 m），
-    # 远小于任何真实的外插距离（半个单元 ~1e-7 m），所以不会放过外插。
-    tol2 = (1.0e-9 * spacing) ** 2
     tree = geometry.bb_tree(mesh, tdim, padding=padding)
     candidates = geometry.compute_collisions_points(tree, points)
     colliding = geometry.compute_colliding_cells(mesh, candidates, points)
     owned_idx: list[int] = []
     owned_cells: list[int] = []
+    owned_dist: list[float] = []
     for i in range(points.shape[0]):
         links = colliding.links(i)
         if links.size == 0:
@@ -94,20 +93,22 @@ def _locate_points(mesh: dmesh.Mesh, points: np.ndarray, spacing: float):
         # 外插半个单元就够把 P1 值顶到 1.03 以上（实测采样最大值 1.074>1，
         # 而 P1 单元内必是节点值的凸组合，这正是发现该 bug 的线索）。
         #
-        # 两件事都要做：
-        #  (1) 取距离最小的单元 —— 真正含该点的那个距离恰为 0；
-        #  (2) **距离不为 0 就不认领**。并行下 _sample_points 取全局 MAX 合并，
-        #      只要有一个 rank 在自己的 ghost 层上外插出偏高的值，MAX 就会选中它，
-        #      光靠 (1) 治不了跨 rank 的这一半。
+        # 所以取**距离最小**的单元——真正含该点的那个距离恰为 0。
+        # 距离本身要留着：并行下还得跨 rank 再比一次（见 _sample_points），
+        # 否则某个 rank 在自己 ghost 层上外插出的偏高值会被 MAX 合并选中。
+        #
+        # 早先这里是「距离 > 容差就不认领」，用的是绝对容差 (1e-9*spacing)^2。
+        # 那是错的：容差写在**距离平方**上，量纲与直觉差一个平方，
+        # 生产网格上直接判掉 73/33740 个点、算例一启动就报「采样点在计算域外」。
+        # 改成跨 rank 比距离，就不需要任何绝对尺度了。
         dist2 = geometry.squared_distance(
             mesh, tdim, np.asarray(links, dtype=np.int32),
             np.tile(points[i], (links.size, 1)),
         )
         best = int(np.argmin(dist2))
-        if float(dist2[best]) > tol2:
-            continue
         owned_idx.append(i)
         owned_cells.append(int(links[best]))
+        owned_dist.append(float(dist2[best]))
     owned_idx_arr = np.asarray(owned_idx, dtype=np.int32)
 
     claimed = np.zeros(points.shape[0], dtype=np.int32)
@@ -120,7 +121,11 @@ def _locate_points(mesh: dmesh.Mesh, points: np.ndarray, spacing: float):
             "采样网格有 %d/%d 个点落在计算域之外（采样区域超出了网格范围）。"
             % (missing, points.shape[0])
         )
-    return owned_idx_arr, np.asarray(owned_cells, dtype=np.int32)
+    return (
+        owned_idx_arr,
+        np.asarray(owned_cells, dtype=np.int32),
+        np.asarray(owned_dist, dtype=np.float64),
+    )
 
 
 def _sample_points(
@@ -129,18 +134,30 @@ def _sample_points(
     points: np.ndarray,
     owned_idx: np.ndarray,
     owned_cells: np.ndarray,
+    owned_dist: np.ndarray,
     shape: tuple[int, int],
 ) -> np.ndarray:
     """在缓存好的采样点上求值，allreduce 成所有 rank 一致的 (n_行, n_列) 数组。
 
-    未被本 rank 拥有的点填 −inf，再取全局 MAX —— 于是每个点由拥有它的 rank
-    提供真值。（用 MAX 而不是 SUM：ghost 区域可能被多个 rank 同时认领，
-    SUM 会把值加倍。）
+    合并规则是**距离最小者胜**，不是单纯取 MAX：一个点可能同时落在若干 rank
+    的 ghost 层里，而只有真正含它的那个 rank 距离为 0，其余 rank 是在单元外
+    **外插**。直接 MAX 会挑中外插出来的偏高值（这正是 D-29 的后一半）。
+    先按距离选出胜者，再对并列者取 MAX —— 并列只发生在距离同为 0 的单元边界上，
+    那里 P1 连续、两边给的值本就相同。
     """
-    local = np.full(points.shape[0], -np.inf)
+    n = points.shape[0]
+    local_d = np.full(n, np.inf)
     if owned_idx.size:
-        values = function.eval(points[owned_idx], owned_cells)
-        local[owned_idx] = np.asarray(values).ravel()
+        local_d[owned_idx] = owned_dist
+    best_d = np.empty_like(local_d)
+    comm.Allreduce(local_d, best_d, op=MPI.MIN)
+
+    local = np.full(n, -np.inf)
+    if owned_idx.size:
+        values = np.asarray(function.eval(points[owned_idx], owned_cells)).ravel()
+        # 只有「距离等于全局最小」的 rank 才把值投进去
+        keep = local_d[owned_idx] <= best_d[owned_idx]
+        local[owned_idx[keep]] = values[keep]
     glob = np.empty_like(local)
     comm.Allreduce(local, glob, op=MPI.MAX)
     return glob.reshape(shape)
@@ -199,7 +216,7 @@ class DamageGrid:
         points[:, 0] = xx.ravel()
         points[:, 1] = spec.y_surface - dd.ravel()
         self._points = points
-        self._owned_idx, self._owned_cells = _locate_points(
+        self._owned_idx, self._owned_cells, self._owned_dist = _locate_points(
             mesh, points, spec.spacing
         )
 
@@ -214,6 +231,7 @@ class DamageGrid:
             self._points,
             self._owned_idx,
             self._owned_cells,
+            self._owned_dist,
             self.shape,
         )
 
@@ -483,7 +501,8 @@ class CrackPathGrid:
         points[:, 0] = self.origin[0] + gx * ss.ravel() + nx * tt.ravel()
         points[:, 1] = self.origin[1] + gy * ss.ravel() + ny * tt.ravel()
         self._points = points
-        self._owned_idx, self._owned_cells = _locate_points(mesh, points, spacing)
+        (self._owned_idx, self._owned_cells,
+         self._owned_dist) = _locate_points(mesh, points, spacing)
 
     def sample(self, function: fem.Function) -> np.ndarray:
         """返回形状 (n_growth, n_transverse) 的全局数组，所有 rank 上一致。"""
@@ -493,6 +512,7 @@ class CrackPathGrid:
             self._points,
             self._owned_idx,
             self._owned_cells,
+            self._owned_dist,
             self.shape,
         )
 

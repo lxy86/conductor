@@ -283,6 +283,36 @@ def test_grid_sample_respects_p1_max_principle_on_submicron_mesh():
     assert got.min() >= nodal_min - 1e-12
 
 
+def test_every_point_is_claimed_when_mesh_is_mm_and_spacing_is_um():
+    """坐标按毫米、采样按微米时，域内的点必须**一个不漏**地被认领。
+
+    回归一次真实的启动失败：`_locate_points` 曾用绝对容差
+    ``(1e-9 * spacing)**2`` 判「距离是否为 0」—— 容差写在**距离平方**上，
+    量纲与直觉差一个平方，生产网格（6.4 mm 见方、采样间距 0.5 µm）上
+    直接判掉 73/33740 个点，算例一启动就报「采样点落在计算域之外」。
+    现在改成跨 rank 比距离取最小者，不再需要任何绝对尺度。
+    """
+    L, H = 6.4e-3, 3.2e-3            # 与 configs/fretting_base.yaml 同尺度
+    msh = dmesh.create_rectangle(
+        MPI.COMM_WORLD,
+        [np.array([-0.5 * L, -H]), np.array([0.5 * L, 0.0])],
+        [8, 8],
+        cell_type=dmesh.CellType.triangle,
+    )
+    V = fem.functionspace(msh, ("Lagrange", 1))
+    f = fem.Function(V)
+    f.interpolate(lambda p: 1.0 + 2.0e2 * p[0] - 3.0e2 * p[1])
+
+    # 间距比单元小三个量级，且表面那一行正好压在边界 y = 0 上
+    spec = fl.GridSpec(x_min=-1.0e-5, x_max=1.0e-5, depth_max=2.0e-5, spacing=0.5e-6)
+    got = fl.DamageGrid(msh, spec).sample(f)     # 有点没被认领就会抛异常
+    assert np.isfinite(got).all(), "有采样点没拿到值（−inf 没被合并掉）"
+    grid = fl.DamageGrid(msh, spec)
+    xx, dd = np.meshgrid(grid.x_coords, grid.depth_coords)
+    expected = 1.0 + 2.0e2 * xx - 3.0e2 * (spec.y_surface - dd)
+    assert np.allclose(got, expected, rtol=1e-10, atol=1e-12)
+
+
 def test_grid_outside_mesh_is_rejected():
     msh = dmesh.create_unit_square(MPI.COMM_WORLD, 8, 8)
     spec = fl.GridSpec(x_min=0.1, x_max=0.9, depth_max=2.0, spacing=0.1, y_surface=1.0)
