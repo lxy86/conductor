@@ -62,6 +62,21 @@ def test_gate_is_inconclusive_when_crack_too_shallow(contact):
     assert g["max_depth_over_a"] == pytest.approx(1.16, rel=1e-3)
 
 
+def test_shallow_crack_cannot_pass_even_if_all_three_look_satisfied(contact):
+    """回归：深度不够时**不得**判 pass，哪怕三条判据表面上都满足。
+
+    真实触发：重跑那次裂纹只有 2.5 µm（0.215a），比 tip_window（5 µm）还浅，
+    尖端窗口覆盖整条裂纹、所谓「尖端方向」就是表层方向，却报了「关卡通过」。
+    深度检查必须排在 pass 判定之前。
+    """
+    deps = np.linspace(2.0e-6, 0.215 * A, 8)
+    g = _gate_report(history(deps, [-16.7] * 8, np.linspace(-16.7, -13.7, 8)), contact)
+    assert g["turns_toward_normal"], "构造前提：三条判据表面上都满足"
+    assert g["initially_tilted"] and g["nucleates_in_slip_zone"]
+    assert not g["deep_enough_to_judge"]
+    assert g["verdict"] == "inconclusive" and not g["passed"]
+
+
 def test_gate_fails_when_deep_enough_but_never_turns(contact):
     """长够了深度仍不转向 —— 这才是真正的 fail。"""
     deps = np.linspace(2.0e-6, 3.0 * A, 12)

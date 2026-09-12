@@ -41,6 +41,7 @@ from dolfinx import default_scalar_type, fem
 from dolfinx import mesh as dmesh
 from mpi4py import MPI
 
+from . import checkpoint
 from . import loads as pfloads
 from . import mesh as pfmesh
 from .cyclejump import CycleJumpConfig, CycleJumpDriver, FatigueState
@@ -161,12 +162,18 @@ def _gate_report(
 
     max_depth = max((h["depth"] for h in history), default=0.0)
     deep_enough = max_depth >= judge_depth_over_a * a
-    if in_slip and tilted and turned:
-        verdict = "pass"
-    elif not deep_enough:
-        # 还没长到该看转向的深度就结束了 —— 这是「没看到」，不是「证伪」。
-        # stage I 斜向段本就延伸到接触半宽量级，之后才在本体应力主导下转 mode I。
+    if not deep_enough:
+        # 还没长到该看转向的深度就结束了 —— 这是「没看到」，不是「证伪」，
+        # **也不能算通过**。stage I 斜向段本就延伸到接触半宽量级，
+        # 之后才在本体应力主导下转 mode I。
+        #
+        # 深度检查必须排在 pass 之前。曾经把 pass 放在最前面，于是一条只有
+        # 2.5 µm（0.215a）的裂纹被判「关卡通过」—— 那个深度比 tip_window（5 µm）
+        # 还浅，尖端窗口覆盖了整条裂纹，所谓「尖端方向」其实就是表层方向，
+        # 「转向」二字无从谈起。
         verdict = "inconclusive"
+    elif in_slip and tilted and turned:
+        verdict = "pass"
     else:
         verdict = "fail"
 
@@ -197,8 +204,15 @@ def _gate_report(
     }
 
 
-def run_fretting(cfg, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any]:
-    """跑一个微动疲劳工况，返回 N_f、裂纹几何与 Phase 2.4 的关卡报告。"""
+def run_fretting(
+    cfg, comm: MPI.Comm = MPI.COMM_WORLD, *, resume: bool = False
+) -> dict[str, Any]:
+    """跑一个微动疲劳工况，返回 N_f、裂纹几何与 Phase 2.4 的关卡报告。
+
+    ``resume=True`` 时从 ``output_dir`` 下的断点接着跑（硬约束 5）。
+    断点里存的是**网格本身**，不是重新生成 —— adios4dolfinx 按 input 编号存值，
+    重建的网格顺序不同会静默读出乱序的值（见 pfwire/checkpoint.py）。
+    """
     raw = cfg.raw
     ccfg = dict(raw.get("contact", {}))
     fcfg = dict(raw.get("failure", {}))
@@ -227,8 +241,16 @@ def run_fretting(cfg, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any]:
         **{k: float(v) for k, v in mcfg.items()},
     )
     t0 = time.perf_counter()
-    fr = pfmesh.fretting_mesh(spec, comm)
-    msh, tags = fr.mesh, fr.facet_tags
+    resumed = None
+    if resume:
+        resumed = checkpoint.resume(cfg.output_dir, comm)
+        msh = resumed.mesh
+        tags = resumed.read_facet_tags()
+        log("info", "从断点续跑：%s（N=%.6g，已走 %d 步）",
+            resumed.path.name, resumed.meta["N"], resumed.meta["n_jumps"])
+    else:
+        fr = pfmesh.fretting_mesh(spec, comm)
+        msh, tags = fr.mesh, fr.facet_tags
     fdim = msh.topology.dim - 1
     n_cells = msh.topology.index_map(msh.topology.dim).size_global
     t_mesh = time.perf_counter() - t0
@@ -284,8 +306,16 @@ def run_fretting(cfg, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any]:
     )
     driver = CycleJumpDriver(solver, state, set_phase, jump_cfg)
     dump_every = int(lcfg.get("dump_every", 25))
+    save_every = int(cfg.save_fields_every)
 
     history: list[dict[str, Any]] = []
+    n_jumps_before = 0
+    if resumed is not None:
+        resumed.read_fields(solver, state)
+        driver.N = float(resumed.meta["N"])
+        driver.delta_N = float(resumed.meta["delta_N"])
+        history.extend(resumed.meta.get("history", []))
+        n_jumps_before = int(resumed.meta["n_jumps"])
     timers = {"crack": 0.0}
     t_solve = time.perf_counter()
 
@@ -377,11 +407,39 @@ def run_fretting(cfg, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any]:
                 report.max_d, report.max_alpha_bar,
                 time.perf_counter() - t_solve, timers["crack"])
         if dump_every > 0 and len(history) % dump_every == 0:
-            write_result(make_result("running", len(driver.reports),
+            write_result(make_result("running", n_jumps_before + len(driver.reports),
                                      time.perf_counter() - t_solve))
+        if save_every > 0 and len(history) % save_every == 0:
+            t_ck = time.perf_counter()
+            checkpoint.save(
+                cfg.output_dir, solver, state,
+                {"N": driver.N, "delta_N": driver.delta_N,
+                 "n_jumps": n_jumps_before + len(driver.reports),
+                 "history": history},
+                comm, facet_tags=tags,
+            )
+            log("info", "存断点：N=%.6g（%.1f s）", driver.N,
+                time.perf_counter() - t_ck)
         return criterion.is_failed(metrics)
 
-    reports = driver.run(stop=stop)
+    try:
+        reports = driver.run(stop=stop)
+    finally:
+        # **退出时一定存一次断点**，无论是跑完、runout 还是求解失败。
+        # 只按「每 save_every 步」存的话，算例死在两个倍数之间就白跑
+        # —— 而失败恰恰是最需要断点的时刻（D-30 那次 6 小时就是这么丢的）。
+        if save_every > 0:
+            try:
+                checkpoint.save(
+                    cfg.output_dir, solver, state,
+                    {"N": driver.N, "delta_N": driver.delta_N,
+                     "n_jumps": n_jumps_before + len(driver.reports),
+                     "history": history},
+                    comm, facet_tags=tags,
+                )
+                log("info", "退出前存断点：N=%.6g", driver.N)
+            except Exception as exc:          # 存断点失败不该盖掉真正的错误
+                log("error", "退出前存断点失败：%s", exc)
     t_solve = time.perf_counter() - t_solve
 
     final = reports[-1] if reports else None
@@ -395,7 +453,7 @@ def run_fretting(cfg, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any]:
     else:
         status = "completed"
 
-    result = make_result(status, len(reports), t_solve)
+    result = make_result(status, n_jumps_before + len(reports), t_solve)
     result["N_f"] = result["N_final"] if status == "failed" else None
     write_result(result)
     return result

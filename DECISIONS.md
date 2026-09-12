@@ -1055,3 +1055,64 @@ rank（真正含该点的那个距离恰为 0），只有它把值投进后面�
    并把这个深度写进配置而不是硬编码。
 
 **状态**：待用户确认后再改 gate，然后重跑。
+
+
+---
+
+## D-31 断点续跑落地（硬约束 5 此前在 fretting 路径上是空的）
+
+`output.save_fields_every` 一直被 `run_case` 解析，但**没有任何 case_type 真的用它**。
+D-30 里把它从 0 改成 50「恢复断点」是无效操作 —— 那次 79 步跑完，
+`data/fretting_base/` 下只有 result.json。
+
+### 网格必须从 .bp 读回，不能重建（实测，不是推测）
+adios4dolfinx 按网格的 *input* 全局编号存函数值。重建的网格编号顺序不同，
+`read_function` 照样「成功」返回，但值是乱的：
+
+| 读法 | 逐点误差 |
+|---|---|
+| 重新 `create_rectangle` 生成 | **1.995**（与场本身同量级，**不抛异常**） |
+| `adios4dolfinx.read_mesh` 从 .bp 读 | 0（串行）、2.22e-16（2 进程） |
+
+写入与读取的进程数可以不同。复现脚本 `data/_ckpt_probe.py`。
+
+所以接口设计成**让错误写法不可能发生**：网格只能由 `checkpoint.resume()` 给出，
+`Resumed.read_fields()` 检查 `solver.mesh is self.mesh`，不是同一张就抛错。
+与 BC 必须建在求解器自己函数空间上（`FunctionSpace.contains`，见「已知陷阱 1」）
+是同一类防呆 —— 靠纪律记不住，靠接口才拦得住。
+
+### 存什么
+`u`、`d`、**`d_old`**、`alpha_bar`、`psi_plus_prev` + 面标签 +
+标量 `N / delta_N / n_jumps / history`。
+
+- `d_old` 是 d 的 SNES 界约束下界，漏了它续跑就允许损伤倒退；
+- 面标签不存的话，续跑出来是个**没有外载**的算例（.bp 读回的网格不带物理组），
+  而且同样不报错。
+
+两槽轮换 `ckpt_0.bp` / `ckpt_1.bp`，指针文件 `checkpoint.json` 最后才原子替换：
+写到一半被杀只毁空闲槽。
+
+### 顺带修掉的两个真问题
+1. **失败退出时不存断点**。原先只按「每 save_every 步」存，死在两个倍数之间
+   就全丢 —— 而失败恰恰最需要断点（D-30 那 6 小时正是这么没的）。
+   改成 `try/finally`，跑完/runout/求解失败一律存一次。
+2. **runout 那一步不进 history，`N_final` 少报一整个 jump**。
+   `CycleJumpDriver.run` 在 runout 报告上先 `break`、再也不调 `stop`。
+   实测 `N_max = 600` 的算例真跑到了 600 却报 `N = 300`。
+   **这对 Phase 2.5 的 S–N 扫描是系统性错报**（runout 工况寿命少一步），
+   与断点无关，是独立的 bug。
+
+### 验收
+直跑到 N=600 vs 中断在 300 再续 —— N、步数一致，max_d 与 ᾱ 相对差 1e-13
+（网格分区不同的舍入）。
+
+对照必须让两边走**同一串 ΔN**：`delta_N = min(delta_N, N_max - N)` 会钳制步长，
+中断那次的最后一步被截短，而 cycle-jump 是外推格式，不同步长序列本来就给不同结果。
+第一版对照没注意这点，看到 1.4% 的差异，先去猜求解容差 —— 扫 tol_d 从 1e-4 到 1e-10
+四次结果完全一样（max_d≈0.012 时耦合弱、交错一两步就收敛，tol_d 根本不起作用，
+那个扫描没有区分力）。令 `grow_below = 0` 关掉步长增长后才比出真相。
+
+测试：`tests/test_checkpoint.py` 7 条（1/2/4 进程）、
+`tests/test_fretting_restart.py` 2 条端到端。
+另：`--resume` 的护栏一开始写在 dispatch **之后**，static/fatigue 先 return、
+护栏根本执行不到（那条测试因此把整个 SENT 算例跑了一遍才失败）。已移到 dispatch 之前。

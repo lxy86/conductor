@@ -25,3 +25,6 @@ data/benchmark_ct_fatigue/
 # 值得留的结论写进 DECISIONS.md，值得留的检查写成 tests/ 里的回归。
 data/_*.sh
 data/_*.log
+configs/_*.yaml
+data/_ckpt_e2e*/
+data/_ckpt_probe.bp/

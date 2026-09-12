@@ -1,0 +1,55 @@
+# 只为验证断点续跑的**管路**：粗网格、少步数，物理不作数。
+# （h_fine = ell 远粗于生产的 ell/4；这里比的是「续跑 == 没中断」，不是数值精度。）
+case_type: fretting
+material: configs/material_al1350.yaml
+model:
+  split: spectral
+  dissipation: AT1
+  k_res: 1.0e-6
+solver:
+  u_solver: newton
+  u_linesearch: basic
+  tol_d: 1.0e-4
+  max_iter: 300
+  relaxation: 0.5
+contact:
+  p0: 240.0e+6
+  mu: 0.7
+  Q_over_muP: 0.6
+  R_wire: 1.875e-3
+  counterpart: aluminum
+mesh:
+  type: fretting
+  W: 6.4e-3
+  H: 3.2e-3
+  refine_halfwidth_factor: 3.0
+  refine_depth: 30.0e-6
+  h_fine: 2.0e-6
+  h_coarse: 4.0e-4
+  transition_factor: 8.0
+loading:
+  type: fretting_contact
+  sigma_a: 35.0e+6
+  cycle:
+    n_sub: 8
+    dN_init: 100.0
+    dN_min: 1.0
+    dN_max: 1.0e+5
+    dd_max: 0.02
+    grow_below: 0.5
+    factor: 2.0
+    N_max: 250.0
+    peak_phase: null
+  dump_every: 1
+failure:
+  d_threshold: 0.95
+  depth: 100.0e-6
+  sample_halfwidth_factor: 3.0
+  sample_depth: 25.0e-6
+  sample_spacing: 2.0e-6
+  inclination_depth: 6.0e-6
+  tip_window: 6.0e-6
+  judge_depth_over_a: 2.0
+output:
+  dir: data/_ckpt_e2e
+  save_fields_every: 2

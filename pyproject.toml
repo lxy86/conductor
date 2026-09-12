@@ -16,3 +16,8 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    # 端到端算例级的用例，几十秒量级。默认仍然跑（正确性优先），
+    # 赶时间时用 -m "not slow" 跳过。
+    "slow: 跑完整算例的端到端用例（数十秒）",
+]

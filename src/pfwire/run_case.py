@@ -263,7 +263,7 @@ def load_case(path: str | Path) -> CaseConfig:
     _require_keys(
         solver_cfg,
         {"u_solver", "tol_d", "max_iter", "degree_u", "degree_d",
-         "log_iterations", "relaxation"},
+         "log_iterations", "relaxation", "u_linesearch"},
         "solver",
     )
     solver = SolverConfig(
@@ -274,6 +274,7 @@ def load_case(path: str | Path) -> CaseConfig:
         degree_d=int(solver_cfg.get("degree_d", 1)),
         log_iterations=bool(solver_cfg.get("log_iterations", False)),
         relaxation=float(solver_cfg.get("relaxation", 1.0)),
+        u_linesearch=str(solver_cfg.get("u_linesearch", "bt")),
     )
 
     output_cfg = dict(raw.get("output", {}))
@@ -873,8 +874,17 @@ def _fit_paris_or_explain(history, spec, cfg: CaseConfig, delta_P: float) -> dic
     }
 
 
-def run_case(path: str | Path, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any]:
+def run_case(
+    path: str | Path, comm: MPI.Comm = MPI.COMM_WORLD, *, resume: bool = False
+) -> dict[str, Any]:
     cfg = load_case(path)
+    # 护栏必须排在 dispatch **之前**：放在后面的话 static/fatigue 会先 return，
+    # 护栏永远执行不到 —— 传了 --resume 却从头重跑，日志还看着像续上了。
+    if resume and cfg.case_type != "fretting":
+        raise NotImplementedError(
+            "case_type=%r 还没实现续跑；不要静默忽略 --resume，"
+            "否则会从头重跑却看起来像续上了。" % (cfg.case_type,)
+        )
     if cfg.case_type == "static":
         return run_static(cfg, comm)
     if cfg.case_type == "fatigue":
@@ -882,7 +892,7 @@ def run_case(path: str | Path, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any
     if cfg.case_type == "fretting":
         from .fretting import run_fretting
 
-        return run_fretting(cfg, comm)
+        return run_fretting(cfg, comm, resume=resume)
     raise NotImplementedError("未知 case_type: %r" % (cfg.case_type,))
 
 
@@ -946,13 +956,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="运行单个工况")
     parser.add_argument("config", help="工况 yaml 路径")
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument(
+        "--resume", action="store_true",
+        help="从 output.dir 下的断点接着跑（硬约束 5）。断点每 "
+             "output.save_fields_every 个 jump 步存一次。",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(levelname)s %(name)s: %(message)s",
     )
     comm = MPI.COMM_WORLD
-    result = run_case(args.config, comm)
+    result = run_case(args.config, comm, resume=args.resume)
     if comm.rank == 0:
         print(_summarize(result))
     return (

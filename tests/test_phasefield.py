@@ -230,10 +230,17 @@ class UniaxialStrainCase:
     于是 AT1 的均匀解有闭式：d = max(0, 1 - (sigma_c/sigma)^2)，sigma = E e。
     """
 
-    def __init__(self, n: int = 4, u_solver: str = "linear", max_iter: int = 50):
+    def __init__(self, n: int = 4, u_solver: str = "linear", max_iter: int = 50,
+                 mesh=None):
+        """``mesh`` 给定时就用它，不另建。
+
+        断点续跑的测试需要把求解器建在**从 .bp 读回来的那张网格**上：
+        重建的网格 input 编号顺序不同，adios4dolfinx 会静默读出乱序的值
+        （见 pfwire/checkpoint.py 的模块文档）。
+        """
         self.material = make_material(nu=0.0)
         self.L = 10.0 * ELL
-        self.msh = dmesh.create_rectangle(
+        self.msh = mesh if mesh is not None else dmesh.create_rectangle(
             MPI.COMM_WORLD,
             [np.array([0.0, 0.0]), np.array([self.L, self.L])],
             [n, n],

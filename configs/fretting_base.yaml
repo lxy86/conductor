@@ -26,6 +26,12 @@ solver:
   u_solver: newton      # spectral 没有冻结形式，必须走精确非线性路径
   tol_d: 1.0e-4
   max_iter: 300
+  u_linesearch: basic   # D-31：第二次跑（带欠松弛）在 N=32343、深 2.5 µm 处
+                        # 报 u 的 SNESConvergedReason=-6（线搜索失败）。
+                        # spectral 分解的 psi+ 只在主应变过零处 C^0，u 的残差
+                        # 分片光滑，而回溯线搜索假设 merit 函数光滑，会在折点
+                        # 处找不到下降方向。basic 直接取整步。改的是求解算法，
+                        # 不动方程与参数。
   relaxation: 0.5       # D-30：第一次跑漏了这一行（其余生产配置全都有），
                         # 结果在 N=79975、深 13.5 µm 处交错迭代进极限环：
                         # 300 次停在 ‖Δd‖_inf=2.65e-3，ΔN 减半到 1 仍是**同一个值**

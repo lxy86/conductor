@@ -396,6 +396,15 @@ class SolverConfig:
     现取 atol=1e-8（约为地板的 100 倍）、rtol=1e-6，仍有 5 个数量级的下降余量。
     症状是**越细越早死**：载荷步越细、网格越密 -> ||F_0|| 越小、地板越高
     -> 相对目标越先掉到地板下。"""
+    u_linesearch: str = "bt"
+    """u 的 Newton 线搜索类型（PETSc ``-snes_linesearch_type``）。
+
+    默认 ``bt``（回溯）即 PETSc 的默认值。**spectral 分解下可能要改成 ``basic``**：
+    Miehe 谱分解的 psi+ 只在主应变过零处 C^0，u 的残差因此是分片光滑的，
+    而回溯线搜索假设 merit 函数光滑，会在折点处找不到下降方向、
+    报 SNESConvergedReason=-6（DIVERGED_LINE_SEARCH），哪怕整步 Newton 本身没问题。
+    ``basic`` 直接取整步、不做线搜索。改的是求解算法，不动方程与参数。
+    """
     log_iterations: bool = False  # 逐迭代日志（排查静默不收敛）
     relaxation: float = 1.0
     """交错更新中 d 的松弛因子：d <- d_prev + omega (d_solved - d_prev)。
@@ -418,6 +427,11 @@ class SolverConfig:
             raise ValueError("tol_d 必须为正、max_iter >= 1")
         if not 0.0 < self.relaxation <= 1.0:
             raise ValueError("relaxation 须在 (0,1] 内，收到 %r" % (self.relaxation,))
+        if self.u_linesearch not in ("bt", "basic", "l2", "cp", "nleqerr"):
+            raise ValueError(
+                "u_linesearch 只能是 PETSc 的 bt/basic/l2/cp/nleqerr，收到 %r"
+                % (self.u_linesearch,)
+            )
 
 
 @dataclass
@@ -578,6 +592,7 @@ class PhaseFieldSolver:
                 petsc_options_prefix="pfwire_u_newton_",
                 petsc_options={
                     "snes_type": "newtonls",
+                    "snes_linesearch_type": cfg.u_linesearch,
                     "snes_atol": cfg.snes_atol,
                     "snes_rtol": cfg.snes_rtol,
                     "snes_max_it": cfg.snes_max_it,

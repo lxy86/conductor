@@ -581,6 +581,14 @@ class CycleJumpDriver:
             out.append(report)
             steps += 1
             if not report.accepted or report.runout:
+                # **runout 的那一步也要交给 stop 记一笔**再退出。
+                # 原先是先 break，于是最后一次推进不进 history，
+                # N_final 取 history[-1]["N"] 就少报整整一个 jump
+                # （实测：N_max=600 的算例真跑到了 600，却报 N=300）。
+                # 这对 Phase 2.5 的 runout 工况是实打实的错报。
+                # 失败的那一步同样记录：它是「死在哪里」的现场。
+                if stop is not None:
+                    stop(report)
                 break
             if stop is not None and stop(report):
                 break
