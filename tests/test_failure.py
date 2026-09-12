@@ -101,6 +101,44 @@ def test_inclined_crack_angle(angle: float):
     )
 
 
+def test_tip_direction_tracks_the_turn_while_surface_angle_does_not():
+    """曲棍球杆形裂纹：上段 −30° 斜、下段竖直。
+
+    这正是 Phase 2.4 判据 3 要抓的形态。``inclination_deg`` 的窗口固定在表层，
+    量到的还是 −30°；``tip_direction_deg`` 的窗口贴着最深处，必须量到 ≈0°。
+    见 DECISIONS.md OPEN-2 —— 原先两者混用，于是转向根本测不出来。
+    """
+    x, depth = make_coords()
+    v = blank_field(x, depth)
+    bend = 8.0e-6
+    paint_inclined(v, x, depth, x_start=0.0, angle_deg=-30.0, depth_max=bend)
+    # 从拐点接着往下画竖直段（x 取斜段末端的位置）
+    x_bend = -np.tan(np.radians(30.0)) * bend
+    for r, dep in enumerate(depth):
+        if bend - 1e-15 <= dep <= 24.0e-6 + 1e-15:
+            v[r, int(np.argmin(np.abs(x - x_bend)))] = 1.0
+
+    m = fl.extract_crack(v, x, depth, inclination_depth=6.0e-6, tip_window=10.0e-6)
+    assert m.depth == pytest.approx(24.0e-6, abs=1e-15)
+    # 容差 5°：0.5 µm 网格上把 −30° 的斜线按列取整，6 µm 窗口内只有 6 行，
+    # 量到 −26.6° 是离散痕迹而非 bug。关键是它离 0° 远、离 −30° 近。
+    assert m.inclination_deg == pytest.approx(-30.0, abs=5.0), (
+        "表层窗口应当还量到最初的斜段"
+    )
+    assert m.tip_direction_deg == pytest.approx(0.0, abs=1.0), (
+        "尖端窗口应当量到已经转竖直的那一段"
+    )
+
+
+def test_tip_direction_defaults_to_the_inclination_window():
+    """不给 tip_window 时沿用 inclination_depth；直裂纹下两个量必须一致。"""
+    x, depth = make_coords()
+    v = blank_field(x, depth)
+    paint_inclined(v, x, depth, x_start=0.0, angle_deg=20.0, depth_max=20.0e-6)
+    m = fl.extract_crack(v, x, depth, inclination_depth=20.0e-6)
+    assert m.tip_direction_deg == pytest.approx(m.inclination_deg, abs=1e-9)
+
+
 def test_four_connectivity_would_break_inclined_crack():
     """反证：45° 斜裂纹只有对角相邻，4 连通会把它切成 21 段。"""
     from scipy import ndimage
@@ -207,6 +245,42 @@ def test_grid_sample_is_exact_for_linear_field():
         float(np.max(np.abs(got))), op=MPI.MIN
     )
     assert spread == pytest.approx(0.0)
+
+
+def test_grid_sample_respects_p1_max_principle_on_submicron_mesh():
+    """采样点必须落在**含它的**单元里，否则就是在单元外外插。
+
+    这条回归对着一个真 bug：dolfinx 的 ``compute_colliding_cells`` 用**绝对**
+    距离容差（约 1e-6；按 SI 米算就是 1 µm），而微动网格单元只有 0.5 µm，
+    于是碰撞列表里会混进隔壁单元，``links[0]`` 取到它就等于外插。
+    实测微动算例的采样 d 最大到 1.074 —— P1 三角形内是节点值的凸组合，
+    不可能超过节点最大值，这个「不可能」正是唯一的破绽。
+
+    注意上面那条线性场的测试**查不出**这个 bug：线性函数外插也精确。
+    必须用陡峭的非线性场 + 亚微米单元才暴露。
+    """
+    L = H = 20.0e-6
+    msh = dmesh.create_rectangle(
+        MPI.COMM_WORLD,
+        [np.array([-0.5 * L, -H]), np.array([0.5 * L, 0.0])],
+        [40, 40],                     # h = 0.5 µm，与生产微动网格同量级
+        cell_type=dmesh.CellType.triangle,
+    )
+    V = fem.functionspace(msh, ("Lagrange", 1))
+    f = fem.Function(V)
+    ell = 2.0e-6                      # 相场带宽，和生产一致
+    f.interpolate(lambda p: np.exp(-(((p[0] - 0.3 * p[1]) / ell) ** 2)))
+    f.x.scatter_forward()
+    nodal_max = msh.comm.allreduce(float(np.max(f.x.array)), op=MPI.MAX)
+    nodal_min = msh.comm.allreduce(float(np.min(f.x.array)), op=MPI.MIN)
+
+    spec = fl.GridSpec(
+        x_min=-0.45 * L, x_max=0.45 * L, depth_max=0.9 * H, spacing=0.5e-6
+    )
+    got = fl.DamageGrid(msh, spec).sample(f)
+    assert np.isfinite(got).all()
+    assert got.max() <= nodal_max + 1e-12
+    assert got.min() >= nodal_min - 1e-12
 
 
 def test_grid_outside_mesh_is_rejected():

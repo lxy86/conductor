@@ -26,6 +26,10 @@ solver:
   u_solver: newton      # spectral 没有冻结形式，必须走精确非线性路径
   tol_d: 1.0e-4
   max_iter: 300
+  relaxation: 0.5       # D-30：第一次跑漏了这一行（其余生产配置全都有），
+                        # 结果在 N=79975、深 13.5 µm 处交错迭代进极限环：
+                        # 300 次停在 ‖Δd‖_inf=2.65e-3，ΔN 减半到 1 仍是**同一个值**
+                        # —— 是振荡不是步长。欠松弛不改变不动点，只改迭代路径。
 
 contact:
   # 接触半宽 a 由 loads 从 (p0, R, E*) 算出，**不在这里写死** —— 见 D-25：
@@ -79,9 +83,18 @@ failure:
   sample_halfwidth_factor: 3.0     # |x| <= 3a，与加密区同宽
   sample_depth: 120.0e-6           # 略小于 refine_depth，保证采样点都在加密区内
   sample_spacing: 0.5e-6           # = h_fine；再细无意义（d 是 P1）
-  inclination_depth: 5.0e-6        # 量「初始倾角」的深度 = 2.5 ell；
+  inclination_depth: 5.0e-6        # 量「初始倾角」（判据 2）的**表层**窗口 = 2.5 ell；
                                    # 对应 10 个采样行，足够拟合角度
+  tip_window: 5.0e-6               # 量「尖端当前扩展方向」（判据 3）的窗口，贴着最深处。
+                                   # 必须和上一条分开：表层窗口固定在 min(5 µm, depth)，
+                                   # 裂纹深过它之后就永远在量最初那一段，按定义
+                                   # 反映不了转向（OPEN-2）。
+  judge_depth_over_a: 2.0          # 长到 2a = 23.2 µm 才判「是否转向」；没长到就记
+                                   # inconclusive 而不是 fail。stage I 斜向段本就
+                                   # 延伸到接触半宽量级，之后才转 mode I。
 
 output:
   dir: data/fretting_base
-  save_fields_every: 0
+  save_fields_every: 50   # D-30：原为 0，等于关掉断点 —— 违反硬约束 5。
+                          # 第一次跑崩在 6.0 h 处、无断点可续，6 小时全部作废。
+                          # 50 个 jump 步约 35 min 一个断点。

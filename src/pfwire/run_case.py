@@ -892,12 +892,16 @@ def _summarize(result: dict[str, Any]) -> str:
         gate = result.get("gate", {})
         hist = result.get("history") or []
         depth = hist[-1]["depth"] * 1e6 if hist else float("nan")
+        verdict = {"pass": "通过", "fail": "**未通过**",
+                   "inconclusive": "**判不了**（深度没到判定门槛）"}.get(
+            gate.get("verdict"), "**未通过**")
         return (
-            "状态=%s  jump 步数=%d  N=%.6g  裂纹深度=%.2f µm  "
-            "关卡=%s（滑移区萌生 %s，初始倾斜 %s，转向 %s）  耗时 %.1f s"
+            "状态=%s  jump 步数=%d  N=%.6g  裂纹深度=%.2f µm(%.2f a)  "
+            "关卡=%s（滑移区萌生 %s，初始倾斜 %s，尖端转向 %s）  耗时 %.1f s"
             % (
                 result["status"], result["n_jumps"], result["N_final"], depth,
-                "通过" if gate.get("passed") else "**未通过**",
+                gate.get("max_depth_over_a", float("nan")),
+                verdict,
                 gate.get("nucleates_in_slip_zone"),
                 gate.get("initially_tilted"),
                 gate.get("turns_toward_normal"),

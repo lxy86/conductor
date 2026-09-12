@@ -74,16 +74,40 @@ def _locate_points(mesh: dmesh.Mesh, points: np.ndarray, spacing: float):
     """
     # 起始面那一行常正好落在边界上，给 bb_tree 一点 padding 免得浮点误差漏掉
     padding = 1.0e-6 * spacing
-    tree = geometry.bb_tree(mesh, mesh.topology.dim, padding=padding)
+    tdim = mesh.topology.dim
+    # 「距离为 0」的判定容差：只用来吸收几何舍入（坐标 ~1e-3 m 时约 1e-19 m），
+    # 远小于任何真实的外插距离（半个单元 ~1e-7 m），所以不会放过外插。
+    tol2 = (1.0e-9 * spacing) ** 2
+    tree = geometry.bb_tree(mesh, tdim, padding=padding)
     candidates = geometry.compute_collisions_points(tree, points)
     colliding = geometry.compute_colliding_cells(mesh, candidates, points)
     owned_idx: list[int] = []
     owned_cells: list[int] = []
     for i in range(points.shape[0]):
         links = colliding.links(i)
-        if links.size > 0:
-            owned_idx.append(i)
-            owned_cells.append(links[0])
+        if links.size == 0:
+            continue
+        # **不能直接取 links[0]**：dolfinx 的 compute_colliding_cells 用的是
+        # **绝对**距离容差（约 1e-6，按米算就是 1 µm），而微动网格的单元只有
+        # 0.5 µm —— 于是「碰撞」列表里会混进离该点一两个单元远的邻居，
+        # 取第一个就等于在单元外**外插**。d 在裂纹带上 0→1 只跨 ell=2 µm，
+        # 外插半个单元就够把 P1 值顶到 1.03 以上（实测采样最大值 1.074>1，
+        # 而 P1 单元内必是节点值的凸组合，这正是发现该 bug 的线索）。
+        #
+        # 两件事都要做：
+        #  (1) 取距离最小的单元 —— 真正含该点的那个距离恰为 0；
+        #  (2) **距离不为 0 就不认领**。并行下 _sample_points 取全局 MAX 合并，
+        #      只要有一个 rank 在自己的 ghost 层上外插出偏高的值，MAX 就会选中它，
+        #      光靠 (1) 治不了跨 rank 的这一半。
+        dist2 = geometry.squared_distance(
+            mesh, tdim, np.asarray(links, dtype=np.int32),
+            np.tile(points[i], (links.size, 1)),
+        )
+        best = int(np.argmin(dist2))
+        if float(dist2[best]) > tol2:
+            continue
+        owned_idx.append(i)
+        owned_cells.append(int(links[best]))
     owned_idx_arr = np.asarray(owned_idx, dtype=np.int32)
 
     claimed = np.zeros(points.shape[0], dtype=np.int32)
@@ -205,6 +229,13 @@ class CrackMetrics:
     area: float
     n_surface_components: int
     max_damage: float
+    tip_direction_deg: float | None = None
+    """裂纹**尖端附近**的局部扩展方向（相对竖直，朝 +x 为正）。
+
+    与 ``inclination_deg`` 的区别是窗口位置：后者固定在表层（量「初始倾角」），
+    尖端长过窗口之后就不再反映当前方向。判「是否转向垂直」必须用这个量。
+    见 DECISIONS.md OPEN-2。
+    """
 
     @property
     def has_surface_crack(self) -> bool:
@@ -218,6 +249,7 @@ def extract_crack(
     *,
     threshold: float = 0.95,
     inclination_depth: float | None = None,
+    tip_window: float | None = None,
     min_rows_for_angle: int = 3,
 ) -> CrackMetrics:
     """在采样网格上提取「与表面连通」的裂纹几何。
@@ -227,7 +259,9 @@ def extract_crack(
     - ``x_surface`` 是该连通域在表面那一行的 x 形心（萌生位置）；
     - ``inclination_deg`` 是裂纹在表层窗口内相对**竖直方向**的倾角（朝 +x 为正），
       由各行 x 形心对深度做线性拟合得到；窗口默认取 10 个间距。
-      Phase 2.4 要判「初始倾斜后转向垂直」就用这个量。
+      它量的是**表层那一段**，用于 Phase 2.4 判据 2「初始倾斜」；
+    - ``tip_direction_deg`` 是同样的拟合但窗口贴着**最深处**，量当前扩展方向，
+      用于判据 3「转向垂直」。两者不可混用，见 DECISIONS.md OPEN-2。
     """
     values = np.asarray(values)
     if values.shape != (depth_coords.size, x_coords.size):
@@ -248,6 +282,7 @@ def extract_crack(
         area=0.0,
         n_surface_components=0,
         max_damage=max_damage,
+        tip_direction_deg=None,
     )
     if not damaged.any():
         return empty
@@ -293,6 +328,21 @@ def extract_crack(
         slope = float(np.polyfit(depths, centroids, 1)[0])
         inclination = math.degrees(math.atan(slope))
 
+    # 尖端局部方向：窗口贴着**最深处**往上取，随裂纹一起走
+    tip_win = window if tip_window is None else float(tip_window)
+    tip_direction: float | None = None
+    tip_rows = [
+        r
+        for r in range(mask.shape[0])
+        if depth_coords[r] >= depth - tip_win - 1e-12 and mask[r, :].any()
+    ]
+    if len(tip_rows) >= min_rows_for_angle:
+        tip_centroids = np.array(
+            [float(np.mean(x_coords[np.nonzero(mask[r, :])[0]])) for r in tip_rows]
+        )
+        tip_slope = float(np.polyfit(depth_coords[tip_rows], tip_centroids, 1)[0])
+        tip_direction = math.degrees(math.atan(tip_slope))
+
     return CrackMetrics(
         depth=depth,
         x_surface=x_surface,
@@ -301,6 +351,7 @@ def extract_crack(
         area=area,
         n_surface_components=int(surface_labels.size),
         max_damage=max_damage,
+        tip_direction_deg=tip_direction,
     )
 
 

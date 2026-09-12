@@ -114,10 +114,15 @@ def _make_bcs(msh, tags, fdim):
     return make
 
 
-def _gate_report(history, contact: pfloads.ContactLoads) -> dict[str, Any]:
+def _gate_report(
+    history, contact: pfloads.ContactLoads, *, judge_depth_over_a: float = 2.0
+) -> dict[str, Any]:
     """Phase 2.4 的三条硬关卡：萌生位置、初始倾角、是否转向。
 
     **只测量与报告，不做判断以外的事**。任何一条不满足都如实标 False。
+
+    ``judge_depth_over_a``：判「转向」所需的最小深度（单位 a）。裂纹没长到这个
+    深度就结束的话，verdict 记 ``inconclusive`` 而不是 ``fail``。
     """
     nucleation = next(
         (h for h in history if h["x_surface"] is not None), None
@@ -138,17 +143,36 @@ def _gate_report(history, contact: pfloads.ContactLoads) -> dict[str, Any]:
     with_angle = [h for h in history if h["inclination_deg"] is not None]
     incl0 = with_angle[0]["inclination_deg"] if with_angle else None
     depth0 = with_angle[0]["depth"] if with_angle else None
-    # 转向：取最后一个有倾角、且比初始测角处更深的点
-    later = [h for h in with_angle if depth0 is not None and h["depth"] > depth0]
-    incl_last = later[-1]["inclination_deg"] if later else None
-    turned = (
-        incl0 is not None and incl_last is not None
-        and abs(incl_last) < abs(incl0) - 2.0   # 明显更接近竖直
-    )
     tilted = incl0 is not None and abs(incl0) > 5.0
 
+    # 判据 3 必须用**尖端局部方向**，不能用上面那个表层窗口的量：
+    # inclination_deg 的窗口固定在 min(inclination_depth, depth)，裂纹深过窗口后
+    # 它就一直在量最初那一段，按定义反映不了当前扩展方向（DECISIONS.md OPEN-2）。
+    with_tip = [h for h in history if h.get("tip_direction_deg") is not None]
+    tip0 = with_tip[0]["tip_direction_deg"] if with_tip else None
+    tip_last = with_tip[-1]["tip_direction_deg"] if with_tip else None
+    turned = (
+        tip0 is not None and tip_last is not None
+        and abs(tip_last) < abs(tip0) - 2.0   # 明显更接近竖直
+    )
+    # 表层口径同时保留，便于对照（它**不**参与 passed）
+    later = [h for h in with_angle if depth0 is not None and h["depth"] > depth0]
+    incl_last = later[-1]["inclination_deg"] if later else None
+
+    max_depth = max((h["depth"] for h in history), default=0.0)
+    deep_enough = max_depth >= judge_depth_over_a * a
+    if in_slip and tilted and turned:
+        verdict = "pass"
+    elif not deep_enough:
+        # 还没长到该看转向的深度就结束了 —— 这是「没看到」，不是「证伪」。
+        # stage I 斜向段本就延伸到接触半宽量级，之后才在本体应力主导下转 mode I。
+        verdict = "inconclusive"
+    else:
+        verdict = "fail"
+
     return {
-        "passed": bool(in_slip and tilted and turned),
+        "passed": verdict == "pass",
+        "verdict": verdict,
         "x_init": x_init,
         "x_init_over_a": x_over_a,
         "slip_zone_over_a": [c / a, 1.0],
@@ -156,13 +180,19 @@ def _gate_report(history, contact: pfloads.ContactLoads) -> dict[str, Any]:
         "inclination_initial_deg": incl0,
         "inclination_initial_depth": depth0,
         "inclination_final_deg": incl_last,
+        "tip_direction_initial_deg": tip0,
+        "tip_direction_final_deg": tip_last,
         "n_points_with_angle": len(with_angle),
         "initially_tilted": bool(tilted),
         "turns_toward_normal": bool(turned),
+        "max_depth_over_a": max_depth / a,
+        "judge_depth_over_a": judge_depth_over_a,
+        "deep_enough_to_judge": bool(deep_enough),
         "note": (
-            "三条判据：(1) 萌生于滑移区 c<=|x|<=a；(2) 初始倾斜 |角|>5°；"
-            "(3) 随后转向竖直（|角|至少减小 2°）。任一不满足即 passed=False，"
-            "按硬约束 6 停下报告，不得调参凑。"
+            "三条判据：(1) 萌生于滑移区 c<=|x|<=a；(2) 初始倾斜 |角|>5°（表层窗口）；"
+            "(3) 尖端方向转向竖直（|角|至少减小 2°）。三条全中才 passed=True。"
+            "若裂纹没长到 judge_depth_over_a×a 就结束，verdict 记 inconclusive "
+            "——「没看到」不等于「证伪」。按硬约束 6 停下报告，不得调参凑。"
         ),
     }
 
@@ -240,6 +270,8 @@ def run_fretting(cfg, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any]:
         d_threshold=float(fcfg["d_threshold"]), depth=float(fcfg["depth"])
     )
     incl_depth = float(fcfg["inclination_depth"])
+    tip_win = float(fcfg.get("tip_window", incl_depth))
+    judge_depth = float(fcfg.get("judge_depth_over_a", 2.0))
 
     # --- cycle-jump ---
     c = dict(lcfg["cycle"])
@@ -288,7 +320,9 @@ def run_fretting(cfg, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any]:
         }
         if status == "running":
             out["note"] = "运行中的快照，不是最终结果"
-        out["gate"] = _gate_report(history, contact)
+        out["gate"] = _gate_report(
+            history, contact, judge_depth_over_a=judge_depth
+        )
         return out
 
     def write_result(out) -> None:
@@ -308,6 +342,7 @@ def run_fretting(cfg, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any]:
         metrics = extract_crack(
             values, grid.x_coords, grid.depth_coords,
             threshold=criterion.d_threshold, inclination_depth=incl_depth,
+            tip_window=tip_win,
         )
         timers["crack"] += time.perf_counter() - t_rec
         history.append({
@@ -322,6 +357,7 @@ def run_fretting(cfg, comm: MPI.Comm = MPI.COMM_WORLD) -> dict[str, Any]:
             ),
             "x_tip": metrics.x_tip,
             "inclination_deg": metrics.inclination_deg,
+            "tip_direction_deg": metrics.tip_direction_deg,
             "n_surface_components": metrics.n_surface_components,
             "max_damage_sampled": metrics.max_damage,
         })

@@ -20,3 +20,8 @@ data/_*.json
 # benchmark_ct_fatigue 是 D-22/D-23 那次被取代的运行（存档见 data/_ct_h2_norelax/），
 # 其输出目录不入库以免与系列算例混淆。
 data/benchmark_ct_fatigue/
+
+# 一次性诊断脚本与日志（data/_*.sh、data/_*.log）：查问题时的脚手架，不入库。
+# 值得留的结论写进 DECISIONS.md，值得留的检查写成 tests/ 里的回归。
+data/_*.sh
+data/_*.log
