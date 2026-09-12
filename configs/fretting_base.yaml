@@ -101,6 +101,6 @@ failure:
 
 output:
   dir: data/fretting_base
-  save_fields_every: 50   # D-30：原为 0，等于关掉断点 —— 违反硬约束 5。
-                          # 第一次跑崩在 6.0 h 处、无断点可续，6 小时全部作废。
-                          # 50 个 jump 步约 35 min 一个断点。
+  save_fields_every: 25   # D-31：断点（此前 fretting 路径根本没实现存场，改这个值无效）。
+                          # 前三次跑崩都无断点可续，合计白丢约 17 小时。
+                          # 25 个 jump 步：临近墙时约 44 s/步，即约 18 min 一个断点。

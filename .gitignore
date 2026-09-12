@@ -28,3 +28,7 @@ data/_*.log
 configs/_*.yaml
 data/_ckpt_e2e*/
 data/_ckpt_probe.bp/
+
+# 断点：正在跑的算例每十几分钟改一次，且 .bp 是二进制目录，不入库
+data/**/checkpoint.json
+data/**/ckpt_*.bp/
