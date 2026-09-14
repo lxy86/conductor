@@ -19,6 +19,8 @@ B. 求解器（均匀单轴应变算例，有闭式解）
 
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 import pytest
 import ufl
@@ -460,3 +462,55 @@ def test_tiny_load_increment_still_converges():
         assert result.converged, f"第 {k} 个微小增量就不收敛了：{result.failure_mode}"
         case.solver.commit_step()
     assert case.solver.max_damage() > 0.0
+
+
+def _with_relaxation(case, omega: float, max_iter: int | None = None):
+    """把 case 的求解器换成指定松弛因子的（SolverConfig 是 frozen 的，只能重建）。"""
+    cfg = dataclasses.replace(
+        case.solver.config, relaxation=omega,
+        **({} if max_iter is None else {"max_iter": max_iter}))
+    case.solver = pf.PhaseFieldSolver(
+        case.msh, case.solver.model, bcs_u=case.make_bcs, config=cfg)
+    return case
+
+
+@pytest.mark.parametrize("omega", [1.0, 0.5, 0.25])
+def test_convergence_test_does_not_loosen_with_relaxation(omega: float):
+    """欠松弛**不得**把收敛判据放宽。
+
+    交错更新是 d <- d_prev + omega (d_solved - d_prev)，所以相邻两次迭代之差
+    天然带一个 omega 因子。若直接拿它和 tol_d 比，等于把容差放宽 1/omega 倍。
+    真实触发：微动算例在 N=80012（深 13.5 µm）的状态上冻结 alpha 反复求解，
+    omega=0.05 的残差 8.49e-5 / 8.69e-5 / 8.82e-5 **不降反升**，
+    却因为压在 tol_d=1e-4 之下被判「收敛」。
+
+    这里用同一个载荷步在不同 omega 下求解：收敛与否、以及收敛到的解，
+    都不该随 omega 变。
+    """
+    case = _with_relaxation(UniaxialStrainCase(), omega)
+    result = case.apply_ratio(1.30)
+    assert result.converged, result.failure_mode
+    expected = case.analytic_damage(1.30)
+    assert case.solver.max_damage() == pytest.approx(expected, rel=2e-3), (
+        "omega=%g 下收敛到的解与闭式解不符 —— 判据被放宽、提前收手了" % omega
+    )
+
+
+def test_relaxed_iterate_difference_is_rescaled_before_the_tolerance_test():
+    """直接检查那一步换算：报出来的 ‖Δd‖ 必须是**未松弛**的步长。
+
+    同一个状态跑一次迭代，omega=1 与 omega=0.5 报出的首次残差应当相同
+    （而不是差一倍）—— 差一倍就说明 omega 又漏进判据里了。
+    """
+    full = _with_relaxation(UniaxialStrainCase(), 1.0, max_iter=1)
+    full.u_applied.value = 1.30 * full.strain_c * full.L
+    d_full = full.solver.solve_step().history[0][1]
+
+    half = _with_relaxation(UniaxialStrainCase(), 0.5, max_iter=1)
+    half.u_applied.value = 1.30 * half.strain_c * half.L
+    d_half = half.solver.solve_step().history[0][1]
+
+    assert d_half == pytest.approx(d_full, rel=1e-9), (
+        "omega=0.5 报的首次残差 %.6g 与 omega=1 的 %.6g 不同 —— "
+        "松弛因子漏进收敛判据了" % (d_half, d_full)
+    )

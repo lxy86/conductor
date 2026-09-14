@@ -209,6 +209,98 @@ def _gate_report(
     }
 
 
+#: 失稳判别时最多推多少次交错迭代。墙上实测约 2700 次走完 13.5 -> 81.5 µm，
+#: 每次约 0.7 s，故 4000 次约 45 min —— 相对动辄数小时的算例可以接受。
+RUNAWAY_MAX_ITER = 4000
+
+
+def probe_runaway(
+    driver, solver, state, set_phase, measure, *,
+    failure_depth: float, judge_depth: float,
+    max_iter: int = RUNAWAY_MAX_ITER, log=lambda *a: None,
+) -> dict[str, Any]:
+    """交错求解硬失败后，判别这是**失稳扩展**还是求解器问题。
+
+    做法（与 data/_does_it_run.py 手工诊断一致）：再做一个周期的 ᾱ 累积，
+    然后**只推交错迭代、不判收敛**，跟踪裂纹深度。
+
+    - 深度越过 ``judge_depth`` 而残差始终不降 -> ``unstable``：
+      起点与终点之间不存在平衡解，裂纹在此处失稳扩展，N_f 就落在这一步；
+    - 迭代自己收敛了 -> ``converged``：之前只是爬得慢，不是失稳；
+    - 子求解器崩了但深度已越过 ``judge_depth`` -> 仍记 ``unstable``
+      （韧带贯穿后刚度趋于奇异，这是最终断裂的数值表现）；
+    - 其余 -> ``inconclusive``，按硬约束 6 如实报告，不猜。
+
+    ⚠️ **会改变 solver / state**，只能在算例已经结束、结果已记录之后调用。
+    """
+    delta_alpha, peak_phase = driver.explicit_cycle()
+    state.extrapolate(0.0, delta_alpha)      # ΔN = 1，不外推
+    set_phase(peak_phase)
+
+    omega = float(solver.config.relaxation)
+    tol = float(solver.config.tol_d)
+    n_owned = solver.V_d.dofmap.index_map.size_local
+    prev = solver.d.x.array.copy()
+    trace: list[dict[str, float]] = []
+    start = measure().depth
+    verdict, note = "inconclusive", ""
+
+    for k in range(1, max_iter + 1):
+        try:
+            solver.solve_displacement()
+            solver.solve_damage()
+        except RuntimeError as exc:
+            m = measure()
+            trace.append({"iter": k, "residual": None, "depth": m.depth})
+            if m.depth >= judge_depth:
+                verdict = "unstable"
+                note = ("子求解器在深度 %.2f µm 处崩溃（%s）；此前深度已单调越过 "
+                        "%.2f µm，判为失稳扩展" % (m.depth * 1e6, str(exc)[:60],
+                                                  judge_depth * 1e6))
+            else:
+                note = "子求解器在深度 %.2f µm 处崩溃，尚未越过判定深度：%s" % (
+                    m.depth * 1e6, str(exc)[:80])
+            break
+        if omega < 1.0:
+            solver.d.x.array[:] = prev + omega * (solver.d.x.array - prev)
+            solver.d.x.scatter_forward()
+        local = float(np.max(np.abs(
+            solver.d.x.array[:n_owned] - prev[:n_owned]), initial=0.0))
+        residual = solver.comm.allreduce(local, op=MPI.MAX) / omega
+        prev = solver.d.x.array.copy()
+
+        if residual < tol:
+            m = measure()
+            trace.append({"iter": k, "residual": residual, "depth": m.depth})
+            verdict = "converged"
+            note = "推到第 %d 次迭代自己收敛了，深度 %.2f µm —— 不是失稳，是爬得慢" % (
+                k, m.depth * 1e6)
+            break
+        if k % 50 == 0 or k <= 3:
+            m = measure()
+            trace.append({"iter": k, "residual": residual, "depth": m.depth})
+            if m.depth >= failure_depth:
+                verdict = "unstable"
+                note = "深度在无平衡解的情况下越过失效判据 %.0f µm" % (
+                    failure_depth * 1e6)
+                break
+            if m.depth >= judge_depth and residual > tol:
+                verdict = "unstable"
+                note = ("深度从 %.2f µm 单调推进到 %.2f µm（越过 %.2f µm）"
+                        "而残差始终不降，其间不存在平衡解"
+                        % (start * 1e6, m.depth * 1e6, judge_depth * 1e6))
+                break
+    else:
+        m = measure()
+        note = "推满 %d 次迭代仍未定论，深度 %.2f µm" % (max_iter, m.depth * 1e6)
+
+    log("info", "失稳判别：%s —— %s", verdict, note)
+    return {"verdict": verdict, "note": note, "depth_start": start,
+            "depth_end": trace[-1]["depth"] if trace else start,
+            "n_iterations": trace[-1]["iter"] if trace else 0,
+            "trace": trace}
+
+
 def run_fretting(
     cfg, comm: MPI.Comm = MPI.COMM_WORLD, *, resume: bool = False
 ) -> dict[str, Any]:
@@ -371,6 +463,14 @@ def run_fretting(
             yaml.safe_dump(raw, sort_keys=False, allow_unicode=True), encoding="utf-8"
         )
 
+    def measure():
+        """当前 d 场的裂纹几何。record 与失稳判别共用同一套口径。"""
+        return extract_crack(
+            grid.sample(solver.d), grid.x_coords, grid.depth_coords,
+            threshold=criterion.d_threshold, inclination_depth=incl_depth,
+            tip_window=tip_win,
+        )
+
     def record(report):
         t_rec = time.perf_counter()
         values = grid.sample(solver.d)
@@ -451,9 +551,19 @@ def run_fretting(
     t_solve = time.perf_counter() - t_solve
 
     final = reports[-1] if reports else None
+    runaway: dict[str, Any] | None = None
     if final is not None and not final.accepted:
-        status = "not_converged"
         log("error", "cycle-jump 在 N=%.5g 失败：%s", final.N, final.failure_mode)
+        # 硬失败不等于「算例废了」：也可能是裂纹在此处**失稳扩展**，
+        # 即起点与终点之间根本没有平衡解可收敛（D-32）。判别一次再下结论。
+        log("info", "开始失稳判别（最多 %d 次迭代）……", RUNAWAY_MAX_ITER)
+        runaway = probe_runaway(
+            driver, solver, state, set_phase, measure,
+            failure_depth=criterion.depth,
+            judge_depth=judge_depth * contact.a,
+            log=log,
+        )
+        status = "failed_unstable" if runaway["verdict"] == "unstable" else "not_converged"
     elif final is not None and final.runout:
         status = "runout"
     elif history and history[-1]["depth"] >= criterion.depth:
@@ -462,6 +572,11 @@ def run_fretting(
         status = "completed"
 
     result = make_result(status, n_jumps_before + len(reports), t_solve)
-    result["N_f"] = result["N_final"] if status == "failed" else None
+    if runaway is not None:
+        result["runaway"] = runaway
+    # failed = 稳定扩展到 100 µm；failed_unstable = 在此处失稳扩展，
+    # 两者的 N_f 都有效（后者的裂纹在同一个周期内穿过失效深度，见 D-32）
+    result["N_f"] = (result["N_final"]
+                     if status in ("failed", "failed_unstable") else None)
     write_result(result)
     return result

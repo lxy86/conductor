@@ -806,6 +806,16 @@ class PhaseFieldSolver:
                 initial=0.0,
             )
             delta = self.comm.allreduce(local, op=MPI.MAX)
+            # **判据要用未松弛的增量**：上面那个差已经被 omega 缩过一遍
+            # （d <- d_prev + omega (d_solved - d_prev)），直接拿去和 tol_d 比，
+            # 等于把容差放宽 1/omega 倍 —— omega 越小越容易「收敛」。
+            # 实测（微动算例在 N=80012、深 13.5 µm 的状态上冻结 alpha 反复求解）：
+            #   omega=0.25 -> 4.24e-4 然后逐位 0，是真不动点；
+            #   omega=0.05 -> 8.49e-5 / 8.69e-5 / 8.82e-5，残差**不降反升**，
+            #                 却因为压在 tol_d=1e-4 下面而被判「收敛」。
+            # 这正是「静默不收敛」那一类最难查的失败：不报错，只是悄悄接受
+            # 一个没到不动点的解。除以 omega 还原成真实步长，判据就与 omega 无关。
+            delta /= cfg.relaxation
             flips, sign_state = self._count_sign_flips(sign_state)
             history.append((iteration, float(delta), flips))
             if cfg.log_iterations:

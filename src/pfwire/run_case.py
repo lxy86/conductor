@@ -907,9 +907,17 @@ def _summarize(result: dict[str, Any]) -> str:
         verdict = {"pass": "通过", "fail": "**未通过**",
                    "inconclusive": "**判不了**（深度没到判定门槛）"}.get(
             gate.get("verdict"), "**未通过**")
+        run = result.get("runaway")
+        extra = ""
+        if run is not None:
+            extra = "  失稳判别=%s（%.2f -> %.2f µm，%d 次迭代）" % (
+                run["verdict"], run["depth_start"] * 1e6,
+                run["depth_end"] * 1e6, run["n_iterations"])
+        if result.get("N_f") is not None:
+            extra += "  N_f=%.6g" % result["N_f"]
         return (
             "状态=%s  jump 步数=%d  N=%.6g  裂纹深度=%.2f µm(%.2f a)  "
-            "关卡=%s（滑移区萌生 %s，初始倾斜 %s，尖端转向 %s）  耗时 %.1f s"
+            "关卡=%s（滑移区萌生 %s，初始倾斜 %s，尖端转向 %s）%s  耗时 %.1f s"
             % (
                 result["status"], result["n_jumps"], result["N_final"], depth,
                 gate.get("max_depth_over_a", float("nan")),
@@ -917,6 +925,7 @@ def _summarize(result: dict[str, Any]) -> str:
                 gate.get("nucleates_in_slip_zone"),
                 gate.get("initially_tilted"),
                 gate.get("turns_toward_normal"),
+                extra,
                 result["timing_s"]["solve"],
             )
         )
@@ -976,7 +985,7 @@ def main(argv: list[str] | None = None) -> int:
         0
         if result["status"]
         in ("completed", "damage_limit", "past_peak", "crack_limit", "runout",
-            "failed")
+            "failed", "failed_unstable")
         else 1
     )
 
