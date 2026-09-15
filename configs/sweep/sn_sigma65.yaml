@@ -1,0 +1,56 @@
+# Phase 2.5 S–N 扫描，σ_a = 65 MPa。**由 scripts/make_sweep.py 生成，不要手改**
+# —— 手改会让它与 configs/fretting_base.yaml 脱钩，而 S–N 曲线的前提
+#    是六个工况除 σ_a 外逐字相同。要改就改模板再重新生成。
+case_type: fretting
+contact:
+  Q_over_muP: 0.6
+  R_wire: 0.001875
+  counterpart: aluminum
+  mu: 0.7
+  p0: 240000000.0
+failure:
+  d_threshold: 0.95
+  depth: 0.0001
+  inclination_depth: 5.0e-06
+  judge_depth_over_a: 2.0
+  sample_depth: 0.00012
+  sample_halfwidth_factor: 3.0
+  sample_spacing: 5.0e-07
+  tip_window: 5.0e-06
+loading:
+  cycle:
+    N_max: 100000000.0
+    dN_init: 100.0
+    dN_max: 100000.0
+    dN_min: 1.0
+    dd_max: 0.02
+    factor: 2.0
+    grow_below: 0.5
+    n_sub: 8
+    peak_phase: null
+  dump_every: 25
+  sigma_a: 65000000.0
+  type: fretting_contact
+material: configs/material_al1350.yaml
+mesh:
+  H: 0.0032
+  W: 0.0064
+  h_coarse: 0.0002
+  h_fine: 5.0e-07
+  refine_depth: 0.00013
+  refine_halfwidth_factor: 3.0
+  transition_factor: 8.0
+  type: fretting
+model:
+  dissipation: AT1
+  k_res: 1.0e-06
+  split: spectral
+output:
+  dir: data/sn_sigma65
+  save_fields_every: 25
+solver:
+  max_iter: 300
+  relaxation: 0.25
+  tol_d: 0.0001
+  u_linesearch: basic
+  u_solver: newton

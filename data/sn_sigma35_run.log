@@ -1,0 +1,8 @@
+INFO pfwire.fretting: 从断点续跑：ckpt_0.bp（N=80012.3，已走 538 步）
+INFO pfwire.fretting: 微动基准：p0=2.4e+08 Pa, μ=0.7, Q/μP=0.6 -> a=11.6230 µm, c/a=0.6325；σ_a=3.5e+07 Pa；网格 95908 单元（0.3 s）
+ERROR pfwire.cyclejump: ΔN 已降到下界 1 仍失败（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=2.027e-03（阈值 1.0e-04）（chi 翻转 0 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。）。这不是可以忽略的告警：结果不可用，请检查网格/载荷或降低 dd_max。
+INFO pfwire.fretting: 退出前存断点：N=80012.3
+ERROR pfwire.fretting: cycle-jump 在 N=80012 失败：ΔN 已降到下界 1 仍失败（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=2.027e-03（阈值 1.0e-04）（chi 翻转 0 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。）。这不是可以忽略的告警：结果不可用，请检查网格/载荷或降低 dd_max。
+INFO pfwire.fretting: 开始失稳判别（最多 4000 次迭代）……
+INFO pfwire.fretting: 失稳判别：unstable —— 深度从 13.50 µm 单调推进到 25.00 µm（越过 23.25 µm）而残差始终不降，其间不存在平衡解
+状态=failed_unstable  jump 步数=539  N=80012.3  裂纹深度=13.50 µm(1.16 a)  关卡=**判不了**（深度没到判定门槛）（滑移区萌生 True，初始倾斜 True，尖端转向 False）  失稳判别=unstable（13.50 -> 25.00 µm，2200 次迭代）  N_f=80012.3  耗时 197.4 s
