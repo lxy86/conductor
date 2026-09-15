@@ -1,0 +1,6 @@
+INFO pfwire.fretting: 微动基准：p0=2.4e+08 Pa, μ=0.7, Q/μP=0.6 -> a=11.6230 µm, c/a=0.6325；σ_a=2.7e+07 Pa；网格 95908 单元（3.5 s）
+INFO pfwire.fretting: N=100 ΔN=100 深度=0.00 µm(0.00 a) x_init=- max_d=0.0025 ᾱ=3.33e+07 已用 4 s（取裂纹 0 s）
+INFO pfwire.fretting: N=300 ΔN=200 深度=0.00 µm(0.00 a) x_init=- max_d=0.0066 ᾱ=1.001e+08 已用 9 s（取裂纹 0 s）
+INFO pfwire.fretting: N=700 ΔN=400 深度=0.00 µm(0.00 a) x_init=- max_d=0.0142 ᾱ=2.341e+08 已用 15 s（取裂纹 0 s）
+INFO pfwire.fretting: N=1500 ΔN=800 深度=0.00 µm(0.00 a) x_init=- max_d=0.0250 ᾱ=5.032e+08 已用 22 s（取裂纹 0 s）
+INFO pfwire.fretting: N=2300 ΔN=800 深度=0.00 µm(0.00 a) x_init=- max_d=0.0336 ᾱ=7.738e+08 已用 30 s（取裂纹 0 s）
