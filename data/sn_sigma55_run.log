@@ -1,0 +1,31 @@
+INFO pfwire.fretting: 微动基准：p0=2.4e+08 Pa, μ=0.7, Q/μP=0.6 -> a=11.6230 µm, c/a=0.6325；σ_a=5.5e+07 Pa；网格 95908 单元（3.5 s）
+INFO pfwire.fretting: N=100 ΔN=100 深度=0.00 µm(0.00 a) x_init=- max_d=0.0162 ᾱ=4.193e+07 已用 5 s（取裂纹 0 s）
+INFO pfwire.fretting: N=200 ΔN=100 深度=0.00 µm(0.00 a) x_init=- max_d=0.0259 ᾱ=8.43e+07 已用 12 s（取裂纹 0 s）
+INFO pfwire.fretting: N=400 ΔN=200 深度=0.00 µm(0.00 a) x_init=- max_d=0.0408 ᾱ=1.694e+08 已用 20 s（取裂纹 0 s）
+INFO pfwire.fretting: N=600 ΔN=200 深度=0.00 µm(0.00 a) x_init=- max_d=0.0528 ᾱ=2.551e+08 已用 28 s（取裂纹 0 s）
+INFO pfwire.fretting: N=800 ΔN=200 深度=0.00 µm(0.00 a) x_init=- max_d=0.0644 ᾱ=3.411e+08 已用 36 s（取裂纹 0 s）
+INFO pfwire.fretting: N=2600 ΔN=400 深度=0.00 µm(0.00 a) x_init=- max_d=0.1447 ᾱ=1.128e+09 已用 78 s（取裂纹 0 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=400（max Δd = 0.0220 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=5200 ΔN=200 深度=0.00 µm(0.00 a) x_init=- max_d=0.2974 ᾱ=2.307e+09 已用 174 s（取裂纹 0 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=200（max Δd = 0.0213 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=200（max Δd = 0.0263 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=100（max Δd = 0.0222 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=100（max Δd = 0.0316 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: 存断点：N=5600（0.5 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=50（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=3.867e-02（阈值 1.0e-04）（chi 翻转 14 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=25（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=3.915e-02（阈值 1.0e-04）（chi 翻转 14 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=12.5（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=3.895e-02（阈值 1.0e-04）（chi 翻转 8 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=6.25（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=3.889e-02（阈值 1.0e-04）（chi 翻转 10 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=6.25（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=3.918e-02（阈值 1.0e-04）（chi 翻转 12 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=6.25（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=3.965e-02（阈值 1.0e-04）（chi 翻转 13 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=3.125（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=3.950e-02（阈值 1.0e-04）（chi 翻转 11 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.fretting: N=5682.8 ΔN=1.562 深度=0.00 µm(0.00 a) x_init=- max_d=0.3966 ᾱ=2.536e+09 已用 1623 s（取裂纹 0 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=3.125（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=3.956e-02（阈值 1.0e-04）（chi 翻转 11 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=1.5625（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=3.950e-02（阈值 1.0e-04）（chi 翻转 11 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=3.956e-02（阈值 1.0e-04）（chi 翻转 11 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+ERROR pfwire.cyclejump: ΔN 已降到下界 1 仍失败（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=3.952e-02（阈值 1.0e-04）（chi 翻转 11 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。）。这不是可以忽略的告警：结果不可用，请检查网格/载荷或降低 dd_max。
+INFO pfwire.fretting: 退出前存断点：N=5683.81
+ERROR pfwire.fretting: cycle-jump 在 N=5683.8 失败：ΔN 已降到下界 1 仍失败（交错求解未收敛：交错迭代 300 次未收敛：最后 ‖Δd‖_inf=3.952e-02（阈值 1.0e-04）（chi 翻转 11 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。）。这不是可以忽略的告警：结果不可用，请检查网格/载荷或降低 dd_max。
+INFO pfwire.fretting: 开始失稳判别（最多 4000 次迭代）……
+INFO pfwire.fretting: 失稳判别：unstable —— 深度从 0.00 µm 单调推进到 38.00 µm（越过 23.25 µm）而残差始终不降，其间不存在平衡解
+状态=failed_unstable  jump 步数=32  N=5683.81  裂纹深度=0.00 µm(nan a)  关卡=**未通过**（滑移区萌生 None，初始倾斜 None，尖端转向 None）  失稳判别=unstable（0.00 -> 38.00 µm，550 次迭代）  N_f=5683.81  耗时 2400.7 s
