@@ -70,9 +70,12 @@ def test_shallow_crack_cannot_pass_even_if_all_three_look_satisfied(contact):
     真实触发：重跑那次裂纹只有 2.5 µm（0.215a），比 tip_window（5 µm）还浅，
     尖端窗口覆盖整条裂纹、所谓「尖端方向」就是表层方向，却报了「关卡通过」。
     深度检查必须排在 pass 判定之前。
+
+    这里的裂纹长到 1.2a：已经越过取基准角的 0.5a（D-37），三条判据表面上都满足，
+    但没到判「转向」所需的 judge_depth = 2a —— 仍然只能记 inconclusive。
     """
-    deps = np.linspace(2.0e-6, 0.215 * A, 8)
-    g = _gate_report(history(deps, [-16.7] * 8, np.linspace(-16.7, -13.7, 8)), contact)
+    deps = np.linspace(2.0e-6, 1.2 * A, 10)
+    g = _gate_report(history(deps, [-16.7] * 10, np.linspace(-16.7, -10.0, 10)), contact)
     assert g["turns_toward_normal"], "构造前提：三条判据表面上都满足"
     assert g["initially_tilted"] and g["nucleates_in_slip_zone"]
     assert not g["deep_enough_to_judge"]

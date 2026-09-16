@@ -121,7 +121,8 @@ def _json_number(value: float) -> float | None:
 
 
 def _gate_report(
-    history, contact: pfloads.ContactLoads, *, judge_depth_over_a: float = 2.0
+    history, contact: pfloads.ContactLoads, *, judge_depth_over_a: float = 2.0,
+    initial_tilt_depth_over_a: float = 0.5,
 ) -> dict[str, Any]:
     """Phase 2.4 的三条硬关卡：萌生位置、初始倾角、是否转向。
 
@@ -147,20 +148,36 @@ def _gate_report(
     # 刚萌生时裂纹只有一两行深，extract_crack 因 min_rows_for_angle 返回 None。
     # 早先按后者取，于是明明 −14° 的倾斜被记成「未倾斜」。
     with_angle = [h for h in history if h["inclination_deg"] is not None]
-    incl0 = with_angle[0]["inclination_deg"] if with_angle else None
     depth0 = with_angle[0]["depth"] if with_angle else None
-    tilted = incl0 is not None and abs(incl0) > 5.0
 
-    # 判据 3 必须用**尖端局部方向**，不能用上面那个表层窗口的量：
+    # 判据 3 必须用**尖端局部方向**，不能用表层窗口的量：
     # inclination_deg 的窗口固定在 min(inclination_depth, depth)，裂纹深过窗口后
     # 它就一直在量最初那一段，按定义反映不了当前扩展方向（DECISIONS.md OPEN-2）。
     with_tip = [h for h in history if h.get("tip_direction_deg") is not None]
-    tip0 = with_tip[0]["tip_direction_deg"] if with_tip else None
+
+    # **基准角取在固定深度，不取「第一个能算出角度的点」**（D-37）。
+    # 后者取决于哪个点碰巧先够 3 个采样行：σ_a=35 的第一点在 2 µm 给出 −16.7°，
+    # σ_a=27 的第一点在 1 µm（裂纹才 2 行深）拟合出 −8e−14 ≈ 0 —— 于是
+    # 「初始倾斜」被判 False，「转向」又拿 0° 当基准，两条判据同时失真。
+    #
+    # 深度取 0.5a 的依据是实测而非拍脑袋：三个工况在相同深度处的尖端角逐点相同
+    # （0.25a → −6.1°、0.5a → −20.4°、0.75a → −25.3°、1.0a → −25.1°），
+    # 说明稳定段的裂纹路径由接触场决定、与 σ_a 无关。0.25a 仍在上升段，
+    # 0.75a 起进入 −25° 平台但 σ_a=45 那档（最深 0.56a）够不着 —— 0.5a 是
+    # 「已明确倾斜、且所有出现裂纹的工况都覆盖得到」的位置。
+    base = next((h for h in with_tip
+                 if h["depth"] >= initial_tilt_depth_over_a * a), None)
+    tip0 = base["tip_direction_deg"] if base else None
     tip_last = with_tip[-1]["tip_direction_deg"] if with_tip else None
+    tilted = tip0 is not None and abs(tip0) > 5.0
     turned = (
         tip0 is not None and tip_last is not None
         and abs(tip_last) < abs(tip0) - 2.0   # 明显更接近竖直
     )
+    # 最斜处只作参考，**不参与 passed** —— 「自最大值回落」天然容易满足，
+    # 拿它当判据会把判据调松。
+    tip_max = max(with_tip, key=lambda h: abs(h["tip_direction_deg"]), default=None)
+    incl0 = with_angle[0]["inclination_deg"] if with_angle else None
     # 表层口径同时保留，便于对照（它**不**参与 passed）
     later = [h for h in with_angle if depth0 is not None and h["depth"] > depth0]
     incl_last = later[-1]["inclination_deg"] if later else None
@@ -193,6 +210,11 @@ def _gate_report(
         "inclination_initial_depth": depth0,
         "inclination_final_deg": incl_last,
         "tip_direction_initial_deg": tip0,
+        "tip_direction_initial_depth_over_a": initial_tilt_depth_over_a,
+        "tip_direction_max_deg": (
+            None if tip_max is None else tip_max["tip_direction_deg"]),
+        "tip_direction_max_depth_over_a": (
+            None if tip_max is None else tip_max["depth"] / a),
         "tip_direction_final_deg": tip_last,
         "n_points_with_angle": len(with_angle),
         "initially_tilted": bool(tilted),
@@ -391,6 +413,7 @@ def run_fretting(
     incl_depth = float(fcfg["inclination_depth"])
     tip_win = float(fcfg.get("tip_window", incl_depth))
     judge_depth = float(fcfg.get("judge_depth_over_a", 2.0))
+    initial_tilt_depth = float(fcfg.get("initial_tilt_depth_over_a", 0.5))
 
     # --- cycle-jump ---
     c = dict(lcfg["cycle"])
@@ -448,7 +471,8 @@ def run_fretting(
         if status == "running":
             out["note"] = "运行中的快照，不是最终结果"
         out["gate"] = _gate_report(
-            history, contact, judge_depth_over_a=judge_depth
+            history, contact, judge_depth_over_a=judge_depth,
+            initial_tilt_depth_over_a=initial_tilt_depth
         )
         return out
 

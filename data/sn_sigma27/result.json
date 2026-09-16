@@ -1,7 +1,7 @@
 {
   "case": "sn_sigma27.yaml",
   "case_type": "fretting",
-  "status": "running",
+  "status": "failed_unstable",
   "material": "Al 1350-H19",
   "model": {
     "split": "spectral",
@@ -41,12 +41,12 @@
     "transition_factor": 8.0
   },
   "failure_criterion": "d >= 0.95 的表面连通裂纹深度 >= 0.0001 m",
-  "n_jumps": 850,
-  "N_final": 537115.3125,
+  "n_jumps": 856,
+  "N_final": 537170.3125,
   "timing_s": {
     "mesh": 3.6095643369917525,
-    "solve": 39339.214236299,
-    "crack_extraction": 4.887298989066039
+    "solve": 63143.340991561985,
+    "crack_extraction": 4.924139689057483
   },
   "history": [
     {
@@ -14498,9 +14498,110 @@
       "tip_direction_deg": -28.20749087901534,
       "n_surface_components": 1,
       "max_damage_sampled": 0.999999991362863
+    },
+    {
+      "N": 537147.3125,
+      "delta_N": 32.0,
+      "max_d": 0.9999999924895764,
+      "max_alpha_bar": 111221690552.03659,
+      "max_dd": 0.0006035253165314058,
+      "rejections": 0,
+      "depth": 2.1499999999999997e-05,
+      "depth_over_a": 1.849773687951221,
+      "x_surface": -1.2369130434782612e-05,
+      "x_surface_over_a": -1.0641903265626755,
+      "x_tip": -2.1869130434782614e-05,
+      "inclination_deg": -13.54497336794551,
+      "tip_direction_deg": -28.20749087901534,
+      "n_surface_components": 1,
+      "max_damage_sampled": 0.999999991362863
+    },
+    {
+      "N": 537163.3125,
+      "delta_N": 16.0,
+      "max_d": 0.9999999924895764,
+      "max_alpha_bar": 111225142050.59787,
+      "max_dd": 0.0006268349851449306,
+      "rejections": 2,
+      "depth": 2.1499999999999997e-05,
+      "depth_over_a": 1.849773687951221,
+      "x_surface": -1.2369130434782612e-05,
+      "x_surface_over_a": -1.0641903265626755,
+      "x_tip": -2.1869130434782614e-05,
+      "inclination_deg": -13.54497336794551,
+      "tip_direction_deg": -28.20749087901534,
+      "n_surface_components": 1,
+      "max_damage_sampled": 0.999999991362863
+    },
+    {
+      "N": 537167.3125,
+      "delta_N": 4.0,
+      "max_d": 0.9999999924895764,
+      "max_alpha_bar": 111226004927.04794,
+      "max_dd": 0.0,
+      "rejections": 3,
+      "depth": 2.1499999999999997e-05,
+      "depth_over_a": 1.849773687951221,
+      "x_surface": -1.2369130434782612e-05,
+      "x_surface_over_a": -1.0641903265626755,
+      "x_tip": -2.1869130434782614e-05,
+      "inclination_deg": -13.54497336794551,
+      "tip_direction_deg": -28.20749087901534,
+      "n_surface_components": 1,
+      "max_damage_sampled": 0.999999991362863
+    },
+    {
+      "N": 537169.3125,
+      "delta_N": 2.0,
+      "max_d": 0.9999999924895764,
+      "max_alpha_bar": 111226436365.27298,
+      "max_dd": 0.0006455171065143928,
+      "rejections": 2,
+      "depth": 2.1499999999999997e-05,
+      "depth_over_a": 1.849773687951221,
+      "x_surface": -1.2369130434782612e-05,
+      "x_surface_over_a": -1.0641903265626755,
+      "x_tip": -2.1869130434782614e-05,
+      "inclination_deg": -13.54497336794551,
+      "tip_direction_deg": -28.20749087901534,
+      "n_surface_components": 1,
+      "max_damage_sampled": 0.999999991362863
+    },
+    {
+      "N": 537170.3125,
+      "delta_N": 1.0,
+      "max_d": 0.9999999924895764,
+      "max_alpha_bar": 111226652084.85425,
+      "max_dd": 0.0,
+      "rejections": 2,
+      "depth": 2.1499999999999997e-05,
+      "depth_over_a": 1.849773687951221,
+      "x_surface": -1.2369130434782612e-05,
+      "x_surface_over_a": -1.0641903265626755,
+      "x_tip": -2.1869130434782614e-05,
+      "inclination_deg": -13.54497336794551,
+      "tip_direction_deg": -28.20749087901534,
+      "n_surface_components": 1,
+      "max_damage_sampled": 0.999999991362863
+    },
+    {
+      "N": 537170.3125,
+      "delta_N": 1.0,
+      "max_d": 0.9999999924895764,
+      "max_alpha_bar": 111226867804.43552,
+      "max_dd": null,
+      "rejections": 2,
+      "depth": 2.1499999999999997e-05,
+      "depth_over_a": 1.849773687951221,
+      "x_surface": -1.2369130434782612e-05,
+      "x_surface_over_a": -1.0641903265626755,
+      "x_tip": -2.1869130434782614e-05,
+      "inclination_deg": -13.54497336794551,
+      "tip_direction_deg": -28.20749087901534,
+      "n_surface_components": 1,
+      "max_damage_sampled": 0.999999991362863
     }
   ],
-  "note": "运行中的快照，不是最终结果",
   "gate": {
     "passed": false,
     "verdict": "inconclusive",
@@ -14514,14 +14615,102 @@
     "inclination_initial_deg": -8.167322602530235e-14,
     "inclination_initial_depth": 1e-06,
     "inclination_final_deg": -13.54497336794551,
-    "tip_direction_initial_deg": -8.167322602530235e-14,
+    "tip_direction_initial_deg": -20.441796558416577,
+    "tip_direction_initial_depth_over_a": 0.5,
+    "tip_direction_max_deg": -30.96375653207351,
+    "tip_direction_max_depth_over_a": 1.7207197097220661,
     "tip_direction_final_deg": -28.20749087901534,
-    "n_points_with_angle": 810,
-    "initially_tilted": false,
+    "n_points_with_angle": 816,
+    "initially_tilted": true,
     "turns_toward_normal": false,
     "max_depth_over_a": 1.849773687951221,
     "judge_depth_over_a": 2.0,
     "deep_enough_to_judge": false,
     "note": "三条判据：(1) 萌生于滑移区 c<=|x|<=a；(2) 初始倾斜 |角|>5°（表层窗口）；(3) 尖端方向转向竖直（|角|至少减小 2°）。三条全中才 passed=True。若裂纹没长到 judge_depth_over_a×a 就结束，verdict 记 inconclusive ——「没看到」不等于「证伪」。按硬约束 6 停下报告，不得调参凑。"
-  }
+  },
+  "runaway": {
+    "verdict": "unstable",
+    "note": "深度从 21.50 µm 单调推进到 23.50 µm（越过 23.25 µm）而残差始终不降，其间不存在平衡解",
+    "depth_start": 2.1499999999999997e-05,
+    "depth_end": 2.35e-05,
+    "n_iterations": 600,
+    "trace": [
+      {
+        "iter": 1,
+        "residual": 0.0026335586041881243,
+        "depth": 2.1499999999999997e-05
+      },
+      {
+        "iter": 2,
+        "residual": 0.0026822179695855652,
+        "depth": 2.1499999999999997e-05
+      },
+      {
+        "iter": 3,
+        "residual": 0.002695688811499064,
+        "depth": 2.1499999999999997e-05
+      },
+      {
+        "iter": 50,
+        "residual": 0.0027146441165073476,
+        "depth": 2.2e-05
+      },
+      {
+        "iter": 100,
+        "residual": 0.0027487255053113557,
+        "depth": 2.2e-05
+      },
+      {
+        "iter": 150,
+        "residual": 0.003019698968714346,
+        "depth": 2.2e-05
+      },
+      {
+        "iter": 200,
+        "residual": 0.0035126246148537987,
+        "depth": 2.2e-05
+      },
+      {
+        "iter": 250,
+        "residual": 0.003965224540304568,
+        "depth": 2.2499999999999998e-05
+      },
+      {
+        "iter": 300,
+        "residual": 0.004025481232251771,
+        "depth": 2.2499999999999998e-05
+      },
+      {
+        "iter": 350,
+        "residual": 0.0038414703252196425,
+        "depth": 2.2499999999999998e-05
+      },
+      {
+        "iter": 400,
+        "residual": 0.0037960980968567704,
+        "depth": 2.2499999999999998e-05
+      },
+      {
+        "iter": 450,
+        "residual": 0.004140202222353118,
+        "depth": 2.3e-05
+      },
+      {
+        "iter": 500,
+        "residual": 0.00490801570424404,
+        "depth": 2.3e-05
+      },
+      {
+        "iter": 550,
+        "residual": 0.005607774725405523,
+        "depth": 2.3e-05
+      },
+      {
+        "iter": 600,
+        "residual": 0.006855741221932554,
+        "depth": 2.35e-05
+      }
+    ]
+  },
+  "N_f": 537170.3125
 }

@@ -12,6 +12,7 @@ failure:
   d_threshold: 0.95
   depth: 0.0001
   inclination_depth: 5.0e-06
+  initial_tilt_depth_over_a: 0.5
   judge_depth_over_a: 2.0
   sample_depth: 0.00012
   sample_halfwidth_factor: 3.0
