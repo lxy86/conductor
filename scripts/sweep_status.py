@@ -54,14 +54,16 @@ def main() -> int:
             if status not in ("未开始",):
                 bad += 1
             continue
-        stale = "" if d["age_min"] < 30 else "  (result 已 %.0f min 未更新)" % d["age_min"]
+        # 「多久没更新」只对**还在跑**的工况有意义。已完成的工况本来就不再写
+        # result.json，给它们打同样的警告只会淹没真正那条（本工具初版就是
+        # 给 5 个已完成工况全打上「356 min 未更新」，噪声盖过信号）。
+        stale = ""
         mark = ""
         if status in NEEDS_ATTENTION:
             mark, bad = "  <-- 需要看", bad + 1
-        elif status == "running":
-            mark = stale
-            if d["age_min"] >= 30:
-                bad += 1
+        elif status == "running" and d["age_min"] >= 30:
+            stale = "  <-- 已 %.0f min 没更新，可能卡住" % d["age_min"]
+            bad += 1
         print("%-14s %-16s %10s %10s %8s %-14s %6s %8.2f%s%s"
               % (name, status,
                  "-" if d["N"] is None else "%.4g" % d["N"],
