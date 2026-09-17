@@ -18,6 +18,12 @@ TERMINAL = {"failed", "failed_unstable", "runout", "completed"}
 #: 需要人看一眼的状态
 NEEDS_ATTENTION = {"not_converged"}
 
+#: 「多久没更新算停滞」。不能取得太紧：max_iter 提到 2000 后（D-35），
+#: 一次被拒的 ΔN 尝试就要约 23 min（2000 次交错迭代 × 约 0.7 s），
+#: 而临近失稳时连拒三四次是常态 —— 30 min 的阈值会把正常行为报成卡死，
+#: 假警报多了就没人看了。取 90 min：既容得下连拒，又不至于真卡住时发现太晚。
+STALL_MIN = 90.0
+
 
 def rows():
     for cfg in sorted((REPO / "configs" / "sweep").glob("*.yaml")):
@@ -61,8 +67,8 @@ def main() -> int:
         mark = ""
         if status in NEEDS_ATTENTION:
             mark, bad = "  <-- 需要看", bad + 1
-        elif status == "running" and d["age_min"] >= 30:
-            stale = "  <-- 已 %.0f min 没更新，可能卡住" % d["age_min"]
+        elif status == "running" and d["age_min"] >= STALL_MIN:
+            stale = "  <-- 已 %.0f min 没更新（阈值 %.0f），可能卡住" % (d["age_min"], STALL_MIN)
             bad += 1
         print("%-14s %-16s %10s %10s %8s %-14s %6s %8.2f%s%s"
               % (name, status,
