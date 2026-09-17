@@ -19,6 +19,25 @@ OUT_DIR = REPO / "configs" / "sweep"
 #: PLAN 2.5：σ_a ∈ {20, 27, 35, 45, 55, 65} MPa
 SIGMA_A_MPA = (20, 27, 35, 45, 55, 65)
 
+#: PLAN 2.6：固定 σ_a = 35 MPa，p0 ∈ {210, 240, 255} MPa（D-28 的可用窗口）。
+#: 240 就是基准工况（= sn_sigma35），不重复生成。
+#: 下界为什么不是 D-27 写的 206：a ∝ p0，p0 = 206 给出 a/ℓ = 4.99，
+#: **违反 D-1 的 a ≥ 5ℓ**。真正可用的窗口是 [210, 260]。
+P0_MPA = (210, 255)
+
+#: PLAN 2.7：网格无关性，h = ℓ/4（基准）vs ℓ/6。ℓ = 2 µm 故 ℓ/6 = 1/3 µm。
+H_FINE_REFINED = 2.0e-6 / 6.0
+
+
+HEADER_P0 = (
+    "# Phase 2.6 参数影响，p0 = %d MPa（σ_a 固定 35 MPa）。"
+    "**由 scripts/make_sweep.py 生成，不要手改**" + chr(10)
+)
+HEADER_MESH = (
+    "# Phase 2.7 网格无关性，h_fine = ell/6（基准是 ell/4）。"
+    "**由 scripts/make_sweep.py 生成，不要手改**" + chr(10)
+)
+
 
 def case_name(sigma_mpa: int) -> str:
     return "sn_sigma%02d" % sigma_mpa
@@ -28,6 +47,32 @@ def build(sigma_mpa: int, template: dict) -> dict:
     cfg = yaml.safe_load(yaml.safe_dump(template))   # 深拷贝
     cfg["loading"]["sigma_a"] = float(sigma_mpa) * 1.0e6
     cfg["output"]["dir"] = "data/%s" % case_name(sigma_mpa)
+    return cfg
+
+
+def build_p0(p0_mpa: int, template: dict) -> dict:
+    """PLAN 2.6：只改 contact.p0。
+
+    **不要顺手改网格**：加密区半宽是 refine_halfwidth_factor × a，而 a 由
+    loads 从 p0 算出（D-25），配置里不写死 —— p0 一改，加密区自动跟着变。
+    """
+    cfg = yaml.safe_load(yaml.safe_dump(template))
+    cfg["contact"]["p0"] = float(p0_mpa) * 1.0e6
+    cfg["output"]["dir"] = "data/p0_%03d" % p0_mpa
+    return cfg
+
+
+def build_mesh(template: dict) -> dict:
+    """PLAN 2.7：只改 h_fine（ℓ/4 -> ℓ/6）与采样间距。
+
+    sample_spacing 必须跟着 h_fine 走：它原本就取 = h_fine（「再细无意义，
+    d 是 P1」），若只细化网格而不细化采样，裂纹深度仍按 0.5 µm 分箱，
+    网格无关性就成了「两次都量到同一个箱子」的假相符。
+    """
+    cfg = yaml.safe_load(yaml.safe_dump(template))
+    cfg["mesh"]["h_fine"] = H_FINE_REFINED
+    cfg["failure"]["sample_spacing"] = H_FINE_REFINED
+    cfg["output"]["dir"] = "data/mesh_l6"
     return cfg
 
 
@@ -61,7 +106,34 @@ def main(argv: list[str] | None = None) -> int:
         written.append(path.relative_to(REPO))
         print("  写入 %s（σ_a = %d MPa）" % (path.relative_to(REPO), s))
 
-    print("共 %d 个工况，%d 个新写入" % (len(SIGMA_A_MPA), len(written)))
+    for p0 in P0_MPA:
+        path = OUT_DIR / ("p0_%03d.yaml" % p0)
+        if path.exists() and not args.force:
+            print("  跳过（已存在）%s" % path.relative_to(REPO))
+            continue
+        path.write_text(
+            HEADER_P0 % p0
+            + yaml.safe_dump(build_p0(p0, template), sort_keys=False,
+                             allow_unicode=True),
+            encoding="utf-8")
+        written.append(path.relative_to(REPO))
+        print("  写入 %s（p0 = %d MPa）" % (path.relative_to(REPO), p0))
+
+    path = OUT_DIR / "mesh_l6.yaml"
+    if path.exists() and not args.force:
+        print("  跳过（已存在）%s" % path.relative_to(REPO))
+    else:
+        path.write_text(
+            HEADER_MESH
+            + yaml.safe_dump(build_mesh(template), sort_keys=False,
+                             allow_unicode=True),
+            encoding="utf-8")
+        written.append(path.relative_to(REPO))
+        print("  写入 %s（h_fine = ℓ/6 = %.4f µm）"
+              % (path.relative_to(REPO), H_FINE_REFINED * 1e6))
+
+    total = len(SIGMA_A_MPA) + len(P0_MPA) + 1
+    print("共 %d 个工况，%d 个新写入" % (total, len(written)))
     return 0
 
 

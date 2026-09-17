@@ -1,0 +1,55 @@
+# Phase 2.6 参数影响，p0 = 255 MPa（σ_a 固定 35 MPa）。**由 scripts/make_sweep.py 生成，不要手改**
+case_type: fretting
+contact:
+  Q_over_muP: 0.6
+  R_wire: 0.001875
+  counterpart: aluminum
+  mu: 0.7
+  p0: 255000000.0
+failure:
+  d_threshold: 0.95
+  depth: 0.0001
+  inclination_depth: 5.0e-06
+  initial_tilt_depth_over_a: 0.5
+  judge_depth_over_a: 2.0
+  sample_depth: 0.00012
+  sample_halfwidth_factor: 3.0
+  sample_spacing: 5.0e-07
+  tip_window: 5.0e-06
+loading:
+  cycle:
+    N_max: 100000000.0
+    dN_init: 100.0
+    dN_max: 100000.0
+    dN_min: 1.0
+    dd_max: 0.02
+    factor: 2.0
+    grow_below: 0.5
+    n_sub: 8
+    peak_phase: null
+  dump_every: 25
+  sigma_a: 35000000.0
+  type: fretting_contact
+material: configs/material_al1350.yaml
+mesh:
+  H: 0.0032
+  W: 0.0064
+  h_coarse: 0.0002
+  h_fine: 5.0e-07
+  refine_depth: 0.00013
+  refine_halfwidth_factor: 3.0
+  transition_factor: 8.0
+  type: fretting
+model:
+  dissipation: AT1
+  k_res: 1.0e-06
+  split: spectral
+output:
+  dir: data/p0_255
+  save_fields_every: 25
+solver:
+  max_iter: 2000
+  relaxation: 0.25
+  tol_d: 0.0001
+  u_linesearch: basic
+  u_solver: newton
