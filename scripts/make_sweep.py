@@ -25,8 +25,12 @@ SIGMA_A_MPA = (20, 27, 35, 45, 55, 65)
 #: **违反 D-1 的 a ≥ 5ℓ**。真正可用的窗口是 [210, 260]。
 P0_MPA = (210, 255)
 
-#: PLAN 2.7：网格无关性，h = ℓ/4（基准）vs ℓ/6。ℓ = 2 µm 故 ℓ/6 = 1/3 µm。
-H_FINE_REFINED = 2.0e-6 / 6.0
+#: PLAN 2.7：网格无关性。基准是 h = ℓ/4；细化档用 ℓ/N。
+#: ℓ/6 已跑出 N_f 差 −17.3%（D-40，超过 10% 验收线），故再加 ℓ/8：
+#: 三档才能估出收敛阶 p 并做 Richardson 外推，两档只能说「差多少」、
+#: 说不了「收敛没收敛」。ℓ = 2 µm。
+ELL = 2.0e-6
+MESH_DIVISORS = (6, 8)
 
 
 HEADER_P0 = (
@@ -34,7 +38,7 @@ HEADER_P0 = (
     "**由 scripts/make_sweep.py 生成，不要手改**" + chr(10)
 )
 HEADER_MESH = (
-    "# Phase 2.7 网格无关性，h_fine = ell/6（基准是 ell/4）。"
+    "# Phase 2.7 网格无关性，h_fine = ell/%d（基准是 ell/4）。"
     "**由 scripts/make_sweep.py 生成，不要手改**" + chr(10)
 )
 
@@ -62,17 +66,18 @@ def build_p0(p0_mpa: int, template: dict) -> dict:
     return cfg
 
 
-def build_mesh(template: dict) -> dict:
-    """PLAN 2.7：只改 h_fine（ℓ/4 -> ℓ/6）与采样间距。
+def build_mesh(template: dict, divisor: int) -> dict:
+    """PLAN 2.7：只改 h_fine（ℓ/4 -> ℓ/divisor）与采样间距。
 
     sample_spacing 必须跟着 h_fine 走：它原本就取 = h_fine（「再细无意义，
     d 是 P1」），若只细化网格而不细化采样，裂纹深度仍按 0.5 µm 分箱，
     网格无关性就成了「两次都量到同一个箱子」的假相符。
     """
+    h = ELL / float(divisor)
     cfg = yaml.safe_load(yaml.safe_dump(template))
-    cfg["mesh"]["h_fine"] = H_FINE_REFINED
-    cfg["failure"]["sample_spacing"] = H_FINE_REFINED
-    cfg["output"]["dir"] = "data/mesh_l6"
+    cfg["mesh"]["h_fine"] = h
+    cfg["failure"]["sample_spacing"] = h
+    cfg["output"]["dir"] = "data/mesh_l%d" % divisor
     return cfg
 
 
@@ -119,20 +124,21 @@ def main(argv: list[str] | None = None) -> int:
         written.append(path.relative_to(REPO))
         print("  写入 %s（p0 = %d MPa）" % (path.relative_to(REPO), p0))
 
-    path = OUT_DIR / "mesh_l6.yaml"
-    if path.exists() and not args.force:
-        print("  跳过（已存在）%s" % path.relative_to(REPO))
-    else:
+    for div in MESH_DIVISORS:
+        path = OUT_DIR / ("mesh_l%d.yaml" % div)
+        if path.exists() and not args.force:
+            print("  跳过（已存在）%s" % path.relative_to(REPO))
+            continue
         path.write_text(
-            HEADER_MESH
-            + yaml.safe_dump(build_mesh(template), sort_keys=False,
+            HEADER_MESH % div
+            + yaml.safe_dump(build_mesh(template, div), sort_keys=False,
                              allow_unicode=True),
             encoding="utf-8")
         written.append(path.relative_to(REPO))
-        print("  写入 %s（h_fine = ℓ/6 = %.4f µm）"
-              % (path.relative_to(REPO), H_FINE_REFINED * 1e6))
+        print("  写入 %s（h_fine = ℓ/%d = %.4f µm）"
+              % (path.relative_to(REPO), div, ELL / div * 1e6))
 
-    total = len(SIGMA_A_MPA) + len(P0_MPA) + 1
+    total = len(SIGMA_A_MPA) + len(P0_MPA) + len(MESH_DIVISORS)
     print("共 %d 个工况，%d 个新写入" % (total, len(written)))
     return 0
 
