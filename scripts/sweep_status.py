@@ -39,13 +39,23 @@ def rows():
         except (json.JSONDecodeError, OSError) as exc:
             yield name, "result.json 读不了：%s" % exc, {}
             continue
-        age = time.time() - res.stat().st_mtime
+        # **活没活着要看最近一次「任何动静」，不能只看 result.json。**
+        # result.json 每 dump_every(=25) 个 history 条目才写一次，而临近失稳时
+        # 单条要几分钟，写入间隔会被拉到好几小时 —— 只看它就会把一个健康的
+        # 长算例报成「可能卡住」（实测：result 6.3 h 没写，run.log 18 min 前
+        # 还在更新）。误报一次就够让人去重启一个跑了 16 h 的算例。
+        log = REPO / "data" / ("%s_run.log" % name)
+        newest = res.stat().st_mtime
+        if log.is_file():
+            newest = max(newest, log.stat().st_mtime)
+        age = time.time() - newest
         yield name, r.get("status", "?"), {
             "N": r.get("N_final"), "N_f": r.get("N_f"),
             "depth_um": (r["history"][-1]["depth"] * 1e6) if r.get("history") else None,
             "gate": (r.get("gate") or {}).get("verdict"),
             "turns": (r.get("gate") or {}).get("turns_toward_normal"),
             "hours": (r.get("timing_s") or {}).get("solve", 0) / 3600.0,
+            "result_age_min": (time.time() - res.stat().st_mtime) / 60.0,
             "age_min": age / 60.0,
         }
 
@@ -68,7 +78,8 @@ def main() -> int:
         if status in NEEDS_ATTENTION:
             mark, bad = "  <-- 需要看", bad + 1
         elif status == "running" and d["age_min"] >= STALL_MIN:
-            stale = "  <-- 已 %.0f min 没更新（阈值 %.0f），可能卡住" % (d["age_min"], STALL_MIN)
+            stale = ("  <-- 日志已 %.0f min 没动静（阈值 %.0f），可能卡住"
+                     % (d["age_min"], STALL_MIN))
             bad += 1
         print("%-14s %-16s %10s %10s %8s %-14s %6s %8.2f%s%s"
               % (name, status,
