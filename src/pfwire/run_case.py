@@ -278,7 +278,12 @@ def load_case(path: str | Path) -> CaseConfig:
     )
 
     output_cfg = dict(raw.get("output", {}))
-    _require_keys(output_cfg, {"dir", "save_fields_every"}, "output")
+    # snapshot_every 与 save_fields_every 是两回事，别混：
+    #   save_fields_every -> checkpoint（续跑用的状态，两槽轮换只留最后两个）
+    #   snapshot_every    -> 采样网格上的 d 场时间序列（论文图 4 用，只增不删）
+    # 当初两者共用一个键，结果生产跑完只剩两个断点、没有场序列可画（D-31）。
+    _require_keys(
+        output_cfg, {"dir", "save_fields_every", "snapshot_every"}, "output")
 
     return CaseConfig(
         path=path,

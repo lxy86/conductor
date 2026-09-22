@@ -1,0 +1,61 @@
+# 论文图 4（d 场演化）的取数工况：与 configs/fretting_base.yaml 完全相同，
+# 只多开 output.snapshot_every。
+# 为什么要单独重跑：snapshot 存的是**可视化用的时间序列**，而生产跑只存了
+# checkpoint（续跑用的状态、两槽轮换只留最后两个），场序列当时没留下来。
+# 「萌生」「倾斜扩展」两帧在稳定段，只能重跑；「转向」「贯穿」两帧在失控段，
+# 由 probe_runaway 里的快照取到。
+case_type: fretting
+material: configs/material_al1350.yaml
+model:
+  split: spectral
+  dissipation: AT1
+  k_res: 1.0e-06
+solver:
+  u_solver: newton
+  tol_d: 0.0001
+  max_iter: 2000
+  u_linesearch: basic
+  relaxation: 0.25
+contact:
+  p0: 240000000.0
+  mu: 0.7
+  Q_over_muP: 0.6
+  R_wire: 0.001875
+  counterpart: aluminum
+mesh:
+  type: fretting
+  W: 0.0064
+  H: 0.0032
+  refine_halfwidth_factor: 3.0
+  refine_depth: 0.00013
+  h_fine: 5.0e-07
+  h_coarse: 0.0002
+  transition_factor: 8.0
+loading:
+  type: fretting_contact
+  sigma_a: 35000000.0
+  cycle:
+    n_sub: 8
+    dN_init: 100.0
+    dN_min: 1.0
+    dN_max: 100000.0
+    dd_max: 0.02
+    grow_below: 0.5
+    factor: 2.0
+    N_max: 100000000.0
+    peak_phase: null
+  dump_every: 25
+failure:
+  d_threshold: 0.95
+  depth: 0.0001
+  sample_halfwidth_factor: 3.0
+  sample_depth: 0.00012
+  sample_spacing: 5.0e-07
+  inclination_depth: 5.0e-06
+  tip_window: 5.0e-06
+  initial_tilt_depth_over_a: 0.5
+  judge_depth_over_a: 2.0
+output:
+  dir: data/fig_frames
+  save_fields_every: 25
+  snapshot_every: 20

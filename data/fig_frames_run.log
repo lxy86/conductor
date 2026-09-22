@@ -1,0 +1,16 @@
+INFO pfwire.fretting: 微动基准：p0=2.4e+08 Pa, μ=0.7, Q/μP=0.6 -> a=11.6230 µm, c/a=0.6325；σ_a=3.5e+07 Pa；网格 95908 单元（5.3 s）
+INFO pfwire.fretting: N=100 ΔN=100 深度=0.00 µm(0.00 a) x_init=- max_d=0.0047 ᾱ=3.566e+07 已用 5 s（取裂纹 0 s）
+INFO pfwire.fretting: N=300 ΔN=200 深度=0.00 µm(0.00 a) x_init=- max_d=0.0126 ᾱ=1.073e+08 已用 11 s（取裂纹 0 s）
+INFO pfwire.fretting: N=700 ΔN=400 深度=0.00 µm(0.00 a) x_init=- max_d=0.0223 ᾱ=2.513e+08 已用 18 s（取裂纹 0 s）
+INFO pfwire.fretting: N=1500 ΔN=800 深度=0.00 µm(0.00 a) x_init=- max_d=0.0377 ᾱ=5.406e+08 已用 26 s（取裂纹 0 s）
+INFO pfwire.fretting: N=2300 ΔN=800 深度=0.00 µm(0.00 a) x_init=- max_d=0.0500 ᾱ=8.319e+08 已用 35 s（取裂纹 0 s）
+INFO pfwire.fretting: N=9500 ΔN=1600 深度=0.00 µm(0.00 a) x_init=- max_d=0.1277 ᾱ=3.499e+09 已用 76 s（取裂纹 0 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=1600（max Δd = 0.0265 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=23100 ΔN=800 深度=0.00 µm(0.00 a) x_init=- max_d=0.2899 ᾱ=8.753e+09 已用 175 s（取裂纹 0 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=800（max Δd = 0.0203 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=800（max Δd = 0.0201 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=800（max Δd = 0.0202 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=800（max Δd = 0.0234 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: 存断点：N=25500（0.6 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=400（max Δd = 0.0214 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=400（max Δd = 0.0300 > dd_max = 0.0200），减半重试

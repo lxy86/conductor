@@ -155,3 +155,56 @@ def test_nan_max_dd_becomes_null_not_bare_nan():
     assert _json_number(0.0) == 0.0
     assert _json_number(1.5) == 1.5
     assert json.dumps({"max_dd": _json_number(float("nan"))}) == '{"max_dd": null}'
+
+
+def test_snapshot_writer_captures_on_interval_and_round_trips(tmp_path):
+    """快照按间隔取帧，存成 .npz 后能读回。
+
+    图 4（d 场演化）要的是**时间序列**，而 checkpoint 是续跑用的状态、
+    两槽轮换只留最后两个 —— 两者当初共用 save_fields_every 是误接（D-31），
+    所以这里单独测快照的语义：只增不删、按间隔取。
+    """
+    import numpy as np
+
+    from pfwire.fretting import SnapshotWriter
+
+    x = np.linspace(-1.0, 1.0, 5)
+    dep = np.linspace(0.0, 2.0, 4)
+    w = SnapshotWriter(tmp_path / "snap.npz", x, dep, every=3)
+    assert w.enabled
+
+    grabbed = [w.maybe_capture(i, np.full((4, 5), float(i)), N=10.0 * i, depth=1e-6 * i)
+               for i in range(1, 10)]
+    assert grabbed == [False, False, True, False, False, True, False, False, True]
+    assert len(w.frames) == 3
+
+    class Root:
+        rank = 0
+
+    w.save(Root())
+    got = np.load(tmp_path / "snap.npz")
+    assert got["d"].shape == (3, 4, 5)
+    assert np.allclose(got["d"][:, 0, 0], [3.0, 6.0, 9.0])
+    assert np.allclose(got["N"], [30.0, 60.0, 90.0])
+    assert np.allclose(got["x_coords"], x)
+    assert np.allclose(got["depth_coords"], dep)
+    # 每帧元数据里的 depth 是「当时的裂纹深度」，与坐标数组不同名 ——
+    # 曾经两者都叫 depth，savez 直接报「多个同名关键字」。
+    assert np.allclose(got["depth"], [3e-6, 6e-6, 9e-6])
+
+
+def test_snapshot_writer_disabled_writes_nothing(tmp_path):
+    """every=0 时必须完全不动：不取帧、不建文件。"""
+    import numpy as np
+
+    from pfwire.fretting import SnapshotWriter
+
+    w = SnapshotWriter(tmp_path / "none.npz", [0.0], [0.0], every=0)
+    assert not w.enabled
+    assert w.maybe_capture(1, np.zeros((1, 1))) is False
+
+    class Root:
+        rank = 0
+
+    w.save(Root())
+    assert not (tmp_path / "none.npz").exists()

@@ -236,10 +236,61 @@ def _gate_report(
 RUNAWAY_MAX_ITER = 4000
 
 
+class SnapshotWriter:
+    """把采样网格上的 d 场按间隔存成 .npz，供论文图 4（d 场演化）使用。
+
+    **不存 dolfinx 场**：`DamageGrid.sample()` 给出的是规则网格上的
+    (n_depth, n_x) 数组，正好覆盖裂纹区，直接能画等值图，体积也小
+    （141×241 的 float32 约 136 KB/帧）。存整个 .bp 既大又要另写读取端。
+
+    注意与 checkpoint 的区别：checkpoint 是**续跑用的状态**、两槽轮换只留最后两个；
+    快照是**可视化用的时间序列**、只增不删。两者当初共用 `save_fields_every`
+    是个误接（D-31），这里分开成 `output.snapshot_every`。
+    """
+
+    def __init__(self, path, x_coords, depth_coords, every: int):
+        self.path = Path(path)
+        self.x = np.asarray(x_coords)
+        self.depth = np.asarray(depth_coords)
+        self.every = int(every)
+        self.frames: list[np.ndarray] = []
+        self.meta: list[dict[str, float]] = []
+
+    @property
+    def enabled(self) -> bool:
+        return self.every > 0
+
+    def maybe_capture(self, index: int, values, **meta) -> bool:
+        """``index`` 是第几次采样；每 ``every`` 次存一帧。"""
+        if not self.enabled or index % self.every != 0:
+            return False
+        self.capture(values, **meta)
+        return True
+
+    def capture(self, values, **meta) -> None:
+        self.frames.append(np.asarray(values, dtype=np.float32))
+        self.meta.append({k: float(v) for k, v in meta.items()})
+
+    def save(self, comm) -> None:
+        if comm.rank != 0 or not self.frames:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        keys = sorted({k for m in self.meta for k in m})
+        np.savez_compressed(
+            self.path,
+            # 坐标叫 x_coords/depth_coords，不叫 x/depth —— 每帧元数据里也有个
+            # depth（当时的裂纹深度），同名会让 savez 报「多个同名关键字」。
+            d=np.stack(self.frames), x_coords=self.x, depth_coords=self.depth,
+            **{k: np.array([m.get(k, np.nan) for m in self.meta]) for k in keys},
+        )
+
+
 def probe_runaway(
     driver, solver, state, set_phase, measure, *,
     failure_depth: float, judge_depth: float,
     max_iter: int = RUNAWAY_MAX_ITER, log=lambda *a: None,
+    snapshots: SnapshotWriter | None = None, snapshot_every: int = 100,
+    sample_values=None,
 ) -> dict[str, Any]:
     """交错求解硬失败后，判别这是**失稳扩展**还是求解器问题。
 
@@ -301,6 +352,12 @@ def probe_runaway(
         if k % 50 == 0 or k <= 3:
             m = measure()
             trace.append({"iter": k, "residual": residual, "depth": m.depth})
+            # 图 4 的「转向」「贯穿」两帧只存在于失控段 —— 收敛解里没有，
+            # 所以快照必须也在判别器里取。
+            if (snapshots is not None and snapshots.enabled
+                    and sample_values is not None and k % snapshot_every == 0):
+                snapshots.capture(sample_values(), N=float("nan"), depth=m.depth,
+                                  phase=2.0, iteration=float(k))
             if m.depth >= failure_depth:
                 verdict = "unstable"
                 note = "深度在无平衡解的情况下越过失效判据 %.0f µm" % (
@@ -487,23 +544,33 @@ def run_fretting(
             yaml.safe_dump(raw, sort_keys=False, allow_unicode=True), encoding="utf-8"
         )
 
+    snap_every = int(raw.get("output", {}).get("snapshot_every", 0))
+    snapshots = SnapshotWriter(
+        cfg.output_dir / "snapshots.npz", grid.x_coords, grid.depth_coords,
+        snap_every)
+
+    def sample_values():
+        return grid.sample(solver.d)
+
     def measure():
         """当前 d 场的裂纹几何。record 与失稳判别共用同一套口径。"""
         return extract_crack(
-            grid.sample(solver.d), grid.x_coords, grid.depth_coords,
+            sample_values(), grid.x_coords, grid.depth_coords,
             threshold=criterion.d_threshold, inclination_depth=incl_depth,
             tip_window=tip_win,
         )
 
     def record(report):
         t_rec = time.perf_counter()
-        values = grid.sample(solver.d)
+        values = sample_values()
         metrics = extract_crack(
             values, grid.x_coords, grid.depth_coords,
             threshold=criterion.d_threshold, inclination_depth=incl_depth,
             tip_window=tip_win,
         )
         timers["crack"] += time.perf_counter() - t_rec
+        snapshots.maybe_capture(len(history), values, N=report.N,
+                                depth=metrics.depth, phase=1.0, iteration=0.0)
         history.append({
             "N": report.N, "delta_N": report.delta_N,
             "max_d": report.max_d, "max_alpha_bar": report.max_alpha_bar,
@@ -585,7 +652,7 @@ def run_fretting(
             driver, solver, state, set_phase, measure,
             failure_depth=criterion.depth,
             judge_depth=judge_depth * contact.a,
-            log=log,
+            log=log, snapshots=snapshots, sample_values=sample_values,
         )
         status = "failed_unstable" if runaway["verdict"] == "unstable" else "not_converged"
     elif final is not None and final.runout:
@@ -595,6 +662,9 @@ def run_fretting(
     else:
         status = "completed"
 
+    snapshots.save(comm)
+    if snapshots.enabled:
+        log("info", "快照 %d 帧 -> %s", len(snapshots.frames), snapshots.path.name)
     result = make_result(status, n_jumps_before + len(reports), t_solve)
     if runaway is not None:
         result["runaway"] = runaway
