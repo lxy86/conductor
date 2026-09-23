@@ -8,3 +8,24 @@ INFO pfwire.fretting: N=350 ΔN=100 深度=0.00 µm(0.00 a) x_init=- max_d=0.059
 INFO pfwire.fretting: N=1050 ΔN=200 深度=0.00 µm(0.00 a) x_init=- max_d=0.1229 ᾱ=4.579e+08 已用 298 s（取裂纹 0 s）
 INFO pfwire.cyclejump: 拒绝 ΔN=200（max Δd = 0.0200 > dd_max = 0.0200），减半重试
 INFO pfwire.cyclejump: 拒绝 ΔN=200（max Δd = 0.0255 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=2450 ΔN=100 深度=0.00 µm(0.00 a) x_init=- max_d=0.2767 ᾱ=1.096e+09 已用 671 s（取裂纹 1 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=100（max Δd = 0.0217 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=100（max Δd = 0.0243 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=50（max Δd = 0.0260 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: 存断点：N=2675（2.7 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=25（交错求解未收敛：u 的 Newton 求解未收敛：SNESConvergedReason=-5），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=12.5（交错求解未收敛：u 的 Newton 求解未收敛：SNESConvergedReason=-5），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=12.5（交错求解未收敛：u 的 Newton 求解未收敛：SNESConvergedReason=-5），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=6.25（交错求解未收敛：u 的 Newton 求解未收敛：SNESConvergedReason=-5），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=6.25（交错求解未收敛：u 的 Newton 求解未收敛：SNESConvergedReason=-5），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=3.125（交错求解未收敛：u 的 Newton 求解未收敛：SNESConvergedReason=-5），减半重试
+INFO pfwire.fretting: N=2723.4 ΔN=1.562 深度=0.00 µm(0.00 a) x_init=- max_d=0.3808 ᾱ=1.228e+09 已用 4962 s（取裂纹 1 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=3.125（交错求解未收敛：u 的 Newton 求解未收敛：SNESConvergedReason=-5），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=3.125（交错求解未收敛：u 的 Newton 求解未收敛：SNESConvergedReason=-5），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=1.5625（交错求解未收敛：u 的 Newton 求解未收敛：SNESConvergedReason=-5），减半重试
+ERROR pfwire.cyclejump: ΔN 已降到下界 1 仍失败（交错求解未收敛：u 的 Newton 求解未收敛：SNESConvergedReason=-5）。这不是可以忽略的告警：结果不可用，请检查网格/载荷或降低 dd_max。
+INFO pfwire.fretting: 退出前存断点：N=2725
+ERROR pfwire.fretting: cycle-jump 在 N=2725 失败：ΔN 已降到下界 1 仍失败（交错求解未收敛：u 的 Newton 求解未收敛：SNESConvergedReason=-5）。这不是可以忽略的告警：结果不可用，请检查网格/载荷或降低 dd_max。
+INFO pfwire.fretting: 开始失稳判别（最多 4000 次迭代）……
+INFO pfwire.fretting: 失稳判别：unstable —— 深度从 0.00 µm 单调推进到 37.50 µm（越过 23.25 µm）而残差始终不降，其间不存在平衡解
+状态=failed_unstable  jump 步数=32  N=2725  裂纹深度=0.00 µm(nan a)  关卡=**未通过**（滑移区萌生 None，初始倾斜 None，尖端转向 None）  失稳判别=unstable（0.00 -> 37.50 µm，350 次迭代）  N_f=2725  耗时 7536.1 s

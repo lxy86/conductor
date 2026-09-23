@@ -208,3 +208,43 @@ def test_snapshot_writer_disabled_writes_nothing(tmp_path):
 
     w.save(Root())
     assert not (tmp_path / "none.npz").exists()
+
+
+def test_snapshot_writes_incrementally_so_a_kill_does_not_lose_everything(tmp_path):
+    """给了 comm 就每帧落盘，中途被杀只丢最后一帧。
+
+    初版是全程攒内存、跑完才写一次：取数那轮跑了 9.5 h，若进程在最后一步
+    被杀（WSL 关停带走算例已经发生过，D-31），46 帧全丢。
+    """
+    import numpy as np
+
+    from pfwire.fretting import SnapshotWriter
+
+    class Root:
+        rank = 0
+
+    out = tmp_path / "inc.npz"
+    w = SnapshotWriter(out, [0.0, 1.0], [0.0, 1.0, 2.0], every=1, comm=Root())
+    for i in range(1, 4):
+        w.maybe_capture(i, np.full((3, 2), float(i)), N=float(i))
+        assert out.is_file(), "第 %d 帧之后文件就该在了" % i
+        got = np.load(out)
+        assert got["d"].shape == (i, 3, 2)
+        assert np.allclose(got["N"], np.arange(1, i + 1))
+
+
+def test_snapshot_write_is_atomic(tmp_path):
+    """写盘用 tmp + replace：每帧都重写整个 npz，中途被杀不能毁掉已攒的帧。"""
+    import numpy as np
+
+    from pfwire.fretting import SnapshotWriter
+
+    class Root:
+        rank = 0
+
+    out = tmp_path / "atomic.npz"
+    w = SnapshotWriter(out, [0.0], [0.0], every=1, comm=Root())
+    w.maybe_capture(1, np.zeros((1, 1)), N=1.0)
+    # 落盘后不应留下 .tmp 残件
+    assert out.is_file()
+    assert not list(tmp_path.glob("*.tmp")), "临时文件没清掉"

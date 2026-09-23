@@ -19,3 +19,18 @@ INFO pfwire.cyclejump: 拒绝 ΔN=200（max Δd = 0.8582 > dd_max = 0.0200），
 INFO pfwire.cyclejump: 拒绝 ΔN=200（max Δd = 0.8551 > dd_max = 0.0200），减半重试
 INFO pfwire.cyclejump: 拒绝 ΔN=100（max Δd = 0.8548 > dd_max = 0.0200），减半重试
 INFO pfwire.cyclejump: 拒绝 ΔN=100（max Δd = 0.8541 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=50（max Δd = 0.8540 > dd_max = 0.0200），减半重试
+[4]PETSC ERROR: ------------------------------------------------------------------------
+[4]PETSC ERROR: Caught signal number 15 Terminate: Some process (or the batch system) has told this process to end
+[4]PETSC ERROR: Try option -start_in_debugger or -on_error_attach_debugger
+[4]PETSC ERROR: or see https://petsc.org/release/faq/#valgrind and https://petsc.org/release/faq/
+[4]PETSC ERROR: configure using --with-debugging=yes, recompile, link, and run 
+[4]PETSC ERROR: to get more information on the crash.
+Abort(59) on node 4 (rank 4 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 59) - process 4
+[0]PETSC ERROR: ------------------------------------------------------------------------
+[0]PETSC ERROR: Caught signal number 15 Terminate: Some process (or the batch system) has told this process to end
+[0]PETSC ERROR: Try option -start_in_debugger or -on_error_attach_debugger
+[0]PETSC ERROR: or see https://petsc.org/release/faq/#valgrind and https://petsc.org/release/faq/
+[0]PETSC ERROR: configure using --with-debugging=yes, recompile, link, and run 
+[0]PETSC ERROR: to get more information on the crash.
+Abort(59) on node 0 (rank 0 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 59) - process 0

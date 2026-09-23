@@ -248,11 +248,12 @@ class SnapshotWriter:
     是个误接（D-31），这里分开成 `output.snapshot_every`。
     """
 
-    def __init__(self, path, x_coords, depth_coords, every: int):
+    def __init__(self, path, x_coords, depth_coords, every: int, comm=None):
         self.path = Path(path)
         self.x = np.asarray(x_coords)
         self.depth = np.asarray(depth_coords)
         self.every = int(every)
+        self.comm = comm
         self.frames: list[np.ndarray] = []
         self.meta: list[dict[str, float]] = []
 
@@ -270,19 +271,33 @@ class SnapshotWriter:
     def capture(self, values, **meta) -> None:
         self.frames.append(np.asarray(values, dtype=np.float32))
         self.meta.append({k: float(v) for k, v in meta.items()})
+        # **每取一帧就落盘**。初版是全程攒在内存、跑完才写一次 ——
+        # 取数那轮跑了 9.5 h，若进程在最后一步被杀（本项目 WSL 关停带走算例
+        # 已经发生过，见 D-31），46 帧全丢。写一次约 7 MB、零点几秒，
+        # 相对动辄几十秒一步的 jump 可以忽略。
+        if self.comm is not None:
+            self.save(self.comm)
 
     def save(self, comm) -> None:
+        """原子写：先写 .tmp 再 replace。
+
+        每帧都重写整个 .npz，所以**必须原子** —— 否则在重写途中被杀，
+        毁掉的是已经攒下的全部帧，比不增量写还糟。
+        """
         if comm.rank != 0 or not self.frames:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         keys = sorted({k for m in self.meta for k in m})
-        np.savez_compressed(
-            self.path,
-            # 坐标叫 x_coords/depth_coords，不叫 x/depth —— 每帧元数据里也有个
-            # depth（当时的裂纹深度），同名会让 savez 报「多个同名关键字」。
-            d=np.stack(self.frames), x_coords=self.x, depth_coords=self.depth,
-            **{k: np.array([m.get(k, np.nan) for m in self.meta]) for k in keys},
-        )
+        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+        with tmp.open("wb") as fh:
+            np.savez_compressed(
+                fh,
+                # 坐标叫 x_coords/depth_coords，不叫 x/depth —— 每帧元数据里也有个
+                # depth（当时的裂纹深度），同名会让 savez 报「多个同名关键字」。
+                d=np.stack(self.frames), x_coords=self.x, depth_coords=self.depth,
+                **{k: np.array([m.get(k, np.nan) for m in self.meta]) for k in keys},
+            )
+        tmp.replace(self.path)
 
 
 def probe_runaway(
@@ -555,7 +570,7 @@ def run_fretting(
     snap_every = int(raw.get("output", {}).get("snapshot_every", 0))
     snapshots = SnapshotWriter(
         cfg.output_dir / "snapshots.npz", grid.x_coords, grid.depth_coords,
-        snap_every)
+        snap_every, comm=comm)
 
     def sample_values():
         return grid.sample(solver.d)
