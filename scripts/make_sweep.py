@@ -32,6 +32,14 @@ P0_MPA = (210, 255)
 ELL = 2.0e-6
 MESH_DIVISORS = (6, 8)
 
+#: PLAN 2.7 的延伸（用户 2026-09-23 指示）：在**第二个载荷**上验证
+#: 「扩展寿命修正系数 k 与载荷无关」这条假设 —— D-41 只在 σ_a = 35 MPa 上
+#: 细化过，而全套 S–N / p0 结果的解析修正都压在这一个系数上。
+#: 取 σ_a = 27 MPa：它的萌生占比只有 9.3%，修正幅度 −14.8%，
+#: 是 S–N 扫描里判别力最强的一档；几何不变、只改本体应力，正对着该假设。
+#: （σ_a = 45 的修正幅度只有 −1.5%，小于噪声，测不出东西。）
+MESH_CHECK = ((27, 6),)
+
 
 HEADER_P0 = (
     "# Phase 2.6 参数影响，p0 = %d MPa（σ_a 固定 35 MPa）。"
@@ -78,6 +86,16 @@ def build_mesh(template: dict, divisor: int) -> dict:
     cfg["mesh"]["h_fine"] = h
     cfg["failure"]["sample_spacing"] = h
     cfg["output"]["dir"] = "data/mesh_l%d" % divisor
+    return cfg
+
+
+def build_mesh_check(sigma_mpa: int, divisor: int, template: dict) -> dict:
+    """同时改 σ_a 与 h_fine：在另一个载荷上复刻 PLAN 2.7 的网格细化。"""
+    cfg = build(sigma_mpa, template)
+    h = ELL / float(divisor)
+    cfg["mesh"]["h_fine"] = h
+    cfg["failure"]["sample_spacing"] = h
+    cfg["output"]["dir"] = "data/%s_l%d" % (case_name(sigma_mpa), divisor)
     return cfg
 
 
@@ -138,7 +156,24 @@ def main(argv: list[str] | None = None) -> int:
         print("  写入 %s（h_fine = ℓ/%d = %.4f µm）"
               % (path.relative_to(REPO), div, ELL / div * 1e6))
 
-    total = len(SIGMA_A_MPA) + len(P0_MPA) + len(MESH_DIVISORS)
+    for sigma, div in MESH_CHECK:
+        path = OUT_DIR / ("%s_l%d.yaml" % (case_name(sigma), div))
+        if path.exists() and not args.force:
+            print("  跳过（已存在）%s" % path.relative_to(REPO))
+            continue
+        path.write_text(
+            "# PLAN 2.7 延伸：在 sigma_a = %d MPa 上复刻 ell/%d 细化，"
+            "用于验证修正系数 k 与载荷无关。"
+            "**由 scripts/make_sweep.py 生成，不要手改**" % (sigma, div) + chr(10)
+            + yaml.safe_dump(build_mesh_check(sigma, div, template),
+                             sort_keys=False, allow_unicode=True),
+            encoding="utf-8")
+        written.append(path.relative_to(REPO))
+        print("  写入 %s（σ_a = %d MPa, h = ℓ/%d）"
+              % (path.relative_to(REPO), sigma, div))
+
+    total = (len(SIGMA_A_MPA) + len(P0_MPA) + len(MESH_DIVISORS)
+             + len(MESH_CHECK))
     print("共 %d 个工况，%d 个新写入" % (total, len(written)))
     return 0
 
