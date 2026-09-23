@@ -226,13 +226,19 @@ def fig6_sn_curve(conductor: str = "configs/conductor_jl1_lha1_465_210.yaml"
     # D-42：TB 332 已核对（2026-09-23）。系数与原文一致，分段点由二手文献的
     # 1.56e7 更正为原文的 2e7。折点是分段定义的人为产物（原文亦如此说明），
     # **不得平滑** —— 平滑等于拿一条自己编的曲线跟文献比。
-    fig.text(0.01, -0.045,
-             "$^{*}$ CSBL: multilayer coefficients A = 450 / b = 0.20 "
-             "(N <= 2e7) and A = 263 / b = 0.17, verified against CIGRE "
-             "TB 332 (DECISIONS D-42). The -3.2% step at the segment point is "
-             "an artefact of the piecewise definition and is reproduced as "
-             "specified, not smoothed. CSBL is a lower-bound envelope: measured "
-             "conductor lives are typically 3-11x above it.", fontsize=6.5)
+    # D-43：本模型的接触压力（240 MPa 弹性）远低于真实工况（塑性、约 500 MPa），
+    # 而 N_f ∝ p0^−8.97 —— 绝对寿命不可直接比。CSBL 只作**定性**参照，
+    # 图注必须说清楚，否则读者会把这张图读成定量验证。
+    fig.text(0.01, -0.06,
+             "$^{*}$ CSBL: multilayer A = 450 / b = 0.20 (N <= 2e7) and "
+             "A = 263 / b = 0.17, verified against CIGRE TB 332 (D-42). The "
+             "-3.2% step is an artefact of the piecewise definition, "
+             "reproduced as specified. CSBL is a lower-bound envelope "
+             "(measured conductor lives are 3-11x above it).\n"
+             "The comparison is QUALITATIVE only: this model runs at an "
+             "elastic contact pressure of 240 MPa, whereas real wire-wire "
+             "contacts are plastic at about 500 MPa, and N_f scales as "
+             "p0^-9.0 (D-43).", fontsize=6.5)
     return _save(fig, "fig6_sn_curve.png")
 
 

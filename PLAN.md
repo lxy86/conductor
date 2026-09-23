@@ -257,7 +257,10 @@ f(ᾱ) 单调性、ΔN 调节逻辑）；SENT 静态算例单核 < 10 min。
 论文结构：Intro / Phase-field fatigue model / Fretting fatigue model of Al wire /
 Verification / Results & discussion / Conclusions & future work。
 Discussion 必须包含：(a) 为什么不做磨损——用 Archard 估算说明本工况磨损深度 ≪ 裂纹深度；
-(b) "单丝首裂"与 CIGRE"导线断丝"定义差异。
+(b) "单丝首裂"与 CIGRE 失效定义的关系（D-42：TB 332 用**首丝断裂**，比原先假设的差异小）；
+(c) **绝对寿命不具预测性**（D-43，用户 2026-09-23 拍板的定位）——真实接触是塑性的、
+    压力约 500 MPa，本模型被 σ_c = σ_u = 185 MPa 卡在 240 MPa 弹性，而 N_f ∝ p0^−8.97，
+    差距约 721 倍。论文报**机理与相对敏感度**，CSBL 对比只作定性参照。
 
 ---
 
