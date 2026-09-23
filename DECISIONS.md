@@ -1966,3 +1966,58 @@ Tribology International (2011)** —— **导线–线夹的 FE 接触已经有�
 这直接影响 D-46 定的贡献点表述：新颖性**不能**落在"对导线–线夹做 FE 接触"上，
 只能落在 **"FE 摩擦接触 + 弹塑性 + 相场疲劳全耦合"** 与 **"萌生/扩展分界由求解给出而非拟合"**。
 投稿前必须读这篇并在 Related Work 里正面对比。
+
+
+---
+
+## D-48 Phase 4.2：dolfinx_contact 求解器可用，但必须打两个补丁；ContactWriter 不可用
+
+### 结果
+上游自带的 `demo_hertzian_contact.py --problem 2` 打补丁后跑通：
+**4 个载荷步全部收敛**（Newton 残差从 O(10) 掉到 1e-12~1e-13，1~6 次迭代）。
+接触求解器本身没问题。
+
+### 必须打的补丁：nanobind stable-ABI 不匹配（**最坑的一个**）
+
+**症状**：`ContactProblem(...)` 构造时报
+`TypeError: __init__(): incompatible function arguments`，
+而列出的"支持的签名"看起来跟传进去的**完全一样**。
+
+**识别特征（记下来，下次一眼认出）**：签名里打印的是**裸 C++ 类型名**
+`dolfinx::mesh::MeshTags<int>`、`dolfinx::graph::AdjacencyList<int, decltype(nullptr)>`，
+而同一行里 `dolfinx_contact.cpp.ContactMode` 却是正常的 Python 类型名。
+**它认得自己的类型，认不得 dolfinx 的** —— 这就是 nanobind 跨模块类型注册表没打通。
+
+**根因**：conda-forge 的 dolfinx 绑定是 `cpp.abi3.so`（stable ABI），
+上游 `python/CMakeLists.txt` 的 `nanobind_add_module(cpp NOMINSIZE MODULE ...)`
+**没开 STABLE_ABI**，产物是 `cpp.cpython-312-x86_64-linux-gnu.so`。
+ABI 不同 -> nanobind internals 不同 -> 类型不互通。
+
+**两处都要改，缺一不可**：
+```cmake
+find_package(Python COMPONENTS Interpreter Development Development.SABIModule REQUIRED)
+nanobind_add_module(cpp STABLE_ABI NOMINSIZE MODULE dolfinx_contact/wrappers.cpp)
+```
+**只加 `STABLE_ABI` 不起作用**：nanobind 只在 CMake 找到 `Development.SABIModule`
+时才真正启用 stable ABI，否则**静默忽略**——我第一次只加了 STABLE_ABI，
+重建完产物仍是 `cpp.cpython-312-*.so`，而且没有任何警告。
+
+补丁已固化进 `scripts/setup_env.sh`（checkout 之后自动打，幂等；锚点失效会报错而不是静默跳过）。
+**验收口径：产物必须是 `cpp.abi3.so`。**
+
+### 上游 demo 在 dolfinx 0.11 下的三处漂移（不修，绕开）
+1. `create_circle_plane_mesh` 现在首参是 **gmsh model**，demo 仍传文件名
+   -> `--problem 1` 直接挂。`create_halfdisk_plane_mesh` 仍收文件名，故用 `--problem 2`。
+2. **`ContactWriter` 不可用**，两处不兼容：
+   - `create_submesh` 在 0.11 返回 `EntityMap` 对象，`output.py` 仍当数组用 `len()`；
+   - `output.py` 用的是**已删除的 legacy UFL API**（`ufl.FiniteElement` +
+     `ufl.Cell(..., geometric_dimension=...)`），UFL 2026.1 里没有了。
+   修它是上游的活，且它只是可视化辅助 —— **Phase 4.3/4.4 自己提取接触面力，不用它**。
+3. 求解循环本身不依赖 (1)(2)，跳过 writer 即可跑。
+
+### 对后续的影响
+- Phase 4.3/4.4 **必须自己写驱动**（本来也要写）：自己建网格、自己从解里提
+  p(x)、q(x) 与黏滑分区，与 `loads.py` 的解析解对拍。不走上游 demo 那条路。
+- **asimov-contact 的可用面比 README 显得窄**：核心求解可用，周边工具链带着
+  0.10 时代的残留。D-46 风险表里"API 变动"那条要升级 —— 不只是"可能变动"，
+  是**现在就有多处失效**。commit 钉死（f605fff）因此更必要。

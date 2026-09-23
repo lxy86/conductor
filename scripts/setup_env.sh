@@ -54,6 +54,49 @@ else
   fi
   git -C "$CONTACT_SRC" checkout -q FETCH_HEAD
 
+  # ---- 必打的两个补丁（D-48）----------------------------------------------
+  # 上游 python/CMakeLists.txt 建 nanobind 模块时**没开 stable ABI**，
+  # 而 conda-forge 的 dolfinx 绑定是 cpp.abi3.so（stable ABI）。两者 ABI 不同
+  # 就不共享 nanobind 类型注册表，于是 ContactProblem 构造时报
+  #   incompatible function arguments ... dolfinx::mesh::MeshTags<int>
+  # 签名里打印的是**裸 C++ 类型名**，正是「认不出对方类型」的特征。
+  # 只加 STABLE_ABI 不够：nanobind 仅在 CMake 找到 Development.SABIModule
+  # 时才真正启用它，否则**静默忽略**（产物仍是 cpp.cpython-312-*.so）。
+  # 补丁**逐行处理**，不做跨行匹配 —— 跨行模式在 shell heredoc 里极易被转义弄坏。
+  python - "$CONTACT_SRC/python/CMakeLists.txt" <<'PATCH_EOF'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+lines = path.read_text().splitlines()
+out = []
+done_sabi = False
+done_abi3 = False
+in_nb = False
+for line in lines:
+    if line.startswith("find_package(Python") and "Development.SABIModule" not in line:
+        line = line.replace("Development REQUIRED", "Development Development.SABIModule REQUIRED")
+        done_sabi = "Development.SABIModule" in line
+    if "Development.SABIModule" in line:
+        done_sabi = True
+    if line.strip().startswith("nanobind_add_module("):
+        in_nb = True
+    elif in_nb and line.strip() == ")":
+        in_nb = False
+    if in_nb and line.strip() == "STABLE_ABI":
+        done_abi3 = True
+    if in_nb and line.strip() == "NOMINSIZE" and not done_abi3:
+        out.append("  STABLE_ABI")
+        done_abi3 = True
+    out.append(line)
+if not (done_sabi and done_abi3):
+    raise SystemExit(
+        "补丁锚点失效（SABIModule=%s, STABLE_ABI=%s），上游可能已改动 CMakeLists"
+        % (done_sabi, done_abi3))
+path.write_text("\n".join(out) + "\n")
+print("  已打 stable-ABI 补丁（Development.SABIModule + STABLE_ABI）")
+PATCH_EOF
+
   # 用 conda 的编译器，不用系统 /usr/bin/c++ —— 与 conda 编出来的 libdolfinx
   # 混用不同 toolchain 会出 ABI 问题。cxx-compiler 包提供 $CXX/$CC。
   export CC="${CC:-$CONDA_PREFIX/bin/mpicc}"
@@ -77,3 +120,4 @@ echo
 echo "完成。验收："
 echo "  conda activate $ENV_NAME && pytest tests/test_env.py"
 echo "  python -c 'import dolfinx_contact; print(dolfinx_contact.__file__)'"
+echo "  ^ 必须是 cpp.abi3.so；若是 cpp.cpython-312-*.so 则 stable-ABI 补丁没生效（D-48）"

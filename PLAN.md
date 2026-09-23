@@ -291,10 +291,14 @@ cycle-jump、断点续跑、失稳判别器、硬关卡、后处理出图**全�
 旧的 12 个 fretting 生产工况作为「解析面力模型」的对照数据保留。
 
 ### Phase 4 — 接触求解器接入与**独立**验证（不碰相场）
-- [ ] 4.1 `scripts/setup_env.sh` 增加 asimov-contact 源码编译（CMake + pip），
-      重建环境并确认 `import dolfinx_contact` 通过、版本与 dolfinx 0.11.0 匹配（D-46 前置 B）；
-- [ ] 4.2 跑通仓库自带的 `demo_hertzian_contact.py` 与 `demo_friction_cylinders.py`，
-      确认本机可复现其结果；
+- [x] 4.1 `scripts/setup_env.sh` 增加 asimov-contact 源码编译（commit 钉死 f605fff）。
+      **完成**：CMake 找到 DOLFINX 0.11.0 + Basix 0.11.0 + Boost，`import dolfinx_contact` 通过，
+      全量 `pytest -q` 310 项仍全绿。须打两个 stable-ABI 补丁，见 D-48；
+      **验收口径：产物必须是 `cpp.abi3.so`**，不是 `cpp.cpython-312-*.so`。
+- [x] 4.2 跑通仓库自带的 Hertz 算例。**完成（有保留）**：`--problem 2` 打补丁后
+      4 个载荷步全收敛（残差 O(10) -> 1e-12~1e-13）。保留项见 D-48：
+      上游 demo 有三处 dolfinx 0.11 漂移，**`ContactWriter` 不可用**
+      （`EntityMap` + 已删除的 legacy UFL API），故 4.3/4.4 自己提取接触面力，不用它。
 - [ ] 4.3 **弹性 Hertz 对拍**：圆柱压平面，FE 解出的 p(x) 与 `loads.py` 的解析
       p0*sqrt(1-(x/a)^2) 比对，**p0 与 a 偏差 < 3%**；
 - [ ] 4.4 **Cattaneo–Mindlin 对拍**：加切向力 Q < mu*P，FE 解出的 q(x) 与黏滑边界 c/a
@@ -417,7 +421,7 @@ output:  {dir: data/clamp_base, save_fields_every: 5, snapshot_every: 10}
 | 单工况过慢 | 接触+塑性使每子步都是非线性求解，估 x5–20 | 先实测（决策 C）；再降级：刚体线夹、h = ell/3、缩小加密区、n_sub = 6 |
 | 机时被占 | load >> 6 | 本机 6 核与另一并行项目共用，不得同时起长算例（D-45） |
 | 接触区压应力产生假损伤 | d 在接触中心而非边缘增长 | spectral 分解（已定）；启用顺序见 D-8 |
-| dolfinx / dolfinx_contact API 变动 | import 或签名不符 | dolfinx 锁 0.11.0；asimov-contact 记下 commit hash，不跟 main 漂 |
+| **dolfinx_contact 周边工具链已有多处失效**（不是"可能变动"，是现状，D-48） | `create_circle_plane_mesh` 首参改成 gmsh model；`ContactWriter` 用 `EntityMap`/legacy UFL 均已失效 | 核心求解可用即可，周边一律自己写；dolfinx 锁 0.11.0，asimov-contact **commit 钉死 f605fff**，补丁写进 setup_env.sh 且锚点失效时报错而非静默跳过 |
 
 ---
 
