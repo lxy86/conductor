@@ -21,6 +21,12 @@ dependencies:
   - pytest
   - pytest-timeout
   - pip
+  # --- 以下为源码编译 dolfinx_contact（asimov-contact）所需，见 D-46 / setup_env.sh ---
+  - cmake=4.*
+  - ninja
+  - cxx-compiler             # 提供 conda 自己的 g++；不可用系统 /usr/bin/c++（ABI 不一致）
+  - nanobind                 # python 绑定；配合 pip --no-build-isolation，不让 pip 另装一份
+  - scikit-build-core
 # 注意：adios4dolfinx 不在此文件里。conda-forge 的版本最高只到 0.10.*
 # （硬要求 fenics-dolfinx 0.10.*），与 0.11.0 冲突；0.11 兼容版只在 PyPI 上。
 # 它必须用 `pip install --no-deps` 装（adios2 由 conda 提供，不能让 pip 覆盖）。

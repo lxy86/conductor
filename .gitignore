@@ -34,3 +34,6 @@ data/**/checkpoint.json
 data/**/ckpt_*.bp/
 data/_wall*/
 data/_probe_snap/
+
+# 外部源码依赖（asimov-contact），由 scripts/setup_env.sh 按固定 commit 拉取
+.ext/

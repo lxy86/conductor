@@ -106,8 +106,8 @@ FE 摩擦接触把这三条一次性解决：p₀ 成为夹持力的结果、微
 ```text
 计算域：一段外层铝单丝，长 L × 高 H
   H = d_wire = 3.75 mm（R_wire = 1.875 mm，D-6 导线定型）
-  L = 20 mm（默认；须 >> 接触宽度且 >> d_wire，使远场弯曲段不受接触扰动）
-线夹：刚体（决策 B 默认），带圆角的钳口（bell mouth），半径 R_clamp，压在单丝上表面
+  L = 40 mm（默认；文献报 KE-LPC 距离 18~45 mm，20 mm 装不下该特征尺度，D-47）
+线夹：刚体（决策 B），线槽曲率半径 R_clamp = 202.5 mm = 6 D（T/CMBN 标准 5.3.3 下限，D-47）
 接触：单丝上表面 ↔ 线夹钳口面，**FE 摩擦接触求解**（Nitsche + Coulomb，mu = 0.7）
 边界：
   左端（线夹内侧）u_x = 0，代表进入线夹的约束段
@@ -365,14 +365,16 @@ plasticity:                       # **新**
   hardening_H: null               # 由 (sigma_u - sigma_y)/eps_u 估，出处写进 material yaml
 
 geometry:                         # **新**：轴向平面
-  L: 20.0e-3
+  L: 40.0e-3                      # D-47
   H: 3.75e-3                      # = d_wire = 2 R_wire（D-6）
-  R_clamp: null                   # 钳口圆角半径，**待确认**（需线夹图纸或文献）
+  R_clamp: 202.5e-3               # 线槽曲率半径 = 6 x D_overall（T/CMBN 5.3.3 下限，D-47）
+                                  # 出口段 2~3 D（67.5~101 mm）列为 Phase 7 敏感性工况
 
 contact:                          # **新**：求解，不再规定面力
   solver: nitsche                 # dolfinx_contact
   mu: 0.7
-  W_clamp: null                   # 夹持力 N/m，**待确认**（见 §6 风险表）
+  W_clamp: 1.3e6                  # N/m，由标准握力 >= 20% RTS 反推（D-47）
+                                  # 区间 0.87~1.96e6 进 Phase 7 敏感性
   theta: 1.0                      # Nitsche 参数，按 asimov-contact 文档取
   gamma: null                     # Nitsche 罚参数，随网格与 E 定
 
@@ -411,7 +413,7 @@ output:  {dir: data/clamp_base, save_fields_every: 5, snapshot_every: 10}
 | **三场耦合不收敛**（最大风险，D-46 前置 A） | 交错迭代进极限环；或 Newton 不收敛 | 欠松弛（D-30/D-33 已有机制）；降 n_sub；先固定 d 跑通接触+塑性（Phase 6.1）再放开相场。**若 Phase 6.1 就不收敛，回退到"弹性接触+相场"的中间方案** |
 | **return mapping 与 Nitsche 项耦合不一致** | Newton 二次收敛丢失，迭代数暴涨 | 先用一致切线模量；不行则退到割线/修正 Newton 并接受迭代数上升；社区已指出这是难点（D-46） |
 | **棘轮** | delta eps_p 逐周期不衰减，cycle-jump 前提失效 | §2.4 的检查拦下并**停止报告**，不得外推（硬约束 6） |
-| **夹持力 W' 无可靠取值** | p0 又变成"挑出来的" | 塑性下压力饱和于 3 sigma_y，对 W' 不敏感 —— **这正是塑性带来的好处**；仍须在论文中声明 W' 的来源与不确定度 |
+| 夹持力 W' 的不确定度（**已从标准反推，D-47**） | 接触根数 8~12、握力裕度 1.0~1.5 使 W' 落在 0.87~1.96 MN/m | 已不是"挑出来的"：R_clamp 与握力均有标准条款可引；区间进 Phase 7 敏感性。塑性下压力饱和于 3 sigma_y，进一步压低了敏感度 |
 | 单工况过慢 | 接触+塑性使每子步都是非线性求解，估 x5–20 | 先实测（决策 C）；再降级：刚体线夹、h = ell/3、缩小加密区、n_sub = 6 |
 | 机时被占 | load >> 6 | 本机 6 核与另一并行项目共用，不得同时起长算例（D-45） |
 | 接触区压应力产生假损伤 | d 在接触中心而非边缘增长 | spectral 分解（已定）；启用顺序见 D-8 |
