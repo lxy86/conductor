@@ -71,7 +71,8 @@ def _save(fig, name: str) -> pathlib.Path:
 # --------------------------------------------------------------------------
 # 图 4：d 场演化 4 帧
 # --------------------------------------------------------------------------
-def fig4_damage_frames(case: str = "fig_frames") -> pathlib.Path | None:
+def fig4_damage_frames(case: str = "fig_frames",
+                       a_um: float = 11.62) -> pathlib.Path | None:
     """萌生 -> 倾斜扩展 -> 转向 -> 贯穿。
 
     前两帧来自稳定段（收敛解），后两帧来自失稳判别器推进的过程（phase = 2）——
@@ -98,30 +99,59 @@ def fig4_damage_frames(case: str = "fig_frames") -> pathlib.Path | None:
         cracked = stable[depth[stable] > 0]
         picks.append(int(cracked[0]) if cracked.size else int(stable[0]))
         picks.append(int(stable[-1]))
-        labels += ["(a) nucleation", "(b) stage-I oblique growth"]
+        # 标题要短：面板只有约 2.3 in 宽，长标签会横向串到隔壁面板上去
+        labels += ["(a) nucleation", "(b) stage-I growth"]
     if run.size:
-        picks.append(int(run[len(run) // 2]))
-        picks.append(int(run[-1]))
-        labels += ["(c) turning (unstable)", "(d) penetration (unstable)"]
+        # **按深度里程碑选帧，不按序号中点**，且标签只说捕获到的东西。
+        # 判别器在深度越过 judge_depth（2a）就停，所以失控段只到约 2.1a ——
+        # **完整的 mode I 转向发生在约 6a（D-32），不在这批帧里**。
+        # 早先把 (c) 的目标设成 2a，结果它与最深帧撞在一起（都是 24.5 µm），
+        # 而且标成 turning 名不副实。改成：(c) 取最斜处（约 1.5a），
+        # (d) 取捕获到的最深处，两帧之间能看到回转的**开端**。
+        deepest = int(run[np.argmax(depth[run])])
+        target = 1.5 * a_um if a_um else depth[run].max() * 0.75
+        mid = int(run[np.argmin(np.abs(depth[run] - target))])
+        if mid == deepest and run.size > 1:      # 兜底：别选出两张一样的
+            mid = int(run[np.argsort(depth[run])[-2]])
+        picks += [mid, deepest]
+        labels += ["(c) unstable, max tilt", "(d) unstable, turning"]
     if not picks:
         print("  跳过图 4：快照里没有可用帧")
         return None
 
-    fig, axes = plt.subplots(1, len(picks), figsize=(3.0 * len(picks), 3.2),
-                             sharey=True)
+    # **裁到裂纹所在的窗口，并用等比例坐标轴**。采样网格铺到 120 µm 深，
+    # 而裂纹只走到 25 µm —— 不裁的话 80% 画面是空黑、裂纹挤成一条缝。
+    # 等比例是硬要求：这张图讲的就是倾角与转向，横纵比例不等会让读者
+    # 直接读到错误的角度。
+    cracked_any = (d.max(axis=0) >= 0.5)
+    if cracked_any.any():
+        rows = np.nonzero(cracked_any.any(axis=1))[0]
+        cols = np.nonzero(cracked_any.any(axis=0))[0]
+        pad = 6.0
+        y_hi = min(dep.max(), dep[rows.max()] + pad)
+        x_lo = max(x.min(), x[cols.min()] - pad)
+        x_hi = min(x.max(), x[cols.max()] + pad)
+    else:
+        y_hi, x_lo, x_hi = dep.max(), x.min(), x.max()
+
+    fig, axes = plt.subplots(1, len(picks),
+                             figsize=(2.3 * len(picks), 3.4), sharey=True)
     axes = np.atleast_1d(axes)
     im = None
     for ax, i, lab in zip(axes, picks, labels):
         im = ax.pcolormesh(x, dep, d[i], vmin=0.0, vmax=1.0,
                            cmap="inferno", shading="auto", rasterized=True)
-        ax.invert_yaxis()
+        ax.set_xlim(x_lo, x_hi)
+        ax.set_ylim(y_hi, 0.0)          # 深度向下为正
+        ax.set_aspect("equal")
         ax.set_xlabel(r"$x$ [$\mu$m]")
         ax.set_title("%s\ndepth = %.1f $\\mu$m" % (lab, depth[i]), fontsize=8)
     axes[0].set_ylabel(r"depth [$\mu$m]")
     fig.colorbar(im, ax=axes.tolist(), label=r"damage $d$", shrink=0.85)
     fig.text(0.01, -0.04,
-             "(c) and (d) are states traversed during unstable propagation; "
-             "no equilibrium solution exists between (b) and (d) "
+             "(c) and (d) are states traversed during unstable propagation; no "
+             "equilibrium solution exists beyond (b). The full turn towards "
+             "mode I occurs at about 6a, beyond the captured range "
              "(see DECISIONS D-32).", fontsize=6.5)
     return _save(fig, "fig4_damage_frames.png")
 

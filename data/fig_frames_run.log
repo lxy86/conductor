@@ -14,3 +14,262 @@ INFO pfwire.cyclejump: 拒绝 ΔN=800（max Δd = 0.0234 > dd_max = 0.0200），
 INFO pfwire.fretting: 存断点：N=25500（0.6 s）
 INFO pfwire.cyclejump: 拒绝 ΔN=400（max Δd = 0.0214 > dd_max = 0.0200），减半重试
 INFO pfwire.cyclejump: 拒绝 ΔN=400（max Δd = 0.0300 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=26900 ΔN=200 深度=0.00 µm(0.00 a) x_init=- max_d=0.4051 ᾱ=1.03e+10 已用 296 s（取裂纹 0 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=200（max Δd = 0.9036 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=100（max Δd = 0.9029 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=100（max Δd = 0.9008 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=50（max Δd = 0.9005 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=50（max Δd = 0.8990 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=25（max Δd = 0.8989 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=50（max Δd = 0.8979 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=25（max Δd = 0.8977 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=12.5（max Δd = 0.8977 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=12.5（max Δd = 0.8976 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=6.25（max Δd = 0.8977 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=3.125（max Δd = 0.8977 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=1.5625（max Δd = 0.8976 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.8977 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.8977 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.fretting: N=27028 ΔN=4 深度=2.00 µm(0.17 a) x_init=-1.02 a max_d=1.0000 ᾱ=1.036e+10 已用 3233 s（取裂纹 0 s）
+INFO pfwire.fretting: N=28556 ΔN=256 深度=2.00 µm(0.17 a) x_init=-1.02 a max_d=1.0000 ᾱ=1.036e+10 已用 3427 s（取裂纹 0 s）
+INFO pfwire.fretting: 存断点：N=28555.8（0.5 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=512（max Δd = 0.0212 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=31116 ΔN=256 深度=2.00 µm(0.17 a) x_init=-1.02 a max_d=1.0000 ᾱ=1.036e+10 已用 3691 s（取裂纹 0 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=256（max Δd = 0.0711 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=256（max Δd = 0.0669 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=128（max Δd = 0.0669 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=64（max Δd = 0.0669 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=64（max Δd = 0.0661 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0661 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0661 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0657 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0656 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0652 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0648 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0648 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0648 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=32317 ΔN=1 深度=2.50 µm(0.22 a) x_init=-1.02 a max_d=1.0000 ᾱ=1.036e+10 已用 4434 s（取裂纹 0 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0648 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.0648 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.fretting: 存断点：N=32332.8（0.5 s）
+INFO pfwire.fretting: N=32829 ΔN=256 深度=2.50 µm(0.22 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.036e+10 已用 4652 s（取裂纹 0 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=512（max Δd = 0.0218 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=512（max Δd = 0.0213 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=36669 ΔN=512 深度=2.50 µm(0.22 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.036e+10 已用 4966 s（取裂纹 1 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=512（max Δd = 0.0208 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=512（max Δd = 0.0216 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=39485 ΔN=512 深度=3.00 µm(0.26 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.036e+10 已用 5279 s（取裂纹 1 s）
+INFO pfwire.fretting: 存断点：N=39484.8（0.5 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=512（max Δd = 0.0211 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=512（max Δd = 0.0242 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=43325 ΔN=256 深度=3.00 µm(0.26 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.036e+10 已用 5619 s（取裂纹 1 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=512（max Δd = 0.0208 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=46141 ΔN=256 深度=3.50 µm(0.30 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.036e+10 已用 5928 s（取裂纹 1 s）
+INFO pfwire.fretting: 存断点：N=47420.8（0.5 s）
+INFO pfwire.fretting: N=48701 ΔN=256 深度=4.00 µm(0.34 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.036e+10 已用 6212 s（取裂纹 1 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=512（max Δd = 0.0229 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=51261 ΔN=256 深度=4.00 µm(0.34 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.038e+10 已用 6501 s（取裂纹 1 s）
+INFO pfwire.fretting: N=53821 ΔN=256 深度=4.50 µm(0.39 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.048e+10 已用 6800 s（取裂纹 1 s）
+INFO pfwire.fretting: 存断点：N=53820.8（0.5 s）
+INFO pfwire.fretting: N=56381 ΔN=256 深度=5.00 µm(0.43 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.059e+10 已用 7106 s（取裂纹 1 s）
+INFO pfwire.fretting: N=58941 ΔN=256 深度=5.00 µm(0.43 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.09e+10 已用 7412 s（取裂纹 1 s）
+INFO pfwire.fretting: 存断点：N=60220.8（0.5 s）
+INFO pfwire.fretting: N=61501 ΔN=256 深度=5.50 µm(0.47 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.138e+10 已用 7741 s（取裂纹 1 s）
+INFO pfwire.fretting: N=64061 ΔN=256 深度=6.00 µm(0.52 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.187e+10 已用 8091 s（取裂纹 1 s）
+INFO pfwire.fretting: N=66621 ΔN=256 深度=6.50 µm(0.56 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.235e+10 已用 8452 s（取裂纹 1 s）
+INFO pfwire.fretting: 存断点：N=66620.8（0.6 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=256（max Δd = 0.0218 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=68285 ΔN=128 深度=6.50 µm(0.56 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.267e+10 已用 8791 s（取裂纹 1 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=256（max Δd = 0.0236 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=256（max Δd = 0.0208 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=256（max Δd = 0.0209 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=256（max Δd = 0.0245 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=69565 ΔN=128 深度=7.00 µm(0.60 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.291e+10 已用 9186 s（取裂纹 1 s）
+INFO pfwire.fretting: 存断点：N=70204.8（0.5 s）
+INFO pfwire.fretting: N=70845 ΔN=128 深度=7.50 µm(0.65 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.316e+10 已用 9494 s（取裂纹 2 s）
+INFO pfwire.fretting: N=72125 ΔN=128 深度=7.50 µm(0.65 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.34e+10 已用 9820 s（取裂纹 2 s）
+INFO pfwire.fretting: N=73405 ΔN=128 深度=8.00 µm(0.69 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.365e+10 已用 10168 s（取裂纹 2 s）
+INFO pfwire.fretting: 存断点：N=73404.8（0.6 s）
+INFO pfwire.fretting: N=74685 ΔN=128 深度=8.50 µm(0.73 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.389e+10 已用 10543 s（取裂纹 2 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=128（max Δd = 0.0203 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=128（max Δd = 0.0218 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=75517 ΔN=64 深度=8.50 µm(0.73 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.405e+10 已用 10924 s（取裂纹 2 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=128（max Δd = 0.0220 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: 存断点：N=75900.8（0.6 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=128（max Δd = 0.0225 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=76221 ΔN=64 深度=9.00 µm(0.77 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.419e+10 已用 11294 s（取裂纹 2 s）
+INFO pfwire.fretting: N=76861 ΔN=64 深度=9.00 µm(0.77 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.431e+10 已用 11623 s（取裂纹 2 s）
+INFO pfwire.fretting: N=77501 ΔN=64 深度=9.50 µm(0.82 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.443e+10 已用 11964 s（取裂纹 2 s）
+INFO pfwire.fretting: 存断点：N=77500.8（0.6 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=64（max Δd = 0.0227 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=78077 ΔN=32 深度=10.00 µm(0.86 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.454e+10 已用 12364 s（取裂纹 2 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=64（max Δd = 0.0211 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=64（max Δd = 0.0233 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=78397 ΔN=32 深度=10.50 µm(0.90 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.461e+10 已用 12743 s（取裂纹 2 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=64（max Δd = 0.0386 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0202 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0275 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: 存断点：N=78540.8（0.5 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0231 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=78669 ΔN=32 深度=10.50 µm(0.90 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.466e+10 已用 13245 s（取裂纹 2 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0625 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0740 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0616 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0686 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0612 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0660 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0612 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0588 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0598 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.0588 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.fretting: N=78828 ΔN=1 深度=11.00 µm(0.95 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.469e+10 已用 14396 s（取裂纹 2 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0223 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0382 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0248 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0303 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0244 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0220 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0207 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.0202 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.fretting: N=78900 ΔN=1 深度=11.00 µm(0.95 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.47e+10 已用 14916 s（取裂纹 2 s）
+INFO pfwire.fretting: 存断点：N=78899.8（0.6 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0237 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0322 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0233 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0201 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0276 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0208 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0236 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=78946 ΔN=4 深度=11.00 µm(0.95 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.471e+10 已用 15378 s（取裂纹 3 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0267 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0231 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0218 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.0209 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0203 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0807 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0685 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0551 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0641 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0547 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0515 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.0497 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.fretting: N=78999 ΔN=1 深度=11.50 µm(0.99 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.472e+10 已用 16363 s（取裂纹 3 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0326 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0274 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: 存断点：N=79017.8（0.6 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0302 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0274 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0261 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0270 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.0261 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.fretting: N=79027 ΔN=4 深度=11.50 µm(0.99 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.473e+10 已用 16845 s（取裂纹 3 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0213 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0210 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0298 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0202 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0243 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=79155 ΔN=16 深度=11.50 µm(0.99 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.475e+10 已用 17287 s（取裂纹 3 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0299 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0718 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0227 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0551 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0633 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0547 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0407 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0487 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0407 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.0361 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.fretting: N=79221 ΔN=4 深度=11.50 µm(0.99 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.477e+10 已用 18199 s（取裂纹 3 s）
+INFO pfwire.fretting: 存断点：N=79220.8（0.5 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0406 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0350 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0318 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0336 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0318 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.0313 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.fretting: N=79311 ΔN=32 深度=12.00 µm(1.03 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.478e+10 已用 18714 s（取裂纹 3 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0275 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.0495 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0267 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0336 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0458 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0332 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0223 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0476 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0361 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0309 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0287 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0296 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.0287 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.fretting: N=79369 ΔN=1 深度=12.00 µm(1.03 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.479e+10 已用 19958 s（取裂纹 3 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.1507 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0435 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: 存断点：N=79387.8（0.7 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0494 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0431 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0462 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0485 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.1454 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0481 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0490 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=79396 ΔN=1 深度=12.00 µm(1.03 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.48e+10 已用 21434 s（取裂纹 3 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.1446 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.0486 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.1472 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.1354 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.1301 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.1331 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.1301 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.1312 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.1297 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.fretting: N=79419 ΔN=2 深度=12.50 µm(1.08 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.48e+10 已用 23883 s（取裂纹 3 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0213 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0628 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0416 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0350 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0308 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0329 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.0308 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0534 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0428 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=79456 ΔN=4 深度=12.50 µm(1.08 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.481e+10 已用 24777 s（取裂纹 3 s）
+INFO pfwire.fretting: 存断点：N=79455.8（0.8 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0474 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0424 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0443 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0420 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.0402 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.0308 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0252 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.0216 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0202 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.0203 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=79479 ΔN=2 深度=12.50 µm(1.08 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.482e+10 已用 25744 s（取裂纹 3 s）
+INFO pfwire.fretting: N=79843 ΔN=64 深度=13.00 µm(1.12 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.489e+10 已用 26158 s（取裂纹 3 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=64（max Δd = 0.0274 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=32（max Δd = 0.1076 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=32（交错求解未收敛：交错迭代 2000 次未收敛：最后 ‖Δd‖_inf=6.553e-03（阈值 1.0e-04）（chi 翻转 1 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=16（max Δd = 0.1067 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（max Δd = 0.0341 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: 存断点：N=79990.8（0.7 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=16（交错求解未收敛：交错迭代 2000 次未收敛：最后 ‖Δd‖_inf=8.202e-03（阈值 1.0e-04）（chi 翻转 2 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（交错求解未收敛：交错迭代 2000 次未收敛：最后 ‖Δd‖_inf=7.012e-03（阈值 1.0e-04）（chi 翻转 1 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.1003 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（max Δd = 0.1038 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（交错求解未收敛：交错迭代 2000 次未收敛：最后 ‖Δd‖_inf=7.088e-03（阈值 1.0e-04）（chi 翻转 3 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.1034 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.1019 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.fretting: N=80008 ΔN=1 深度=13.50 µm(1.16 a) x_init=-1.04 a max_d=1.0000 ᾱ=1.492e+10 已用 34217 s（取裂纹 4 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=16（交错求解未收敛：交错迭代 2000 次未收敛：最后 ‖Δd‖_inf=3.759e-02（阈值 1.0e-04）（chi 翻转 11 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（交错求解未收敛：交错迭代 2000 次未收敛：最后 ‖Δd‖_inf=3.199e-02（阈值 1.0e-04）（chi 翻转 8 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=8（交错求解未收敛：交错迭代 2000 次未收敛：最后 ‖Δd‖_inf=3.460e-02（阈值 1.0e-04）（chi 翻转 7 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（交错求解未收敛：交错迭代 2000 次未收敛：最后 ‖Δd‖_inf=3.199e-02（阈值 1.0e-04）（chi 翻转 8 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=4（交错求解未收敛：交错迭代 2000 次未收敛：最后 ‖Δd‖_inf=3.371e-02（阈值 1.0e-04）（chi 翻转 13 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（交错求解未收敛：交错迭代 2000 次未收敛：最后 ‖Δd‖_inf=3.224e-02（阈值 1.0e-04）（chi 翻转 12 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。），减半重试
+ERROR pfwire.cyclejump: ΔN 已降到下界 1 仍失败（交错求解未收敛：交错迭代 2000 次未收敛：最后 ‖Δd‖_inf=3.141e-02（阈值 1.0e-04）（chi 翻转 12 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。）。这不是可以忽略的告警：结果不可用，请检查网格/载荷或降低 dd_max。
+INFO pfwire.fretting: 退出前存断点：N=80028.8
+ERROR pfwire.fretting: cycle-jump 在 N=80029 失败：ΔN 已降到下界 1 仍失败（交错求解未收敛：交错迭代 2000 次未收敛：最后 ‖Δd‖_inf=3.141e-02（阈值 1.0e-04）（chi 翻转 12 个单元，仅诊断，newton 路径不参与判据）。不要把这个解当结果用。）。这不是可以忽略的告警：结果不可用，请检查网格/载荷或降低 dd_max。
+INFO pfwire.fretting: 开始失稳判别（最多 4000 次迭代）……
+INFO pfwire.fretting: 失稳判别：unstable —— 深度从 13.50 µm 单调推进到 24.50 µm（越过 23.25 µm）而残差始终不降，其间不存在平衡解
+INFO pfwire.fretting: 快照 46 帧 -> snapshots.npz
+状态=failed_unstable  jump 步数=487  N=80028.8  裂纹深度=13.50 µm(1.16 a)  关卡=**判不了**（深度没到判定门槛）（滑移区萌生 True，初始倾斜 True，尖端转向 False）  失稳判别=unstable（13.50 -> 24.50 µm，2100 次迭代）  N_f=80028.8  耗时 43746.8 s
