@@ -1834,10 +1834,26 @@ D-27/D-28 已实测：p₀ = 500 MPa 时**弹性解第一步就越过起裂门�
 损伤是静态的，且萌生寿命随网格细化差 450 倍。只有塑性能让接触压力饱和。
 **σ_c = σ_u = 185 MPa 的锚定（D-2）在新框架下不会自动消失，会更早暴露。**
 
-**B. dolfinx 0.11 没有内置接触求解器。**
-先确认 `dolfinx_contact` 对 0.11 可用性；不可用则自建（Nitsche 或罚函数
-+ 正则化 Coulomb 摩擦）。**必须独立立项、独立对拍 Hertz/Cattaneo–Mindlin 解析解**
-之后才谈耦合 —— 否则耦合失败时分不清是接触错了还是相场错了。
+**B. 接触求解器：`dolfinx_contact` 可用，但实验性强（2026-09-23 核查）。**
+包名 `dolfinx_contact` = GitHub `Wells-Group/asimov-contact`（ASiMoV 项目，Nitsche 法）。
+核查结果：
+
+| 项 | 结论 |
+|---|---|
+| dolfinx 版本要求 | **main 分支 README 写 v0.11.0** —— 与本项目锁定版本**正好一致** |
+| 本机是否已装 | **否**（`dolfinx_contact` / `dolfinx_mpc` 均 ModuleNotFoundError） |
+| conda-forge | **无此包**，须从源码装（CMake + pip） |
+| 摩擦 | **支持 Coulomb 摩擦**（`FrictionLaw.Coulomb`，见 `demo_sliding_wedges.py`） |
+| Hertz 验证算例 | **仓库自带** `python/demos/hertz_contact/`：`demo_hertzian_contact.py`、`demo_friction_cylinders.py`、`demo_friction_cylinders_force_driven.py` |
+| 弹塑性 | **不支持**。FEniCS Discourse 上有人专门问过，答复是接触格式本身仍适用，但**体本构须自行扩展**，难点是「把 return mapping 与 Nitsche 项一致地耦合起来」 |
+| 成熟度 | 28 stars、16 open issues、自述「under heavy development and highly experimental」；最近推送 2026-08-03（活跃） |
+
+**含义**：前置 B 基本解决 —— 摩擦有了，Hertz 对拍算例现成（正好是本项目要的验证）。
+**剩下的硬骨头全部集中到前置 A（弹塑性）**：既要自己写 return mapping，
+又要让它与 Nitsche 接触项一致耦合，且还要再与相场耦合。**三者串在一起是本项目最大的风险点。**
+
+装它会让环境偏离 `scripts/setup_env.sh`（硬约束：不裸跑 conda/pip 装包），
+**装之前须先把它写进 setup_env.sh**（源码编译，非 conda-forge）。
 
 **C. 成本未知且本机资源紧张。**
 旧版单工况 0.7–78 h（6 核）。接触 + 塑性使每个子步都成为非线性求解，
