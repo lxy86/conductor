@@ -47,10 +47,17 @@ cigre_safe_border_line:
   # 本导线为 61 线、铝层 2 层，属多层，故用 multilayer。
   applicable: multilayer
   multilayer:
-    - {N_max: 1.56e+7, A: 450.0e+6, b: 0.20}
+    # 分段点 2e7 来自 CIGRE TB 332 原文（2026-09-23 核对，见 D-25）。
+    # 原先写的 1.56e7 是二手文献的说法 —— TB 332 汇编明确提到「部分文献将
+    # 分段点记为 1.56e7，引用时建议核对原文」，我们当初引的正是那一版。
+    # 系数 A、b 两段都与原文一致，只有分段点错。
+    - {N_max: 2.0e+7, A: 450.0e+6, b: 0.20}
     - {N_max: null,    A: 263.0e+6, b: 0.17}
-  # 单层系数位（本工况不用，留作切换）：TODO 按 CIGRE TB 332 填并核对上面多层系数
-  single_layer: null
+  # 单层系数（CIGRE TB 332，2026-09-23 核对）。本工况铝层 2 层属多层，不用这组，
+  # 填在这里是为了留一个对照 —— 单层/多层用错会差近一倍。
+  single_layer:
+    - {N_max: 2.0e+7, A: 730.0e+6, b: 0.20}
+    - {N_max: null,   A: 430.0e+6, b: 0.17}
 
 sources:
   structure: >-
@@ -66,4 +73,8 @@ sources:
     N m^2（-0.8%），对 K 的影响 < 0.5%。
   EI_min: "DECISIONS.md D-6：定义为各单线独立弯曲之和 sum E_i pi d_i^4/64"
   poffenberger_swart: "PLAN.md 第 1 节；x = 89 mm 为 IEEE/CIGRE 标准测点"
-  cigre_safe_border_line: "PLAN.md 第 1 节，TODO 实现前对照 CIGRE TB 332 核对系数"
+  cigre_safe_border_line: >-
+    CIGRE TB 332（Task Force B2.11.07, 2007）。2026-09-23 对照原文核对：
+    多层 A=450/b=0.20（N<=2e7）与 A=263/b=0.17（N>2e7），单层 730/430。
+    系数与原文一致；分段点原先错写成 1.56e7（二手文献说法），已改为 2e7。
+    复算原文数据表逐点吻合到 0.03%。CSBL 概念原始出处为 Electra 1985(100):77-86。

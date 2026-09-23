@@ -223,11 +223,16 @@ def fig6_sn_curve(conductor: str = "configs/conductor_jl1_lha1_465_210.yaml"
     ax.legend(loc="upper right")
     # D-25：TB 332 核对未做，且分段点处有 −3.94% 跳变。图注必须标明，
     # 且**不得**为了好看去平滑它 —— 那等于拿自己编的曲线跟文献比。
-    fig.text(0.01, -0.03,
-             "$^{*}$ CSBL coefficients taken from PLAN 1; not yet verified "
-             "against CIGRE TB 332 (DECISIONS D-25). The -3.94% jump at the "
-             "segment point is reproduced as specified, not smoothed.",
-             fontsize=6.5)
+    # D-42：TB 332 已核对（2026-09-23）。系数与原文一致，分段点由二手文献的
+    # 1.56e7 更正为原文的 2e7。折点是分段定义的人为产物（原文亦如此说明），
+    # **不得平滑** —— 平滑等于拿一条自己编的曲线跟文献比。
+    fig.text(0.01, -0.045,
+             "$^{*}$ CSBL: multilayer coefficients A = 450 / b = 0.20 "
+             "(N <= 2e7) and A = 263 / b = 0.17, verified against CIGRE "
+             "TB 332 (DECISIONS D-42). The -3.2% step at the segment point is "
+             "an artefact of the piecewise definition and is reproduced as "
+             "specified, not smoothed. CSBL is a lower-bound envelope: measured "
+             "conductor lives are typically 3-11x above it.", fontsize=6.5)
     return _save(fig, "fig6_sn_curve.png")
 
 
