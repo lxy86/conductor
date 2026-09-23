@@ -440,6 +440,10 @@ def run_fretting(
     phase = fem.Constant(msh, default_scalar_type(0.0))
     sigma_b = fem.Constant(msh, default_scalar_type(0.0))
     sigma_a = float(lcfg["sigma_a"])
+    #: 本体应力的拉伸平均值。默认 0（D-5 的简化：R = −1 全反复）。
+    #: 加它之前必须先验起裂门槛裕度 —— psi+ 由**峰值总应力** sigma_m + sigma_a
+    #: 决定，而门槛在峰值约 69-72 MPa 处就被跨过（D-43 实测）。
+    sigma_m = float(lcfg.get("sigma_m", 0.0))
     make_work = _traction_forms(msh, contact, phase, sigma_b, tags)
 
     alpha_T, form, kappa = material.require_fatigue_params()
@@ -453,7 +457,11 @@ def run_fretting(
     def set_phase(t_over_T: float) -> None:
         value = math.sin(2.0 * math.pi * float(t_over_T))
         phase.value = value
-        sigma_b.value = sigma_a * value
+        # sigma_m 只加在**本体应力**上，切向接触面力仍是全反复（∝ phase）。
+        # 这对应真实工况：导线在 EDS 张力下，铝丝带恒定拉伸平均应力，
+        # 而微风振动在交叉点产生往复的切向力。D-5 原本把 sigma_m 简化掉了，
+        # 这里把它做成可选项，用于与 CIGRE 口径（试验在 EDS 20% RTS 下做）对照。
+        sigma_b.value = sigma_m + sigma_a * value
 
     # --- 裂纹采样网格（表面 y=0，深度向下）---
     half = float(fcfg["sample_halfwidth_factor"]) * contact.a

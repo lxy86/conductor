@@ -14,3 +14,8 @@ INFO pfwire.cyclejump: 拒绝 ΔN=1600（max Δd = 0.0258 > dd_max = 0.0200）�
 INFO pfwire.cyclejump: 拒绝 ΔN=1600（max Δd = 0.0301 > dd_max = 0.0200），减半重试
 INFO pfwire.fretting: N=46300 ΔN=800 深度=0.00 µm(0.00 a) x_init=- max_d=0.3549 ᾱ=1.799e+10 已用 721 s（取裂纹 0 s）
 INFO pfwire.cyclejump: 拒绝 ΔN=800（max Δd = 0.8690 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=400（max Δd = 0.8635 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=200（max Δd = 0.8582 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=200（max Δd = 0.8551 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=100（max Δd = 0.8548 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=100（max Δd = 0.8541 > dd_max = 0.0200），减半重试
