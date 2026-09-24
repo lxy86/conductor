@@ -45,6 +45,10 @@ FE 摩擦接触把这三条一次性解决：p₀ 成为夹持力的结果、微
 1. **建立 FE 摩擦接触与相场疲劳的全耦合模型**（AT1 + Carrara 2020 疲劳退化
    + cycle-jump + 弹塑性 + 摩擦接触），在**同一个变分框架**内同时求解接触、
    塑性与损伤，无需预设萌生裂纹长度、临界平面或裂纹扩展方向准则。
+   ⚠️ **「对导线–线夹做 FE 弹塑性接触」本身不是新颖点**：Lévesque 等 2011
+   （Tribology International 44:1014-1023）已用 ABAQUS 做过 3D 版本。
+   新颖性在**与相场疲劳全耦合**：他们止步于 Ruiz–Chen 经验严重度指标、
+   只判萌生且不给周期数，扩展阶段完全不做（D-50）。
 2. **在真实载荷路径下预测线夹口单丝的微动疲劳寿命**：夹持力 + EDS 轴向张力
    + 往复弯曲，弯曲幅直接用 Poffenberger–Swart 的 Y_b 表达，从而与
    CIGRE TB 332 的 CSBL **在同一应力口径下**比较（旧版的口径差见 D-42 第 2 条）。
@@ -107,7 +111,7 @@ FE 摩擦接触把这三条一次性解决：p₀ 成为夹持力的结果、微
 计算域：一段外层铝单丝，长 L × 高 H
   H = d_wire = 3.75 mm（R_wire = 1.875 mm，D-6 导线定型）
   L = 40 mm（默认；文献报 KE-LPC 距离 18~45 mm，20 mm 装不下该特征尺度，D-47）
-线夹：刚体（决策 B），线槽曲率半径 R_clamp = 202.5 mm = 6 D（T/CMBN 标准 5.3.3 下限，D-47）
+线夹：刚体（决策 B），LPC 处轴向曲率半径 R_clamp = 330 mm（Lévesque 2011 实测，D-50）
 接触：单丝上表面 ↔ 线夹钳口面，**FE 摩擦接触求解**（Nitsche + Coulomb，mu = 0.7）
 边界：
   左端（线夹内侧）u_x = 0，代表进入线夹的约束段
@@ -151,10 +155,11 @@ D-42 第 2 条记的口径差（CSBL 来自导线弯曲、旧模型是均匀轴�
 ```text
 弹性：E = 69 GPa, nu = 0.33
 塑性：J2 各向同性线性硬化（决策 A 默认）
-      sigma_y ~ 165 MPa, sigma_u = 185 MPa
+      sigma_y = 167 MPa（Lévesque 2011）, sigma_u = 185 MPa
       -> H19 是重度冷作态，**sigma_u/sigma_y ~ 1.12，几乎没有剩余硬化能力**，
          接近理想塑性；硬化模量 H 由 (sigma_u - sigma_y)/eps_u 估，来源写进 material yaml
-压入硬度：H_ind ~ 3 sigma_y ~ 495 MPa —— 接触压力的饱和值
+饱和压力：**2.15 sigma_y ~ 359 MPa**（Lévesque 2011：接触区相对物体尺寸太大，
+         故低于球接触的 ~2.8 sigma_y，更低于 3 sigma_y，D-50）
 断裂：sigma_c = sigma_u = 185 MPa（D-2），ell = 2 um（D-28），G_c 由 AT1 三角导出
 ```
 
@@ -369,26 +374,28 @@ fatigue:
 
 plasticity:                       # **新**
   model: J2_isotropic_linear      # 决策 A 默认
-  sigma_y: 165.0e6                # 待补出处
+  sigma_y: 167.0e6                # Al 1350-H19，Lévesque 2011（D-50）
   hardening_H: null               # 由 (sigma_u - sigma_y)/eps_u 估，出处写进 material yaml
 
 geometry:                         # **新**：轴向平面
   L: 40.0e-3                      # D-47
   H: 3.75e-3                      # = d_wire = 2 R_wire（D-6）
-  R_clamp: 202.5e-3               # 线槽曲率半径 = 6 x D_overall（T/CMBN 5.3.3 下限，D-47）
-                                  # 出口段 2~3 D（67.5~101 mm）列为 Phase 7 敏感性工况
+  R_clamp: 330.0e-3               # LPC 轴向曲率 Rx，ACSR Bersfort 实测（Lévesque 2011，D-50）
+                                  # 敏感性区间 179~330 mm（两副实测线夹）；
+                                  # T/CMBN 标准下限 6D = 202.5 mm 落在区间内（D-47）
 
 contact:                          # **新**：求解，不再规定面力
   solver: nitsche                 # dolfinx_contact
   mu: 0.7
-  W_clamp: 1.3e6                  # N/m，由标准握力 >= 20% RTS 反推（D-47）
-                                  # 区间 0.87~1.96e6 进 Phase 7 敏感性
+  W_clamp: 1.75e6                 # N/m，标定到实测 p0 = 361 MPa（Lévesque 2011，D-50）
+                                  # 与 D-47 握力反推区间 0.87~1.96e6 自洽；敏感性用该区间
   theta: 1.0                      # Nitsche 参数，按 asimov-contact 文档取
   gamma: null                     # Nitsche 罚参数，随网格与 E 定
 
 loading:
   T_axial_pct_RTS: 0.15           # EDS，提供 sigma_m
-  Y_b: 0.25e-3                    # 弯曲幅（峰峰），经 P–S 换算得 sigma_a
+  Y_b: 0.30e-3                    # 弯曲幅（峰峰），经 P–S 换算得 sigma_a。文献试验区间
+                                  # 0.3~0.9 mm（Lévesque 2011），原取 0.25 低于下限（D-50）
   n_sub: 8
 
 cycle:
