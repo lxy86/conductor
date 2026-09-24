@@ -1,0 +1,47 @@
+# Phase 4.3：FE 摩擦接触求解 vs Hertz 解析解（PLAN §4 Phase 4.3）
+#
+# 这是**求解器验证**，不是生产工况，所以刻意用无量纲参数而不是铝的 SI 值：
+# 验证要的是「FE 解收敛到 Hertz 解」，与材料无关；用 O(1) 的量避免读数时
+# 被 1e9 量级掩盖掉百分之几的偏差。几何取自 asimov-contact 自带的 Hertz 算例
+# （python/demos/hertz_contact/demo_hertzian_contact.py），便于与上游对照。
+#
+# ⚠️ YAML 1.1：不带指数符号的 1e-7 会被解析成字符串，载入后必须 coerce。
+
+geometry:
+  R: 8.0            # 半圆柱半径
+  L: 20.0           # 下方块体长度
+  H: 20.0           # 下方块体高度
+  gap: 0.0          # 初始间隙
+
+material:           # 两个物体同材料
+  E: 200.0
+  nu: 0.3
+
+loading:
+  # 单位长度总法向力 P。上游取 2 R x 0.625 = 10，此时 a/R = 0.12，
+  # 仍在 Hertz 的「接触区远小于曲率半径」适用范围内。
+  P: 10.0
+  steps: 4          # 分步加载，最后一步是满载
+
+mesh:
+  res: 0.2          # gmsh 特征尺寸；res 越小接触区分辨率越高
+  order: 1          # 几何阶
+  quads: true       # 四边形网格（simplex=false）
+
+solver:
+  newton_tol: 1.0e-7
+  max_it: 200
+  ksp_tol: 1.0e-12
+  # Nitsche 参数，按上游算例取 gamma = E x 100 x order^2、theta = 1
+  nitsche_gamma_factor: 100.0
+  nitsche_theta: 1.0
+
+# 验收阈值（PLAN Phase 4.3：p0 与 a 偏差 < 3%）
+tolerance:
+  a_rel: 0.03
+  p0_rel: 0.03
+  # 合力校核：∫p dx 与施加的 P 之差。这一条比 p0/a 更严，因为它是积分量。
+  load_rel: 0.02
+
+output:
+  dir: data/verify_hertz
