@@ -82,7 +82,7 @@ def main(argv=None) -> int:
     model.du.interpolate(
         lambda x: np.vstack([np.zeros(x.shape[1]),
                              np.full(x.shape[1], -H / 100.0 - fnum(g, "gap"))]),
-        ct.find(model.tags.cell_disk))
+        ct.find(model.tags.body_cells[0]))
 
     for i in range(steps):
         traction.value[-1] = -P * (i + 1) / (steps * 2.0 * R)

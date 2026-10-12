@@ -1,0 +1,68 @@
+# Phase 4.4：FE 摩擦接触 vs Cattaneo–Mindlin 部分滑移（PLAN §4 Phase 4.4）
+#
+# 几何从「半圆柱压块体」改成「**圆柱–圆柱**」（上游 create_quarter_disks_mesh）：
+# 这是 Cattaneo–Mindlin 的原生场景，也是上游 demo_friction_cylinders.py 实测
+# 切向加载能收敛的那套。半圆柱压块体在切向步会进黏滑极限环（本次 Phase 4.4
+# 诊断：换 γ、换 KSP、缩步长都压不住，残差卡在 ~0.026 不降）。
+#
+# 两阶段、**位移驱动**（上游 friction 算例的做法，也是接触力学常规）：
+#   阶段 1 压下（u_y）→ 建立 Hertz 接触，由接触面反力测法向力 P；
+#   阶段 2 切向推（u_x）→ 每步从接触面反力算 Q/(mu P)，与解析
+#          c/a = sqrt(1 - Q/(mu P)) 对拍。
+#
+# 为什么位移驱动而不是像 4.3 那样给面力：切向若用面力，圆柱只靠摩擦被"拉住"，
+# Q 接近 mu P 时会整体滑走、矩阵接近奇异。
+#
+# ⚠️ YAML 1.1：不带指数符号的 1e-7 会被解析成字符串，载入后必须 coerce。
+
+geometry:
+  R: 8.0            # 两个圆柱半径（上游 friction 算例取 8）
+  gap: 0.0          # 初始间隙（两圆柱在 (0,-R) 相切）
+
+material:           # 两个物体同材料
+  E: 200.0
+  nu: 0.3
+
+friction:
+  mu: 0.3           # 与上游 friction 算例一致，便于对照
+
+loading:
+  # 法向预压（位移驱动）：上游 friction 算例压 u_y = -0.2 分 4 步。
+  u_y: -0.20
+  steps_normal: 4
+  # 切向总位移与步数。上游取 6*0.05 = 0.3 分 96 步（每步 0.003125）；
+  # 这里跑到 0.14 分 28 步（同样 0.005/步量级），足以扫过部分滑移区间。
+  u_x: 0.14
+  steps_tangential: 28
+  # 只在这个 Q/(mu P) 区间内做对拍：太小则 c/a -> 1，分辨不出差别；
+  # 太接近 1 则进入整体滑移，Cattaneo–Mindlin 本身失效。
+  q_ratio_min: 0.15
+  q_ratio_max: 0.90
+
+mesh:
+  res: 0.2          # gmsh 特征尺寸；接触区自动加密到 0.5*res
+  order: 1
+  quads: true
+
+solver:
+  newton_tol: 1.0e-7
+  max_it: 200
+  # 阶段 1（无摩擦）用 LU 直接解；阶段 2（Coulomb）切向 Jacobian 非对称，
+  # 按上游 friction 算例换 GMRES + GAMG，并把 Nitsche 罚参数从 E*100 降到 E*10
+  # （摩擦项本身提供切向刚度，罚参数再取大就病态）。
+  # 阶段 2 的 KSP：gamg（上游做法）或 lu。上体整体刚性平移引入大量 x-dof 约束后，
+  # GMRES+GAMG 在第一个切向步就不收敛（KSP reason<=0），改 lu 直解。
+  friction_ksp: lu
+  ksp_tol: 1.0e-10
+  ksp_tol_friction: 1.0e-12
+  nitsche_gamma_factor: 100.0          # 阶段 1（无摩擦）
+  nitsche_gamma_factor_friction: 10.0  # 阶段 2（Coulomb）
+  nitsche_theta: 1.0
+
+tolerance:
+  # PLAN Phase 4.4：c/a 偏差 < 5%。取区间内**所有**对拍点的最大偏差，
+  # 不是挑一个好看的点。
+  c_over_a_rel: 0.05
+
+output:
+  dir: data/verify_mindlin
