@@ -12,7 +12,7 @@ comm = MPI.COMM_WORLD
 R, E, nu, mu = 8.0, 200.0, 0.3, 0.3
 out = pathlib.Path("/tmp/vm_profile")
 mesh, ct, ft = build_quarter_disks(out, R=R, gap=0.0, res=0.3, order=1, quads=True, comm=comm)
-model = ContactModel(mesh, ct, ft, E=E, nu=nu, order=1, tags=QUARTER_DISKS)
+model = ContactModel(mesh, ct, ft, E=E, nu=nu, order=1, tags=QUARTER_DISKS, sample_center=(0.0,-2*R))
 gtop = Constant(mesh, default_scalar_type((0.0, 0.0)))
 dofs = locate_dofs_topological(model.V, mesh.topology.dim-1, ft.find(model.tags.load_facet))
 tol = 1e-10
@@ -34,22 +34,22 @@ gamg = {"matptap_via":"scalable","ksp_type":"gmres","ksp_rtol":1e-12,"ksp_atol":
     "pc_gamg_threshold":1e-3,"pc_gamg_square_graph":2,"pc_gamg_reuse_interpolation":False,
     "ksp_initial_guess_nonzero":False,"ksp_norm_type":"unpreconditioned"}
 model.set_friction_law(mu, gamma_factor=10.0, petsc_options=gamg)
-dump_steps = {6, 10, 14}
-for i in range(16):
+dump_steps = {6, 22}
+for i in range(22):
     gtop.value[0]=0.14/28; gtop.value[1]=0.0
     model.step()
     xs, ps, qs = model.surface_tractions()
     Pn=model.resultant(1); Q=abs(model.resultant(0)); ratio=Q/(mu*Pn)
-    a_i=hertz_half_width(P=Pn,R=R,E_star=estar)
+    a_i=hertz_half_width(P=Pn,R=R/2,E_star=estar)
     if comm.rank==0 and (i+1) in dump_steps:
         c_ref=mindlin_stick_half_width(a=a_i,Q_over_mu_P=ratio)
         print("\n=== step %d: Q/(muP)=%.4f  a_i=%.4g c_ref/a=%.4f ==="%(i+1,ratio,a_i,c_ref/a_i),flush=True)
-        m=(ps>0.01*ps.max())&(np.abs(xs)<=a_i*1.3)
+        m=(ps>0.001*ps.max())&(np.abs(xs)<=a_i*1.4)
         xx,pp,qq=xs[m],ps[m],qs[m]
         o=np.argsort(xx); xx,pp,qq=xx[o],pp[o],qq[o]
         print("  pmax=%.4g  n_in=%d"%(ps.max(),m.sum()),flush=True)
         print("   x/a     p       q     q/(mu*p)",flush=True)
-        for j in range(0,len(xx),max(1,len(xx)//24)):
+        for j in range(0,len(xx),max(1,len(xx)//40)):
             r=qq[j]/(mu*pp[j]) if pp[j]>0 else float('nan')
             print("  %+.3f  %7.3f %7.3f  %6.3f"%(xx[j]/a_i,pp[j],qq[j],r),flush=True)
-    if i<15: model.prepare_next()
+    if i<21: model.prepare_next()

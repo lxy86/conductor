@@ -274,7 +274,12 @@ class ContactModel:
 
     def __init__(self, mesh, cell_tags, facet_tags, *, E: float, nu: float,
                  order: int = 1, quadrature_degree: int = 5,
-                 tags=HALFDISK_PLANE):
+                 tags=HALFDISK_PLANE, sample_center=None):
+        # sample_center：采样接触弧的圆心 (cx, cy)。给了就用弧面真实法向 n 取
+        # p = -n·σn、q = -τ·σn；不给则按平面近似 n = (0, 1)（Hertz 算例的块体上表面）。
+        # D-51 的诊断里发现：曲面上直接用 σ_yy/σ_xy 会把 σ_xx·(x/R) 混进 q，
+        # 接触区边缘 p 很小时能把 |q|/(μp) 抬到 3~4 倍，使库仑不等式测不准。
+        self.sample_center = sample_center
         self.mesh, self.cell_tags, self.facet_tags = mesh, cell_tags, facet_tags
         self.tags, self.order, self.E, self.nu = tags, order, E, nu
         gdim = mesh.geometry.dim
@@ -437,11 +442,21 @@ class ContactModel:
         """
         Vs = functionspace(self.mesh, ("CG", 1))
         body = self.cell_tags.find(self.tags.sample_cell)
+        sig = self.sigma(self.u)
+        if self.sample_center is None:
+            p_expr, q_expr = sig[1, 1], sig[1, 0]          # sigma_yy, sigma_xy
+        else:
+            xc = ufl.SpatialCoordinate(self.mesh)
+            cx, cy = self.sample_center
+            n = ufl.as_vector([xc[0] - cx, xc[1] - cy])
+            n = n / ufl.sqrt(ufl.dot(n, n))                # 圆弧外法向
+            tau = ufl.as_vector([n[1], -n[0]])             # x≈0 处 = (1, 0)
+            t = ufl.dot(sig, n)
+            p_expr, q_expr = ufl.dot(n, t), ufl.dot(tau, t)
         out = []
-        for comp in (1, 0):                       # sigma_yy, sigma_xy
+        for expr in (p_expr, q_expr):
             f = Function(Vs)
-            f.interpolate(Expression(self.sigma(self.u)[1, comp],
-                                     Vs.element.interpolation_points), cells0=body)
+            f.interpolate(Expression(expr, Vs.element.interpolation_points), cells0=body)
             out.append(f)
         dofs = locate_dofs_topological(Vs, self.mesh.topology.dim - 1,
                                        self.facet_tags.find(self.tags.sample_facet))

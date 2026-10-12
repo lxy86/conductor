@@ -54,6 +54,10 @@ cd /root/pf-wire   # 指向 C:\Users\Administrator\Desktop\疲劳寿命 的 ASCI
    都依赖分区，要用 `allreduce` 或 `index_map.size_global`。
 4. Amor/spectral 分解使 u 问题实际非线性；用 `u_solver="linear"` 时必须确认
    `sign_flips == 0`（χ 的不动点已收敛），否则解不满足真正的平衡方程。
+5. **接触（dolfinx_contact）目前只能串行**：`mpirun -n 6` 下接触检测失败，压下后 P≈5e-14、
+   上体穿过下体，**不报错**。接触验证脚本一律串行（约 15 分钟）。另外上游的 `create_*_mesh` /
+   `convert_mesh` 内部自带 rank-0 守卫和 COMM_WORLD Barrier，**必须全体 rank 调用**，
+   包进 `if rank == 0` 会死锁（D-51）。
 
 ## 工作流
 - 每个子任务：先给出函数签名和测试意图 → 用户确认 → 实现 → `pytest -q` → 汇报
