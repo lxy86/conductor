@@ -1,0 +1,51 @@
+# Phase 5.4：厚壁圆筒内压弹塑性 vs 解析解（Mises、平面应变、理想塑性，弹性不可压极限）。
+#
+# 解析解见 src/pfwire/thick_cylinder.py（出处与推导写在该文件头）。
+# 解析解要求 nu = 0.5；FE 取 nu = 0.499 + P2 位移元（用户 2026-10-12 确认），
+# 误差预期 O(1 - 2 nu) ~ 0.2% 加离散误差。弹性段则用**实际 nu** 的 Lamé 解对拍（精确）。
+# H = 0 是为了和闭式解同口径；H > 0 的硬化行为由 tests/test_plasticity.py 逐点验证。
+#
+# ⚠️ YAML 1.1：不带指数符号的 1e-7 会被解析成字符串，载入后必须 coerce（fnum）。
+
+geometry:
+  a: 0.01           # m，内半径
+  b: 0.02           # m，外半径（b/a = 2；p_y = 0.433 sigma_y，p_lim = 0.800 sigma_y）
+
+material:
+  E: 69.0e+9
+  nu: 0.499
+  sigma_y: 167.0e+6
+  H: 0.0
+
+loading:
+  # 内压按 sigma_y 的倍数分步加载；report_levels 必须是 step 的整数倍。
+  step: 0.05
+  p_max: 0.75       # 极限压力的 94%（理想塑性逼近极限压力时 Newton 会变难，不进去）
+  report_levels: [0.30, 0.50, 0.65, 0.75]
+
+# 两个工况（D-53）：
+#   primary：nu = 0.499（用户确认的口径，接近解析解的 nu = 0.5 极限）。近不可压的 P2 位移元压力场
+#            会振荡，连**纯弹性**阶段的 sigma_r、sigma_theta 都差 ~5%（偏量 sigma_theta − sigma_r 却精确到
+#            <0.1%，且与 nu 无关），所以这个工况的应力判据取**偏量**（屈服条件作用的量），平均应力只做
+#            「加密后下降」检查。
+#   nu049：nu = 0.49，此时 sigma_r、sigma_theta 全量 L2 就能进 3%，用来保住原先的全量判据。
+cases:
+  - {name: primary, nu: 0.499, stress_gate: dev,  meshes: [[12, 20], [24, 40]]}
+  - {name: nu049,   nu: 0.49,  stress_gate: full, meshes: [[12, 20], [24, 40]]}
+
+solver:
+  snes_atol: 1.0e-4         # 残差单位 N/m（单位厚度）；sigma_y*a ~ 1.7e6，故 1e-4 已 ~1e-10 相对
+  snes_rtol: 1.0e-12
+  snes_max_it: 40
+  linesearch: bt            # basic 在弹/塑转换步会不收敛（见 tests/test_plasticity_checkpoint.py）
+
+tolerance:
+  p_yield_rel: 0.02         # FE 起屈压力 vs 解析
+  elastic_u_rel: 1.0e-3     # 弹性段 u_r(a) vs Lamé（实际 nu，精确）
+  c_rel: 0.03               # 弹塑性边界半径
+  u_rel: 0.03               # 弹塑性 u_r(a)（解析取 nu=0.5 极限）
+  stress_l2: 0.03           # 应力 L2 误差 / sigma_y（沿 theta=0；primary 取偏量，nu049 取全量）
+  refine_slack: 0.005       # 加密后各误差至多比粗网格大这么多（绝对，相对量）
+
+output:
+  dir: data/verify_plastic_cylinder

@@ -11,7 +11,8 @@ elastic:
 
 strength:
   sigma_u: 185.0e+6   # Pa，抗拉强度（实测值，见 sources；PLAN.md 原写 170）
-  sigma_y: 165.0e+6   # Pa，屈服强度，仅供论文中说明「相场为弹脆性、不含塑性」
+  sigma_y: 167.0e+6   # Pa，屈服强度，Lévesque 2011（D-50）；2026-10-12 由 165 改 167，
+                      # 与下面 plastic.sigma_y0 同值。相场部分不读它（相场用 sigma_c = sigma_u）。
 
 # 断裂参数三角（G_c / ell / sigma_c 只有两个独立，见 DECISIONS.md D-2）。
 # mode 指明哪两个是输入：
@@ -72,6 +73,15 @@ fatigue:
   # 注意：D-14 记的解析预拟合 (3.407e+6, 0.1489) 是**一维口径**，
   # 平面应变修正后 alpha_T 差约 2.4 倍。不要混用这两组值。
 
+# 塑性（Phase 5，决策 A：J2 各向同性线性硬化）。H = d sigma_y/d p 是塑性模量。
+plastic:
+  model: J2_isotropic_linear_hardening
+  sigma_y0: 167.0e+6   # Pa，Lévesque 2011 Table（D-50）
+  H: 3.0e+9            # Pa。**派生估计，待确认（D-53）**：H = (sigma_u - sigma_y)/eps_p,u，
+                       # eps_p,u = eps_u - sigma_u/E - 0.002 ≈ 0.0053（取 eps_u ≈ 1%），得 3.4 GPa；
+                       # eps_u = 0.8–1.2% 对应 H ≈ 2.5–5.5 GPa，取中心 3 GPa。
+                       # eps_u 没有直接文献值（只有 ORNL 棒材曲线上读出的 0.8–1% 与专利「约 1%」）。
+
 sources:
   E: "PLAN.md 第 1 节（TODO：换 ASM Handbook Vol.2 / IEC 60889 原始值）"
   nu: "PLAN.md 第 1 节（TODO：同上）"
@@ -87,4 +97,12 @@ sources:
   alpha_T: >-
     Phase 2.3 标定，靶曲线见 configs/sn_al1350_reference.yaml（代理曲线，
     非实测，见 DECISIONS.md D-3）。
-  sigma_y: "同 sigma_u 的来源"
+  sigma_y: >-
+    167 MPa，Lévesque et al. 2011（Tribology International，data/_triboint2011.txt 第 101 行附近：
+    "1350-H19: E=69 GPa, nu=0.33, Sy=167 MPa"）。注意 sn_al1350_reference.yaml 里的文献报 165 MPa，
+    两者差 1.2%，塑性与钳口接触一律取 167（D-50）。
+  plastic_H: >-
+    **无直接文献值，派生估计（D-53）**。1350-H19 的 eps_u（最大载荷应变）没有可引的测量：
+    ORNL Pub12595 §5.2.4 Fig 5-21（棒材，非拉拔丝）曲线峰值约 0.8–1%（读图，非表值）；
+    US 9847152 称 1350-H19 股线伸长率「限于约 1%」；ASTM B230 最小伸长率 1.7–1.8%（250 mm 标距，
+    是断裂伸长不是均匀伸长）。H 的不确定度约 ±40%，Phase 6/7 须做敏感性分析。
