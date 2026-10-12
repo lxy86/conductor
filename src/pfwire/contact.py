@@ -46,6 +46,8 @@ from dolfinx.mesh import meshtags
 from mpi4py import MPI
 from petsc4py.PETSc import InsertMode, ScatterMode  # type: ignore
 
+from pfwire import slip as _slip
+
 from dolfinx_contact.cpp import ContactMode
 from dolfinx_contact.general_contact.contact_problem import ContactProblem, FrictionLaw
 from dolfinx_contact.helpers import (
@@ -416,6 +418,27 @@ class ContactModel:
         self.du.x.array[:] = 0.1 * self.du.x.array[:]
         self.problem.update_contact_data(self.du)
 
+    # ---- 接触弧节点位移（微滑幅，Phase 4.5）-------------------------------
+    def arc_nodes(self, body: int):
+        """第 `body` 个物体（0 上 / 1 下）接触弧上的 (X_ref (N,2), u_total (N,2))。
+
+        节点取自位移空间 V 在 `tags.contact_facets[body]` 上的自由度，参考坐标即网格初始坐标
+        （网格不动），u 为累计位移 `self.u`。按参考 x 排序，allgather 后各 rank 一致。
+        """
+        comm = self.mesh.comm
+        fdim = self.mesh.topology.dim - 1
+        dofs = locate_dofs_topological(
+            self.V, fdim, self.facet_tags.find(self.tags.contact_facets[body]))
+        n_owned = self.V.dofmap.index_map.size_local
+        dofs = dofs[dofs < n_owned]                   # 并行下只留本进程拥有的
+        gdim = self.mesh.geometry.dim
+        X = self.V.tabulate_dof_coordinates()[dofs, :gdim]
+        u = self.u.x.array.reshape(-1, gdim)[dofs]
+        X = np.concatenate(comm.allgather(X))
+        u = np.concatenate(comm.allgather(u))
+        o = np.argsort(X[:, 0], kind="stable")
+        return X[o], u[o]
+
     # ---- 取面力 ---------------------------------------------------------
     def resultant(self, component: int, tag: int | None = None) -> float:
         """某**平面**上的合力分量，用**精确面积分** ∫ -sigma[1, component] ds。
@@ -481,3 +504,29 @@ def fix_block_bottom(model: ContactModel):
 
 #: 兼容别名：语义上就是「固定住 fixed_facet」。
 fix_surface = fix_block_bottom
+
+
+class SlipTracker:
+    """微滑幅追踪（口径见 `pfwire.slip`，D-52）。
+
+    在**阶段 1（无摩擦压下）结束后**构造：冻结配对 s、记下基线相对位移 g_base。
+    之后每步 `measure()` 返回相对基线的切向滑移增量。
+    """
+
+    def __init__(self, model: ContactModel, center: tuple[float, float]):
+        self.model, self.center = model, center
+        self.X_up, u_up = model.arc_nodes(0)
+        self.X_lo, u_lo = model.arc_nodes(1)
+        self.tau = _slip.arc_tangent(self.X_lo, center)
+        self.s = _slip.pair_material_points(self.X_up, u_up, self.X_lo, u_lo)
+        self.g_base = _slip.relative_tangential_displacement(
+            self.X_up, u_up, self.X_lo, u_lo, self.s, self.tau)
+
+    def measure(self):
+        """返回 (x_lower_ref, slip)：当前累计位移下相对基线的切向滑移增量（配不上的点为 nan）。"""
+        # 上弧节点的参考坐标不变；位移取最新的 u（节点顺序与构造时一致）
+        _, u_up = self.model.arc_nodes(0)
+        _, u_lo = self.model.arc_nodes(1)
+        g = _slip.relative_tangential_displacement(
+            self.X_up, u_up, self.X_lo, u_lo, self.s, self.tau)
+        return self.X_lo[:, 0].copy(), _slip.slip_increment(g, self.g_base)

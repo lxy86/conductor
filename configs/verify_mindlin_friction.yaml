@@ -68,5 +68,20 @@ tolerance:
   monotone_rel: 0.10    # Q（相对终值）、滑移占比（绝对）单调性允许的回退；
                         # 核心区仅约 20 个采样点，占比分辨率 ~0.05
 
+slip:
+  # Phase 4.5 微滑幅（D-52）。除 plateau_q_min 外，下列阈值在看数据之前拍定。
+  core_halfwidth_over_a: 0.9   # 只在 |x| <= 0.9a 内分析（边缘节点配对/插值不可靠）
+  stick_rel: 0.05              # |slip| < 5% max|slip| 判黏着
+  monotone_tol: 0.05           # 向外单调允许的回退（相对 max|slip|）
+  partial_q_min: 0.20          # 「部分滑移步」的 Q/(mu P) 区间
+  partial_q_max: 0.90
+  # **看过数据后加的**（D-52）：Q/(mu P) < 0.3 的步 max|slip| 只有 2e-6~3e-5（<= 0.6% du），
+  # 与弱施加黏着的数值残余同量级，5% 相对判据在分辨噪声（黏着半宽先升后降、step 6 比 step 5 小）。
+  # 故只对 max|slip| >= 1% du 的步做 7a-7c。
+  resolved_slip_over_du: 0.01
+  shrink_slack_over_a: 0.10    # 黏着半宽随 Q 不增，允许的上升（单位 a，约 2 个节点间距）
+  plateau_q_min: 0.98          # 整体滑移平台期：Q/(mu P) >= 此值
+  plateau_rel: 0.10            # 平台期每步平均滑移增量与 du 的相对容差
+
 output:
   dir: data/verify_mindlin

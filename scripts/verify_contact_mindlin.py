@@ -33,7 +33,8 @@ from dolfinx.fem import Constant, dirichletbc, locate_dofs_topological
 from dolfinx.mesh import locate_entities
 from mpi4py import MPI
 
-from pfwire.contact import ContactModel, build_quarter_disks, fix_surface, QUARTER_DISKS
+from pfwire.contact import ContactModel, SlipTracker, build_quarter_disks, fix_surface, QUARTER_DISKS
+from pfwire.slip import classify_slip
 from pfwire.loads import hertz_half_width, mindlin_stick_half_width
 from pfwire.material import contact_effective_modulus
 from pfwire.verify_contact_common import fnum, load_config
@@ -124,7 +125,9 @@ def main(argv=None) -> int:
         n_have = len([k for k in d.files if k.endswith("_x")])
         raw = [tuple(d[f"s{k}_{n}"] for n in ("x", "p", "q")) + (float(d[f"s{k}_P"]), float(d[f"s{k}_Q"]))
                for k in range(n_have)]
-        return judge(comm, say, cfg, outdir, raw, mu=float(d["mu"]), R_eff=float(d["R_eff"]),
+        slips = ([(d[f"s{k}_sx"], d[f"s{k}_sg"]) for k in range(n_have)]
+                 if "s0_sx" in d.files else None)
+        return judge(comm, say, cfg, outdir, raw, slips, mu=float(d["mu"]), R_eff=float(d["R_eff"]),
                      e_star=float(d["E_star"]), n_tang=int(d["n_tang"]),
                      converged_all=bool(d["converged"]), P_normal=raw[0][3])
 
@@ -166,6 +169,8 @@ def main(argv=None) -> int:
         model.step("法向步 %d/%d" % (i + 1, n_norm))
         model.prepare_next()
     P = model.resultant(component=1)
+    # 微滑幅基线 = 阶段 1（无摩擦压下）结束时的状态（D-52）
+    tracker = SlipTracker(model, center=(0.0, -2.0 * R - fnum(g, "gap")))
     a_ref = hertz_half_width(P=P, R=R_eff, E_star=e_star)
     say("    压下后：P = %.6g，Hertz a = %.6g（a/R_eff = %.4f）" % (P, a_ref, a_ref / R_eff))
 
@@ -176,7 +181,7 @@ def main(argv=None) -> int:
                        else _gamg_options)(fnum(sol, "ksp_tol_friction")))
     say("  阶段 2：切向推 u_x = %.4g，分 %d 步（已切 Coulomb，mu = %.2f）"
         % (fnum(ld, "u_x"), n_tang, mu))
-    raw, converged_all = [], True
+    raw, slips, converged_all = [], [], True
     for i in range(n_tang):
         g_top.value[0] = fnum(ld, "u_x") / n_tang
         g_top.value[1] = 0.0
@@ -189,6 +194,7 @@ def main(argv=None) -> int:
             break
         xs, ps, qs = model.surface_tractions()
         raw.append((xs, ps, qs, model.resultant(component=1), model.resultant(component=0)))
+        slips.append(tracker.measure())
         if i < n_tang - 1:
             model.prepare_next()
 
@@ -197,12 +203,14 @@ def main(argv=None) -> int:
         np.savez_compressed(outdir / "profiles.npz", mu=mu, R_eff=R_eff, E_star=e_star,
                             n_tang=n_tang, converged=converged_all,
                             **{f"s{k}_{n}": v for k, r in enumerate(raw)
-                               for n, v in zip(("x", "p", "q", "P", "Q"), r)})
-    return judge(comm, say, cfg, outdir, raw, mu=mu, R_eff=R_eff, e_star=e_star,
+                               for n, v in zip(("x", "p", "q", "P", "Q"), r)},
+                            **{f"s{k}_{n}": v for k, r in enumerate(slips)
+                               for n, v in zip(("sx", "sg"), r)})
+    return judge(comm, say, cfg, outdir, raw, slips, mu=mu, R_eff=R_eff, e_star=e_star,
                  n_tang=n_tang, converged_all=converged_all, P_normal=P)
 
 
-def judge(comm, say, cfg, outdir, raw, *, mu, R_eff, e_star, n_tang, converged_all, P_normal):
+def judge(comm, say, cfg, outdir, raw, slips, *, mu, R_eff, e_star, n_tang, converged_all, P_normal):
     """定性判据（纯后处理，可由 --reanalyze 对存盘剖面重判）。"""
     rows = [analyze_step(k + 1, *r, mu=mu, R_eff=R_eff, e_star=e_star)
             for k, r in enumerate(raw)]
@@ -237,6 +245,60 @@ def judge(comm, say, cfg, outdir, raw, *, mu, R_eff, e_star, n_tang, converged_a
         ("6 摩擦力饱和：终值 Q/(mu P) >= %.2f（整体滑移时 Q -> mu P）" % smin,
          bool(len(rows)) and bool(qr[-1] >= smin)),
     ]
+    # ---- 微滑幅（Phase 4.5，D-52）---------------------------------------
+    slip_info = []
+    if slips is not None and rows:
+        st = cfg["slip"]
+        srel, smono = fnum(st, "stick_rel"), fnum(st, "monotone_tol")
+        say("")
+        say("  微滑幅（相对阶段 1 结束的切向相对位移增量，核心区 |x| <= %.1fa）"
+            % fnum(st, "core_halfwidth_over_a"))
+        say("  %-4s %9s %12s %9s %9s %11s %12s %9s  %s"
+            % ("步", "Q/(muP)", "max|slip|", "黏着n", "黏着半宽", "q判黏着半宽",
+               "(参考)c/a滑移", "c/a Mindlin", "向外单调"))
+        for r, (sx, sg), (xs, ps, qs, _, _) in zip(rows, slips, raw):
+            m = np.isfinite(sg) & (np.abs(sx) <= fnum(st, "core_halfwidth_over_a") * r["a_hertz"])
+            sp = classify_slip(sx[m], sg[m], stick_rel=srel, monotone_tol=smono)
+            half = 0.5 * (sp.stick_hi - sp.stick_lo) if sp.n_stick else 0.0
+            core = ps >= CORE_FLOOR * ps.max()
+            qstick = np.abs(qs[core]) < mu * ps[core] * (1.0 - STICK_EPS)
+            q_half = float(np.max(np.abs(xs[core][qstick]))) if qstick.any() else 0.0
+            slip_info.append({"step": r["step"], "q_ratio": r["q_ratio"],
+                              "max_slip": float(np.max(np.abs(sg[m]))), "n_stick": sp.n_stick,
+                              "stick_half": half, "q_stick_half": q_half,
+                              "monotone": sp.monotone_outward,
+                              "mean_core_slip": float(np.mean(sg[m]))})
+            say("  %-4d %9.4f %12.4g %9d %9.3f %11.3f %12.3f %9.3f  %s"
+                % (r["step"], r["q_ratio"], slip_info[-1]["max_slip"], sp.n_stick, half, q_half,
+                   half / r["a_hertz"], r["c_over_a_mindlin"],
+                   "是" if sp.monotone_outward else "否"))
+        qrr = np.array([i["q_ratio"] for i in slip_info])
+        du = fnum(cfg["loading"], "u_x") / n_tang
+        # 「可分辨」：max|slip| 必须高于数值噪声底（弱施加黏着 + CG1 插值的残余），
+        # 否则相对 5% 的黏着判据只是在分辨噪声。底取每步施加位移 du 的一个小份额（D-52）。
+        floor = fnum(st, "resolved_slip_over_du") * du
+        for i in slip_info:
+            i["resolved"] = i["max_slip"] >= floor
+        part = [i for i in slip_info if i["resolved"]
+                and fnum(st, "partial_q_min") <= i["q_ratio"] <= fnum(st, "partial_q_max")]
+        halves = np.array([i["stick_half"] for i in part])
+        plat = [i for i in slip_info if i["q_ratio"] >= fnum(st, "plateau_q_min")]
+        incr = np.diff([i["mean_core_slip"] for i in plat]) if len(plat) >= 3 else np.array([])
+        dx_tol = fnum(st, "shrink_slack_over_a") * rows[0]["a_hertz"]
+        checks += [
+            ("7a 部分滑移步（可分辨）都存在黏着区",
+             bool(part) and all(i["n_stick"] > 0 for i in part)),
+            ("7b 部分滑移步黏着半宽随 Q 不增（容差 %.2fa）" % fnum(st, "shrink_slack_over_a"),
+             bool(len(halves) > 1) and bool(np.all(np.diff(halves) <= dx_tol))),
+            ("7c 部分滑移步滑移区内向外单调增",
+             bool(part) and all(i["monotone"] for i in part)),
+            ("7d 整体滑移平台期每步核心平均滑移增量 = du（±%.0f%%）" % (100 * fnum(st, "plateau_rel")),
+             bool(incr.size) and bool(np.all(np.abs(incr - du) <= fnum(st, "plateau_rel") * du))),
+        ]
+        if incr.size:
+            say("  平台期（Q/(muP)>=%.2f 共 %d 步）每步核心平均滑移增量：%s；施加 du = %.4g"
+                % (fnum(st, "plateau_q_min"), len(plat), np.array2string(incr, precision=5), du))
+
     say("")
     ok = True
     for name, passed in checks:
@@ -251,10 +313,10 @@ def judge(comm, say, cfg, outdir, raw, *, mu, R_eff, e_star, n_tang, converged_a
         outdir.mkdir(parents=True, exist_ok=True)
         (outdir / "result.json").write_text(json.dumps(
             {"passed": ok, "mu": mu, "E_star": e_star, "P_after_normal": P_normal,
-             "coulomb_max": worst, "checks": {n: bool(v) for n, v in checks}, "steps": rows},
+             "coulomb_max": worst, "checks": {n: bool(v) for n, v in checks}, "steps": rows, "slip": slip_info},
             ensure_ascii=False, indent=2), encoding="utf-8")
     say("")
-    say("Phase 4.4 %s" % ("通过" if ok else "未通过"))
+    say("Phase 4.4 / 4.5 %s" % ("通过" if ok else "未通过"))
     return 0 if ok else 1
 
 
