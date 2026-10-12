@@ -229,13 +229,17 @@ class PlasticLaw:
         e = self.update(u).ee3
         return ufl.as_tensor([[e[0, 0], e[0, 1]], [e[1, 0], e[1, 1]]])
 
-    def commit(self, u) -> None:
-        """收敛后把本步 (ε_p, p) 写回历史（在 DG 节点处对表达式插值）。"""
+    def commit(self, u, cells=None) -> None:
+        """收敛后把本步 (ε_p, p) 写回历史（在 DG 节点处对表达式插值）。
+
+        cells 给定时只更新这些单元（多体问题里只更新塑性体，别的体的历史保持为 0）。
+        """
         from dolfinx import fem
         upd = self.update(u)
         ep_tmp, p_tmp = fem.Function(self.V_ep), fem.Function(self.V_p)
-        ep_tmp.interpolate(fem.Expression(upd.ep_new, self.V_ep.element.interpolation_points))
-        p_tmp.interpolate(fem.Expression(upd.p_new, self.V_p.element.interpolation_points))
+        kw = {} if cells is None else {"cells0": cells}
+        ep_tmp.interpolate(fem.Expression(upd.ep_new, self.V_ep.element.interpolation_points), **kw)
+        p_tmp.interpolate(fem.Expression(upd.p_new, self.V_p.element.interpolation_points), **kw)
         # 先算两者再一起写回，避免 p_new 读到已更新的 ep_n/p_n
         self.ep_n.x.array[:] = ep_tmp.x.array
         self.p_n.x.array[:] = p_tmp.x.array

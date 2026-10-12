@@ -47,6 +47,7 @@ from mpi4py import MPI
 from petsc4py.PETSc import InsertMode, ScatterMode  # type: ignore
 
 from pfwire import slip as _slip
+from pfwire.plasticity import PlasticLaw
 
 from dolfinx_contact.cpp import ContactMode
 from dolfinx_contact.general_contact.contact_problem import ContactProblem, FrictionLaw
@@ -66,6 +67,9 @@ from dolfinx_contact.newton_solver import NewtonSolver
 __all__ = [
     "HalfdiskPlaneTags",
     "HALFDISK_PLANE",
+    "PunchBlockTags",
+    "PUNCH_BLOCK",
+    "build_punch_block",
     "QuarterDisksTags",
     "QUARTER_DISKS",
     "ContactModel",
@@ -125,6 +129,10 @@ class HalfdiskPlaneTags:
         return self.block_contact
 
     @property
+    def force_body(self) -> int:
+        return 1           # 块体（body_cells 的第 2 个）
+
+    @property
     def fixed_facet(self) -> int:
         return self.block_bottom
 
@@ -177,6 +185,10 @@ class QuarterDisksTags:
         # 接触弧是曲面、法向只在 x≈0 处才 ≈(0,1)，不能直接 -sigma_yy 读力；
         # 而顶面是上圆柱唯一的其他外载面，按平衡 ∫顶面 = 透过接触的合力。
         return self.disk_upper_top
+
+    @property
+    def force_body(self) -> int:
+        return 0           # 上圆柱
 
     @property
     def fixed_facet(self) -> int:
@@ -259,6 +271,7 @@ def assert_tags_present(facet_tags, cell_tags, tags, *, comm) -> None:
         ("contact_facet[0]", tags.contact_facets[0], facet_tags),
         ("contact_facet[1]", tags.contact_facets[1], facet_tags),
         ("load_facet", tags.load_facet, facet_tags),
+        ("force_facet", tags.force_facet, facet_tags),
         ("fixed_facet", tags.fixed_facet, facet_tags),
         ("body_cell[0]", tags.body_cells[0], cell_tags),
         ("body_cell[1]", tags.body_cells[1], cell_tags),
@@ -271,30 +284,209 @@ def assert_tags_present(facet_tags, cell_tags, tags, *, comm) -> None:
                 "请核对后更新对应的 Tags dataclass（D-48）" % (name, tag))
 
 
+@dataclass(frozen=True)
+class PunchBlockTags:
+    """平冲头压块体（Phase 6.1 的 Prandtl 基准）的物理组编号。
+
+    几何：冲头（body 0）在**上**，块体（body 1）在**下**，两者接触面都是平面，
+    高度方向外力加在冲头顶面、块体底面固定 —— 与 HalfdiskPlaneTags 的朝向一致，
+    所以语义访问器可以直接照搬。**平-平接触**是本几何与半圆柱算例的唯一区别；
+    投影在冲头角点附近是奇异的（平冲头的经典特征），对拍时把角点邻域排除。
+    """
+
+    punch_contact: int = 3     # 冲头底面（接触，外法向 (0, -1)）
+    block_contact: int = 4     # 块体顶面（接触，外法向 (0, +1)）
+    punch_top: int = 5         # 冲头顶面（加载面，外法向 (0, +1)）
+    block_bottom: int = 6      # 块体底面（全固定）
+    cell_punch: int = 1
+    cell_block: int = 2
+
+    @property
+    def body_cells(self) -> tuple[int, int]:
+        return (self.cell_punch, self.cell_block)
+
+    @property
+    def contact_facets(self) -> tuple[int, int]:
+        return (self.punch_contact, self.block_contact)
+
+    @property
+    def load_facet(self) -> int:
+        return self.punch_top
+
+    @property
+    def sample_cell(self) -> int:
+        return self.cell_block
+
+    @property
+    def sample_facet(self) -> int:
+        return self.block_contact
+
+    @property
+    def force_facet(self) -> int:
+        # 冲头顶面是平面、外法向 (0,1)，按平衡即透过接触的合力
+        return self.punch_top
+
+    @property
+    def force_body(self) -> int:
+        return 0
+
+    @property
+    def fixed_facet(self) -> int:
+        return self.block_bottom
+
+
+PUNCH_BLOCK = PunchBlockTags()
+
+
+def build_punch_block(
+    workdir: pathlib.Path, *, half_width: float, block_half_width: float,
+    block_depth: float, punch_height: float, h_fine: float, h_coarse: float, gap: float = 0.0,
+    order: int, quads: bool, comm=MPI.COMM_WORLD,
+):
+    """生成「平冲头 + 块体」网格并读回 dolfinx，返回 (mesh, cell_tags, facet_tags)。
+
+    冲头底面 y = 0、块体顶面 y = -gap（gap 只允许 0 或极小值，见下），接触面在 |x| <= half_width 内加密到
+    h_fine，远处粗化到 h_coarse。物理组编号见 PunchBlockTags；面组显式指定，
+    不像上游那样依赖 gmsh 的自动编号。
+    """
+    import gmsh
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    stem = str(workdir / "punch_block")
+    if comm.rank == 0:
+        gmsh.initialize()
+        gmsh.clear()                 # 同一进程里多次调用时，清掉上一次的模型
+        try:
+            _punch_block_gmsh(gmsh, str(stem), half_width=half_width, block_half_width=block_half_width,
+                              block_depth=block_depth, punch_height=punch_height, gap=gap,
+                              h_fine=h_fine, h_coarse=h_coarse, order=order, quads=quads)
+        finally:
+            gmsh.finalize()          # 中途抛异常也必须收尾，否则下一次 initialize 会失败
+    comm.barrier()
+    convert_mesh(stem, f"{stem}.xdmf", gdim=2)
+    with XDMFFile(comm, f"{stem}.xdmf", "r") as xdmf:
+        mesh = xdmf.read_mesh()
+        cell_tags = xdmf.read_meshtags(mesh, name="cell_marker")
+        mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
+        facet_tags = xdmf.read_meshtags(mesh, name="facet_marker")
+    mesh.topology.create_connectivity(0, mesh.topology.dim)
+    assert_tags_present(facet_tags, cell_tags, PUNCH_BLOCK, comm=comm)
+    return mesh, cell_tags, facet_tags
+
+
+def _punch_block_gmsh(gmsh, stem, *, half_width, block_half_width, block_depth,
+                      punch_height, gap, h_fine, h_coarse, order, quads):
+    """gmsh 建体：平冲头 + 块体。物理组编号见 PunchBlockTags（面组显式指定）。"""
+    if True:
+        w, W, D, hp = half_width, block_half_width, block_depth, punch_height
+        punch = gmsh.model.occ.addRectangle(-w, 0.0, 0.0, 2 * w, hp)
+        block = gmsh.model.occ.addRectangle(-W, -gap - D, 0.0, 2 * W, D)
+        gmsh.model.occ.synchronize()
+        gmsh.model.addPhysicalGroup(2, [punch], tag=PUNCH_BLOCK.cell_punch)
+        gmsh.model.addPhysicalGroup(2, [block], tag=PUNCH_BLOCK.cell_block)
+        # 面组按「所属面的边界曲线里哪条是水平线、且 y 等于目标值」挑。
+        # gmsh 的包围盒带 ~1e-7 绝对容差（相对模型尺寸 1e-4），所以容差取特征长度的 1e-3，
+        # 既远大于该误差（1e-7），又远小于几何间距（half_width）。
+        # gmsh 的包围盒带 ~1e-4 相对尺寸的绝对误差（模型 1e-3 时约 1e-7），
+        # 所以挑水平边界曲线的容差取特征长度的 1e-3；gap 必须明显大于它才能与 0 区分。
+        tol = 1e-3 * min(w, D, hp)
+        if gap != 0.0 and gap < 3.0 * tol:
+            # gap = 0 允许（两体初始相切，如 4.4 的 quarter_disks）：此时冲头底面与块体顶面
+            # 包围盒重合，但两者是**分别**在各自曲线上找，不会混淆。
+            raise ValueError("gap 必须为 0 或 >= %.3g（gmsh 包围盒容差的 3 倍），得到 %r"
+                             % (3.0 * tol, gap))
+
+        def _flat_face(ents, y_target):
+            out = []
+            for d, e in ents:
+                ymin, ymax = gmsh.model.getBoundingBox(d, e)[1], gmsh.model.getBoundingBox(d, e)[4]
+                if abs(ymin - y_target) < tol and abs(ymax - y_target) < tol:
+                    out.append(e)
+            if len(out) != 1:
+                raise RuntimeError("在 y = %g 处找到 %d 条水平边界曲线，应当恰好 1 条" % (y_target, len(out)))
+            return out[0]
+
+        gmsh.model.addPhysicalGroup(1, [_flat_face(gmsh.model.getBoundary([(2, punch)]), 0.0)],
+                                    tag=PUNCH_BLOCK.punch_contact)
+        gmsh.model.addPhysicalGroup(1, [_flat_face(gmsh.model.getBoundary([(2, block)]), -gap)],
+                                    tag=PUNCH_BLOCK.block_contact)
+        gmsh.model.addPhysicalGroup(1, [_flat_face(gmsh.model.getBoundary([(2, punch)]), hp)],
+                                    tag=PUNCH_BLOCK.punch_top)
+        gmsh.model.addPhysicalGroup(1, [_flat_face(gmsh.model.getBoundary([(2, block)]), -gap - D)],
+                                    tag=PUNCH_BLOCK.block_bottom)
+        gmsh.model.mesh.field.add("Box", 1)
+        gmsh.model.mesh.field.setNumber(1, "VIn", h_fine)
+        gmsh.model.mesh.field.setNumber(1, "VOut", h_coarse)
+        gmsh.model.mesh.field.setNumber(1, "XMin", -1.5 * w)
+        gmsh.model.mesh.field.setNumber(1, "XMax", 1.5 * w)
+        gmsh.model.mesh.field.setNumber(1, "YMin", -gap - 2.0 * w)
+        gmsh.model.mesh.field.setNumber(1, "YMax", hp)
+        gmsh.model.mesh.field.setNumber(1, "Thickness", 3.0 * w)
+        gmsh.model.mesh.field.setAsBackgroundMesh(1)
+        gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+        gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+        gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+        if quads:
+            gmsh.option.setNumber("Mesh.RecombinationAlgorithm", 8)
+            gmsh.option.setNumber("Mesh.RecombineAll", 2)
+            gmsh.option.setNumber("Mesh.SubdivisionAlgorithm", 1)
+        gmsh.model.mesh.generate(2)
+        gmsh.model.mesh.setOrder(order)
+        gmsh.write(f"{stem}.msh")
+
+
 class ContactModel:
     """一个两体摩擦接触问题：装配、加载、求解、取面力。"""
 
-    def __init__(self, mesh, cell_tags, facet_tags, *, E: float, nu: float,
+    def __init__(self, mesh, cell_tags, facet_tags, *, E, nu,
                  order: int = 1, quadrature_degree: int = 5,
-                 tags=HALFDISK_PLANE, sample_center=None):
-        # sample_center：采样接触弧的圆心 (cx, cy)。给了就用弧面真实法向 n 取
-        # p = -n·σn、q = -τ·σn；不给则按平面近似 n = (0, 1)（Hertz 算例的块体上表面）。
-        # D-51 的诊断里发现：曲面上直接用 σ_yy/σ_xy 会把 σ_xx·(x/R) 混进 q，
-        # 接触区边缘 p 很小时能把 |q|/(μp) 抬到 3~4 倍，使库仑不等式测不准。
+                 tags=HALFDISK_PLANE, sample_center=None, plastic=None):
+        """E、nu：标量（两体同材料）或长度 2 的序列（按 tags.body_cells 顺序，分体取值）。
+
+        plastic：{物体序号: J2Params}。给了的物体用 PlasticLaw（J2 各向同性硬化，历史存 DG-2，
+        Phase 5）作体本构，其余物体仍线弹性。其 E、nu 须与上面一致。
+
+        **已知近似（D-54）**：上游 Nitsche 接触核在 C++ 里写死线弹性应力（只接收 mu、lambda），
+        所以接触项里的 sigma·n 是弹性试探应力，体积分里才是塑性应力。接触面上的间隙因此约为
+        (sigma_el - sigma_true)·n/gamma（gamma ~ gamma_factor·E/h，量级 eps_p·h/gamma_factor）；
+        是否小到可忽略由 penetration() / 力平衡 / gamma 敏感性实测，不凭论证。
+
+        sample_center：采样接触弧的圆心 (cx, cy)。给了就用弧面真实法向 n 取
+        p = -n·sigma·n、q = -tau·sigma·n；不给则按平面近似 n = (0, 1)（Hertz 算例的块体上表面）。
+        D-51 的诊断里发现：曲面上直接用 sigma_yy/sigma_xy 会把 sigma_xx·(x/R) 混进 q，
+        接触区边缘 p 很小时能把 |q|/(mu p) 抬到 3~4 倍，使库仑不等式测不准。
+        """
         self.sample_center = sample_center
         self.mesh, self.cell_tags, self.facet_tags = mesh, cell_tags, facet_tags
-        self.tags, self.order, self.E, self.nu = tags, order, E, nu
+        n_body = len(tags.body_cells)
+        Es = list(E) if np.ndim(E) else [float(E)] * n_body
+        nus = list(nu) if np.ndim(nu) else [float(nu)] * n_body
+        self.E_body, self.nu_body = [float(x) for x in Es], [float(x) for x in nus]
+        self.tags, self.order = tags, order
+        # Nitsche 罚参数 γ ∝ E 取**较软**一侧：接触刚度由可变形的那一侧决定
+        # （等效模量 1/E* = Σ(1-ν²)/E，刚体一侧贡献可忽略）。取较硬一侧会使 γ 过大，
+        # 实测把 Newton 残差底从 1e-9 抬到 1e-7 并卡死不收敛（D-54）。
+        self.E = min(self.E_body)
+        self.nu = self.nu_body[int(np.argmin(self.E_body))]
         gdim = mesh.geometry.dim
         self.V = functionspace(mesh, ("CG", order, (gdim,)))
 
         mu_f, lmbda_f = lame_parameters(True)      # True = 平面应变
         V0 = functionspace(mesh, ("DG", 0))
         self.mu_c, self.lmbda_c = Function(V0), Function(V0)
-        for cell_tag in tags.body_cells:
+        for k, cell_tag in enumerate(tags.body_cells):
             cells = cell_tags.find(cell_tag)
-            self.mu_c.interpolate(lambda x: np.full((1, x.shape[1]), mu_f(E, nu)), cells)
-            self.lmbda_c.interpolate(lambda x: np.full((1, x.shape[1]), lmbda_f(E, nu)), cells)
-        self.sigma = sigma_func(self.mu_c, self.lmbda_c)
+            Ek, nuk = self.E_body[k], self.nu_body[k]
+            self.mu_c.interpolate(lambda x, Ek=Ek, nuk=nuk: np.full((1, x.shape[1]), mu_f(Ek, nuk)), cells)
+            self.lmbda_c.interpolate(lambda x, Ek=Ek, nuk=nuk: np.full((1, x.shape[1]), lmbda_f(Ek, nuk)), cells)
+        self.sigma = sigma_func(self.mu_c, self.lmbda_c)      # 线弹性（弹性体用）
+
+        self.plastic = dict(plastic or {})
+        self.laws = {}
+        for k, prm in self.plastic.items():
+            if abs(prm.E - self.E_body[k]) > 1e-9 * prm.E or abs(prm.nu - self.nu_body[k]) > 1e-12:
+                raise ValueError("物体 %d 的 J2Params(E,nu) 与 ContactModel 的 E,nu 不一致" % k)
+            self.laws[k] = PlasticLaw(mesh, prm)
 
         self.u, self.du = Function(self.V), Function(self.V)
         self.dx = ufl.Measure("dx", domain=mesh, subdomain_data=cell_tags)
@@ -317,7 +509,14 @@ class ContactModel:
         `friction=None` -> 无摩擦；给了系数 -> Coulomb 摩擦。
         """
         v, w = ufl.TestFunction(self.V), ufl.TrialFunction(self.V)
-        F = ufl.inner(self.sigma(self.u), epsilon(v)) * self.dx
+        F = 0
+        for k, cell_tag in enumerate(self.tags.body_cells):
+            if k in self.laws:                      # 塑性体：PlasticLaw，固定求积阶数
+                dxk = ufl.Measure("dx", domain=self.mesh, subdomain_data=self.cell_tags,
+                                  metadata={"quadrature_degree": 4})
+                F += ufl.inner(self.laws[k].sigma(self.u), epsilon(v)) * dxk(cell_tag)
+            else:
+                F += ufl.inner(self.sigma(self.u), epsilon(v)) * self.dx(cell_tag)
         if traction is not None:
             F -= ufl.inner(traction, v) * self.ds(self.tags.load_facet)
         F = ufl.replace(F, {self.u: self.u + self.du})
@@ -406,7 +605,24 @@ class ContactModel:
             raise RuntimeError("接触 Newton 未收敛%s" % (f"（{label}）" if label else ""))
         self.du.x.scatter_forward()
         self.u.x.array[:] += self.du.x.array[:]
+        self.commit()
         return int(n_it)
+
+    def commit(self) -> None:
+        """塑性体：把收敛后的 (eps_p, p) 写回历史（只写该体的单元）。弹性体无操作。"""
+        for k, law in self.laws.items():
+            law.commit(self.u, cells=self.cell_tags.find(self.tags.body_cells[k]))
+
+    def stress(self, u, body: int):
+        """物体 body 的 UFL 应力：塑性体 -> PlasticLaw，弹性体 -> 线弹性。"""
+        return self.laws[body].sigma(u) if body in self.laws else self.sigma(u)
+
+    def plastic_fields(self) -> dict:
+        """所有塑性体的历史场（给 checkpoint），键为 eps_p_<体> / p_eq_<体>。"""
+        out = {}
+        for k, law in self.laws.items():
+            out["eps_p_%d" % k], out["p_eq_%d" % k] = law.ep_n, law.p_n
+        return out
 
     def prepare_next(self) -> None:
         """为下一增量步更新接触搜索与矩阵（上游算例的标准做法）。"""
@@ -451,8 +667,35 @@ class ContactModel:
         数值残尾也算进去（D-49，Phase 4.3 实测差 3.1% vs 0.0014%）。
         """
         tag = self.tags.force_facet if tag is None else tag
-        local = assemble_scalar(form(-self.sigma(self.u)[1, component] * self.ds(tag)))
+        body = self.tags.force_body if tag == self.tags.force_facet else self._body_of_facet_tag(tag)
+        local = assemble_scalar(form(-self.stress(self.u, body)[1, component] * self.ds(tag)))
         return float(self.mesh.comm.allreduce(local, op=MPI.SUM))
+
+    def _body_of_facet_tag(self, tag: int) -> int:
+        """读合力只支持 force_facet（其所属物体由 tags.force_body 给定）。"""
+        raise ValueError("resultant(tag=%r)：只支持 force_facet=%r；其他面请显式扩展"
+                         % (tag, self.tags.force_facet))
+
+    def penetration(self):
+        """接触弧两侧按 x 配对的法向间隙 (x, g_n)，g_n < 0 表示穿透（Nitsche 诊断量）。
+
+        法向取下体（body 1）接触弧的外法向：有 sample_center 用弧面法向，否则 (0, 1)。
+        配对沿 x（半平面近似）：对下弧每个节点，在上弧当前构形里插值同 x 处的点。
+        """
+        X_up, u_up = self.arc_nodes(0)
+        X_lo, u_lo = self.arc_nodes(1)
+        P_up, P_lo = X_up + u_up, X_lo + u_lo
+        o = np.argsort(P_up[:, 0])
+        yu = np.interp(P_lo[:, 0], P_up[o, 0], P_up[o, 1])
+        inside = (P_lo[:, 0] >= P_up[o, 0][0]) & (P_lo[:, 0] <= P_up[o, 0][-1])
+        if self.sample_center is None:
+            ny = np.ones(len(P_lo))
+        else:
+            d = X_lo - np.asarray(self.sample_center, float)
+            ny = d[:, 1] / np.linalg.norm(d, axis=1)
+        g = (yu - P_lo[:, 1]) * ny                      # 沿 x 配对：只有 y 向分量参与
+        o2 = np.argsort(P_lo[:, 0])
+        return P_lo[o2, 0][inside[o2]], g[o2][inside[o2]]
 
     def surface_tractions(self):
         """接触采样面的 (x, p, q)：法向压力 p = -sigma_yy、切向面力 q = -sigma_xy。
@@ -463,9 +706,9 @@ class ContactModel:
         也不需要 submesh**，正好绕开 D-48 的两个坑。对圆柱弧这是半平面近似，
         在接触区（|x| << R）内误差可忽略，恰是 Cattaneo–Mindlin 本身的前提。
         """
-        Vs = functionspace(self.mesh, ("CG", 1))
+        Vs = functionspace(self.mesh, ("CG", self.order))
         body = self.cell_tags.find(self.tags.sample_cell)
-        sig = self.sigma(self.u)
+        sig = self.stress(self.u, list(self.tags.body_cells).index(self.tags.sample_cell))
         if self.sample_center is None:
             p_expr, q_expr = sig[1, 1], sig[1, 0]          # sigma_yy, sigma_xy
         else:
