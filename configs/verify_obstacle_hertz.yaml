@@ -1,0 +1,54 @@
+# D-57 S2：刚体圆弧线夹（罚函数）压厚块（线弹性），与 Hertz 解析解对拍。
+#
+# 独立验证，不含塑性。厚块 depth = 20 mm、接触半宽 a ~ 1–2 mm，t/a ≈ 10，满足半空间前提
+# （单丝 3.75 mm 厚本身不满足，D-51/D-56，故不在 3.75 mm 上做 Hertz 对拍）。
+#
+# 参考解：平面应变刚性圆柱压弹性半空间，E* = E/(1−ν²)（Johnson, *Contact Mechanics*, 1985）：
+#   a = sqrt(4 P R / (π E*))，p0 = 2 P / (π a)，P 为单位厚度法向力。
+# 为避免测量误差冒充解的误差（D-49），P 用精确面积分（接触力反力），a、p0 由 P 反算作参考。
+#
+# ⚠️ YAML 1.1：指数不带符号的数（如 500e6、1e-6 无小数点）会被解析成字符串。
+#    本文件的数都写成 1.0e-6 / 69.0e+9 这种带符号指数，脚本里仍一律经 float 强制（CLAUDE.md 陷阱 2）。
+
+geometry:
+  width: 40.0e-3          # 厚块宽度（远大于接触区）
+  depth: 20.0e-3          # 厚块深度（远大于 a，半空间前提）
+  R_clamp: 330.0e-3       # 线夹轴向曲率半径（D-50）
+
+material:
+  E: 69.0e+9              # Al 1350，弹性（PLAN §1.4）
+  nu: 0.33
+
+mesh:
+  h_fine: 25.0e-6         # 接触区单元尺寸。δ = 1 µm 时 a 偏差 2.5%（见 result.json），再细化待定
+  h_coarse: 1.0e-3
+  fine_halfwidth: 4.0e-3
+  fine_depth: 4.0e-3
+  transition: 1.0e-3      # 加密区到粗网格的过渡厚度（gmsh Box 的 Thickness）
+  order: 1
+  quads: true
+
+penalty:
+  kappa: 10.0             # 罚刚度 ε = κ E / h_fine（D-57）
+  kappa_sens: 1.0         # 敏感性检查：第二个 κ，合力变化须很小
+
+solver:                   # 直接传给 PETSc/SNES（字符串，避免 YAML 数值歧义）
+  snes_type: "newtonls"
+  snes_linesearch_type: "bt"
+  snes_rtol: "1e-10"
+  snes_atol: "1e-6"
+  snes_max_it: "50"
+  ksp_type: "preonly"
+  pc_type: "lu"
+  pc_factor_mat_solver_type: "mumps"   # 直接法用 MUMPS（D-30 的项目约定）；内置 LU 在 27 万单元下过慢
+
+loading:
+  # 线夹下压量（m），**单调递增**做延拓；每个值都与 Hertz 对拍
+  deltas: [1.0e-6, 2.0e-6, 4.0e-6]
+
+tolerance:
+  hertz_rel: 0.03         # a、p0 与 Hertz 的相对差阈值（同 4.3 的阈值）
+  kappa_sens_rel: 0.01    # κ 从 10 改到 1，合力相对变化阈值
+
+output:
+  dir: data/verify_obstacle_hertz

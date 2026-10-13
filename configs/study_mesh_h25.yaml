@@ -1,0 +1,58 @@
+# D-57 S3 长加载版（δ 延伸到 25 µm，仅用于观察饱和趋势；与 indent_plastic_obstacle.yaml 其余参数相同）
+# D-57 S3：Phase 6.1 v2 —— 弹塑性单丝 + 刚体圆弧线夹（罚函数），无相场。
+#
+# 替代 configs/indent_plastic_clamp.yaml（dolfinx_contact 版本，D-56 证明其接触核线弹性，
+# 与塑性体不一致，且并行不可用）。接触本身已由 S2 对拍 Hertz 通过（configs/verify_obstacle_hertz.yaml）。
+#
+# 不再包含「弹性段与 Hertz」检查：单丝厚 3.75 mm 不满足半空间前提（D-51/D-56）。
+# 检查改为：压力饱和、塑性区脱离域边界、罚刚度敏感性、合力在 W' 附近。
+#
+# ⚠️ YAML 1.1：指数必须带符号（1.0e-6 / 69.0e+9），脚本仍经 float 强制（CLAUDE.md 陷阱 2）。
+
+geometry:
+  width: 40.0e-3          # 单丝长度 Lw（D-55 保留 40 mm；D-56 证明 Lw 不是主因）
+  depth: 3.75e-3          # 单丝厚度 = 直径 D（平面应变里的厚度）
+  R_clamp: 330.0e-3       # 线夹轴向曲率半径（D-50）
+
+material:
+  E: 69.0e+9              # Al 1350-H19（PLAN §1.4）
+  nu: 0.33
+  sigma_y: 167.0e+6       # Lévesque 2011（D-50）
+  H: 3.0e+9               # 线性硬化模量，派生估计（D-53，待确认；Phase 7 做敏感性）
+
+mesh:
+  h_fine: 25.0e-6         # D-57 网格收敛研究：25 µm
+  h_coarse: 750.0e-6
+  fine_halfwidth: 5.0e-3  # 加密半宽（远大于塑性区，见 a_pl 检查）
+  fine_depth: 3.75e-3     # 加密深度 = 单丝厚度
+  transition: 1.0e-3
+  order: 1
+  quads: true
+
+penalty:
+  kappa: 10.0             # ε = κ E / h_fine（D-57，S2 已标定）
+  kappa_sens: 1.0         # 敏感性：第二个 κ，在末步比较合力
+
+solver:                   # PETSc/SNES 选项（字符串）
+  snes_type: "newtonls"
+  snes_linesearch_type: "bt"
+  snes_rtol: "1e-10"
+  snes_atol: "1e-6"
+  snes_max_it: "60"
+  ksp_type: "preonly"
+  pc_type: "lu"
+  pc_factor_mat_solver_type: "mumps"
+
+loading:
+  # 线夹下压量（m），单调递增延拓，每步收敛后提交塑性历史
+  deltas: [1.0e-06, 2.0e-06, 3.0e-06, 4.0e-06, 5.0e-06, 6.0e-06, 7.0e-06, 8.0e-06, 9.0e-06, 1.0e-05, 1.1e-05, 1.2e-05, 1.3e-05, 1.4e-05, 1.5e-05, 1.6e-05, 1.7e-05, 1.8e-05, 1.9e-05, 2.0e-05, 2.1e-05, 2.2e-05, 2.3e-05, 2.4e-05, 2.5e-05]
+  w_target: 1.75e+6       # N/m，D-50 的操作夹持力 W'，用于取工作点
+
+tolerance:
+  p0_band_over_sy: [1.6, 3.4]     # 工作点 p0/σ_y 的允许带（D-50 的 2.15 与 Prandtl 2.97，外加余量）
+  w_rel: 0.5                      # 工作点 P 与 W' 的相对差阈值
+  kappa_sens_rel: 0.03            # κ 从 10 改到 1，末步合力相对变化阈值
+  apl_edge_frac: 0.5              # 塑性区半宽 a_pl 须 < apl_edge_frac × Lw/2（远离域边界）
+
+output:
+  dir: data/study_h25

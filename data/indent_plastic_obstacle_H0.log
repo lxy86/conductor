@@ -1,0 +1,80 @@
+D-57 S3：弹塑性单丝（Lw = 40 mm，D = 3.75 mm，σ_y = 167 MPa）+ 刚体圆弧线夹（罚函数）
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0122082s, CPU 0.009033s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Simple recombination completed (Wall 0.680161s, CPU 0.680079s): 15697 quads, 4538 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776705, min Q = 0.345403
+Info    : Done meshing 2D (Wall 1.45065s, CPU 1.44848s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.674924
+Info    : Done meshing order 2 (Wall 0.244428s, CPU 0.241277s)
+Info    : Done refining mesh (Wall 0.327117s, CPU 0.286543s)
+Info    : 76915 nodes 77430 elements
+  δ =  1.00 µm  P =       45644 N/m  p0 =    56.6 MPa (0.339 σy)  a = 0.4980 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 9
+  δ =  2.00 µm  P =  1.0848e+05 N/m  p0 =    89.2 MPa (0.534 σy)  a = 0.7719 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 11
+  δ =  3.00 µm  P =  1.8297e+05 N/m  p0 =   117.6 MPa (0.704 σy)  a = 0.9949 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 10
+  δ =  4.00 µm  P =  2.6741e+05 N/m  p0 =   144.1 MPa (0.863 σy)  a = 1.1710 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 10
+  δ =  5.00 µm  P =  3.6088e+05 N/m  p0 =   169.6 MPa (1.016 σy)  a = 1.3455 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 10
+  δ =  6.00 µm  P =  4.6272e+05 N/m  p0 =   194.5 MPa (1.165 σy)  a = 1.5194 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 11
+  δ =  7.00 µm  P =   5.724e+05 N/m  p0 =   219.1 MPa (1.312 σy)  a = 1.6692 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 10
+  δ =  8.00 µm  P =  6.8957e+05 N/m  p0 =   243.4 MPa (1.457 σy)  a = 1.8178 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 10
+  δ =  9.00 µm  P =  8.0917e+05 N/m  p0 =   260.8 MPa (1.562 σy)  a = 1.9438 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 10
+  δ = 10.00 µm  P =  9.2486e+05 N/m  p0 =   270.7 MPa (1.621 σy)  a = 2.0921 mm  a_pl = 0.7894 mm  塑性深 = 1.881 mm  p_eq,max = 0.0004  Newton = 9
+  δ = 11.00 µm  P =  1.0392e+06 N/m  p0 =   280.2 MPa (1.678 σy)  a = 2.2179 mm  a_pl = 1.1323 mm  塑性深 = 2.293 mm  p_eq,max = 0.0008  Newton = 9
+  δ = 12.00 µm  P =  1.1534e+06 N/m  p0 =   289.7 MPa (1.734 σy)  a = 2.3429 mm  a_pl = 1.4128 mm  塑性深 = 2.581 mm  p_eq,max = 0.0011  Newton = 10
+  δ = 13.00 µm  P =  1.2682e+06 N/m  p0 =   299.0 MPa (1.790 σy)  a = 2.4675 mm  a_pl = 1.6337 mm  塑性深 = 2.786 mm  p_eq,max = 0.0015  Newton = 10
+  δ = 14.00 µm  P =  1.3836e+06 N/m  p0 =   308.1 MPa (1.845 σy)  a = 2.5913 mm  a_pl = 1.8523 mm  塑性深 = 2.952 mm  p_eq,max = 0.0018  Newton = 10
+  δ = 15.00 µm  P =  1.4997e+06 N/m  p0 =   317.0 MPa (1.898 σy)  a = 2.6923 mm  a_pl = 2.0471 mm  塑性深 = 3.084 mm  p_eq,max = 0.0021  Newton = 10
+  δ = 16.00 µm  P =  1.6164e+06 N/m  p0 =   325.6 MPa (1.950 σy)  a = 2.8162 mm  a_pl = 2.2225 mm  塑性深 = 3.195 mm  p_eq,max = 0.0024  Newton = 10
+  δ = 17.00 µm  P =  1.7332e+06 N/m  p0 =   333.9 MPa (1.999 σy)  a = 2.9167 mm  a_pl = 2.4035 mm  塑性深 = 3.292 mm  p_eq,max = 0.0027  Newton = 11
+  δ = 18.00 µm  P =  1.8483e+06 N/m  p0 =   341.6 MPa (2.045 σy)  a = 3.0165 mm  a_pl = 2.8944 mm  塑性深 = 3.750 mm  p_eq,max = 0.0030  Newton = 9
+  δ = 19.00 µm  P =  1.9619e+06 N/m  p0 =   348.6 MPa (2.088 σy)  a = 3.1165 mm  a_pl = 3.7164 mm  塑性深 = 3.750 mm  p_eq,max = 0.0034  Newton = 9
+  δ = 20.00 µm  P =   2.075e+06 N/m  p0 =   355.3 MPa (2.127 σy)  a = 3.2256 mm  a_pl = 4.2152 mm  塑性深 = 3.750 mm  p_eq,max = 0.0038  Newton = 9
+  δ = 21.00 µm  P =  2.1879e+06 N/m  p0 =   361.5 MPa (2.165 σy)  a = 3.3160 mm  a_pl = 4.6190 mm  塑性深 = 3.750 mm  p_eq,max = 0.0042  Newton = 10
+  δ = 22.00 µm  P =   2.301e+06 N/m  p0 =   367.5 MPa (2.201 σy)  a = 3.4157 mm  a_pl = 4.9831 mm  塑性深 = 3.750 mm  p_eq,max = 0.0046  Newton = 11
+  δ = 23.00 µm  P =  2.4144e+06 N/m  p0 =   373.3 MPa (2.235 σy)  a = 3.5154 mm  a_pl = 5.2995 mm  塑性深 = 3.750 mm  p_eq,max = 0.0051  Newton = 9
+  δ = 24.00 µm  P =  2.5278e+06 N/m  p0 =   378.9 MPa (2.269 σy)  a = 3.6142 mm  a_pl = 5.4922 mm  塑性深 = 3.750 mm  p_eq,max = 0.0063  Newton = 9
+  δ = 25.00 µm  P =  2.6414e+06 N/m  p0 =   384.5 MPa (2.302 σy)  a = 3.6903 mm  a_pl = 5.8239 mm  塑性深 = 3.750 mm  p_eq,max = 0.0081  Newton = 10
+  饱和指数 m = d ln p0 / d ln P（末 4 点）= 0.325（Hertz 0.5，完全饱和 → 0）
+
+  κ 敏感性：末步在 κ = 1 下重算 ...
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0114107s, CPU 0.008712s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Simple recombination completed (Wall 0.742783s, CPU 0.74253s): 15697 quads, 4538 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776705, min Q = 0.345403
+Info    : Done meshing 2D (Wall 1.55881s, CPU 1.55687s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.674924
+Info    : Done meshing order 2 (Wall 0.248121s, CPU 0.245085s)
+Info    : Done refining mesh (Wall 0.306507s, CPU 0.301935s)
+Info    : 76915 nodes 77430 elements
+
+  1 全部 δ 的 Newton 收敛                                                   通过
+  2 工作点 p0/σy = 1.999 ∈ [1.60, 3.40]（饱和）                               通过
+  3 工作点 P 与 W' = 1.75e+06 相对差 < 50%（P = 1.73e+06）                      通过
+  4 a_pl = 2.403 mm < 0.50 × Lw/2（远离域边界）                               通过
+  5 κ 敏感性：末步合力相对变化 0.76% < 3%                                          通过
+
+Phase 6.1 v2 通过
+RC=0

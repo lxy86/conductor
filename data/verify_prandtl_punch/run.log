@@ -1,0 +1,925 @@
+Phase 6.1 独立验证：平冲头压理想塑性块体（J2，H = 0）
+  w = 0.0005 m，σ_y = 1.67e+08 Pa，Prandtl 极限平均压力 = 4.957e+08 Pa（= 2.9685 σ_y）
+Info    : Clearing all models and views...
+Info    : Done clearing all models and views
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 20%] Meshing curve 2 (Line)
+Info    : [ 30%] Meshing curve 3 (Line)
+Info    : [ 40%] Meshing curve 4 (Line)
+Info    : [ 60%] Meshing curve 5 (Line)
+Info    : [ 70%] Meshing curve 6 (Line)
+Info    : [ 80%] Meshing curve 7 (Line)
+Info    : [ 90%] Meshing curve 8 (Line)
+Info    : Done meshing 1D (Wall 0.0173262s, CPU 0.011904s)
+Info    : Meshing 2D...
+Info    : [  0%] Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : [  0%] Simple recombination completed (Wall 0.0189365s, CPU 0.018939s): 812 quads, 228 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.779699, min Q = 0.508224
+Info    : [ 60%] Meshing surface 2 (Plane, Frontal-Delaunay)
+Info    : [ 60%] Simple recombination completed (Wall 0.133466s, CPU 0.129786s): 3511 quads, 976 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.779394, min Q = 0.415532
+Info    : Done meshing 2D (Wall 0.356037s, CPU 0.332893s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 20%] Meshing curve 2 order 2
+Info    : [ 30%] Meshing curve 3 order 2
+Info    : [ 40%] Meshing curve 4 order 2
+Info    : [ 50%] Meshing curve 5 order 2
+Info    : [ 60%] Meshing curve 6 order 2
+Info    : [ 70%] Meshing curve 7 order 2
+Info    : [ 80%] Meshing curve 8 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : [100%] Meshing surface 2 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.682738
+Info    : Done meshing order 2 (Wall 0.0524654s, CPU 0.044354s)
+Info    : Done refining mesh (Wall 0.0636308s, CPU 0.05321s)
+Info    : 21168 nodes 21436 elements
+Info    : Writing '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/verify_prandtl_punch/punch_block.msh'...
+Info    : Done writing '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/verify_prandtl_punch/punch_block.msh'
+Info    : Reading '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/verify_prandtl_punch/punch_block.msh'...
+Info    : 18 entities
+Info    : 21168 nodes
+Info    : 21324 elements
+Info    : Done reading '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/verify_prandtl_punch/punch_block.msh'
+Newton Iteration 0: r (abs) 13434043.606590979 (atol=1e-05) r (rel) inf (rtol=0.001) Krylov iterations: 0 converged: 0 relaxation: 1.0
+Newton Iteration 1: r (abs) 13419948.256087389 (atol=1e-05) r (rel) 186050778668.91547 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 2: r (abs) 41093.93422269944 (atol=1e-05) r (rel) 569715941.8803527 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 11619.40644087763 (atol=1e-05) r (rel) 161088520.96469793 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 10349.54164983224 (atol=1e-05) r (rel) 143483435.70879424 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 5: r (abs) 4633.065051734564 (atol=1e-05) r (rel) 64231645.610701345 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 4458.910430596799 (atol=1e-05) r (rel) 61817209.85780838 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 7: r (abs) 1940.1554181146314 (atol=1e-05) r (rel) 26897825.490139645 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 8: r (abs) 1511.1818792989397 (atol=1e-05) r (rel) 20950644.51730565 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 907.0075050850037 (atol=1e-05) r (rel) 12574523.34088317 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 10: r (abs) 742.4476279723752 (atol=1e-05) r (rel) 10293106.69975881 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 11: r (abs) 626.6313792036609 (atol=1e-05) r (rel) 8687459.430876242 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 12: r (abs) 607.9459618831829 (atol=1e-05) r (rel) 8428409.516831184 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 13: r (abs) 301.6994075197052 (atol=1e-05) r (rel) 4182684.509795332 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 14: r (abs) 47.476088080703896 (atol=1e-05) r (rel) 658196.5136536409 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 15: r (abs) 8.438151541153367 (atol=1e-05) r (rel) 116984.40521525584 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 16: r (abs) 1.1077516756344168e-08 (atol=1e-05) r (rel) 0.00015357589902039413 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 16 iterations and   16 linear solver iterations
+Newton Iteration 0: r (abs) 25524789.64090738 (atol=1e-05) r (rel) 353869247289.9026 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 6914962.412855608 (atol=1e-05) r (rel) 50950126791.984795 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 13435.851272506136 (atol=1e-05) r (rel) 98996680.67895429 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 6539.151538475501 (atol=1e-05) r (rel) 48181115.11031957 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 5837.118501775357 (atol=1e-05) r (rel) 43008466.280654654 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 5: r (abs) 1840.9366002259223 (atol=1e-05) r (rel) 13564202.897638328 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 1413.2963324318166 (atol=1e-05) r (rel) 10413307.1205389 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 7: r (abs) 0.15361868434879938 (atol=1e-05) r (rel) 1131.8776557104986 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 8: r (abs) 5.705285363609755e-07 (atol=1e-05) r (rel) 0.0042037106683321885 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 2.12647806274419e-08 (atol=1e-05) r (rel) 0.00015668100627093463 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 9 iterations and   9 linear solver iterations
+Newton Iteration 0: r (abs) 88381278.7886089 (atol=1e-05) r (rel) 651202001032.6855 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 5560156.516568235 (atol=1e-05) r (rel) 24945795580.403683 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 48383.959051797174 (atol=1e-05) r (rel) 217075966.88693726 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 18193.244480430792 (atol=1e-05) r (rel) 81624493.19560705 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 14261.163158413126 (atol=1e-05) r (rel) 63983101.88363779 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 12797.31020775497 (atol=1e-05) r (rel) 57415485.242258124 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 6: r (abs) 9037.381335076409 (atol=1e-05) r (rel) 40546460.64282336 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 7: r (abs) 5081.40377102877 (atol=1e-05) r (rel) 22797858.18184359 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 8: r (abs) 1390.89084521943 (atol=1e-05) r (rel) 6240270.142775394 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 54.584841365254974 (atol=1e-05) r (rel) 244896.396428574 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 10: r (abs) 11.235207437196266 (atol=1e-05) r (rel) 50407.06807381645 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 11: r (abs) 4.292041929936316e-05 (atol=1e-05) r (rel) 0.19256364508385448 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 12: r (abs) 4.945931404989412e-08 (atol=1e-05) r (rel) 0.0002219005767480008 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 12 iterations and   12 linear solver iterations
+Newton Iteration 0: r (abs) 49706366.19959165 (atol=1e-05) r (rel) 223008983032.19257 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 48238781.76247285 (atol=1e-05) r (rel) 177924824584.42206 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 128631.65747610663 (atol=1e-05) r (rel) 474447410.49087584 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 80879.57840325915 (atol=1e-05) r (rel) 298317749.2068614 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 4: r (abs) 79632.52799749226 (atol=1e-05) r (rel) 293718105.17383945 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 5: r (abs) 54926.92643570501 (atol=1e-05) r (rel) 202593502.44696736 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 39219.97825497322 (atol=1e-05) r (rel) 144659701.10069454 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 7: r (abs) 38101.25075835062 (atol=1e-05) r (rel) 140533365.68504366 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 8: r (abs) 17708.302323069773 (atol=1e-05) r (rel) 65315633.384655915 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 16819.690932143167 (atol=1e-05) r (rel) 62038062.515788466 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 10: r (abs) 14386.818534896129 (atol=1e-05) r (rel) 53064610.47780168 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 11: r (abs) 8286.65157286886 (atol=1e-05) r (rel) 30564640.59882044 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 12: r (abs) 7336.599210082437 (atol=1e-05) r (rel) 27060449.700569108 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 13: r (abs) 5199.565388439108 (atol=1e-05) r (rel) 19178174.19620167 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 14: r (abs) 1904.7054874848272 (atol=1e-05) r (rel) 7025351.332760343 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 15: r (abs) 335.21141588857114 (atol=1e-05) r (rel) 1236400.0538891787 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 16: r (abs) 39.03725408282823 (atol=1e-05) r (rel) 143985.7378477186 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 17: r (abs) 0.6960506994561729 (atol=1e-05) r (rel) 2567.326414095894 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 18: r (abs) 0.00013099167118419517 (atol=1e-05) r (rel) 0.4831521291775146 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 19: r (abs) 4.5703520217269876e-08 (atol=1e-05) r (rel) 0.00016857371849872087 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 19 iterations and   19 linear solver iterations
+Newton Iteration 0: r (abs) 361196880.4789337 (atol=1e-05) r (rel) 1332245327340.5444 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 517480.6248473603 (atol=1e-05) r (rel) 1220837565.0680602 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 301331.73457992123 (atol=1e-05) r (rel) 710900241.3970525 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 110146.40522928923 (atol=1e-05) r (rel) 259856819.1819544 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 98963.19980694217 (atol=1e-05) r (rel) 233473459.84072062 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 5: r (abs) 97291.97226477196 (atol=1e-05) r (rel) 229530708.6239778 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 6: r (abs) 80425.96490084437 (atol=1e-05) r (rel) 189740512.86800936 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 7: r (abs) 79880.249064824 (atol=1e-05) r (rel) 188453062.94142962 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 8: r (abs) 74128.97479970971 (atol=1e-05) r (rel) 174884686.9815919 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 9: r (abs) 72834.62986879837 (atol=1e-05) r (rel) 171831075.23665342 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 10: r (abs) 69634.3226335367 (atol=1e-05) r (rel) 164280927.26015866 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 11: r (abs) 68078.84797176448 (atol=1e-05) r (rel) 160611259.6292919 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 12: r (abs) 65812.3523500385 (atol=1e-05) r (rel) 155264155.09396455 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 13: r (abs) 64704.89662027077 (atol=1e-05) r (rel) 152651451.36819872 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 14: r (abs) 62815.53938628193 (atol=1e-05) r (rel) 148194089.73119634 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 15: r (abs) 61733.771181943215 (atol=1e-05) r (rel) 145641987.8801512 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 16: r (abs) 59768.61271295351 (atol=1e-05) r (rel) 141005796.36870682 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 17: r (abs) 58802.6282591785 (atol=1e-05) r (rel) 138726850.93227017 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 18: r (abs) 58112.62141151256 (atol=1e-05) r (rel) 137098990.41085792 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 19: r (abs) 55957.221016653595 (atol=1e-05) r (rel) 132013981.14972368 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 20: r (abs) 55921.02570187875 (atol=1e-05) r (rel) 131928589.35371271 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 21: r (abs) 54701.727105233 (atol=1e-05) r (rel) 129052026.52537692 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 22: r (abs) 54238.40979269835 (atol=1e-05) r (rel) 127958970.76149102 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 23: r (abs) 53823.83928484653 (atol=1e-05) r (rel) 126980918.2025104 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 24: r (abs) 50147.2887354354 (atol=1e-05) r (rel) 118307219.50718887 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 25: r (abs) 49010.867796140934 (atol=1e-05) r (rel) 115626181.21163945 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 26: r (abs) 48073.33149815882 (atol=1e-05) r (rel) 113414350.51454036 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 27: r (abs) 46714.561413722906 (atol=1e-05) r (rel) 110208747.28667195 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 28: r (abs) 45957.277811613094 (atol=1e-05) r (rel) 108422167.80045754 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 29: r (abs) 44899.08714000798 (atol=1e-05) r (rel) 105925689.94047739 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 30: r (abs) 43815.203548788944 (atol=1e-05) r (rel) 103368597.47984394 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 31: r (abs) 42815.13352695009 (atol=1e-05) r (rel) 101009237.5507269 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 32: r (abs) 41757.57418450646 (atol=1e-05) r (rel) 98514249.11917995 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 33: r (abs) 39050.28274286729 (atol=1e-05) r (rel) 92127221.40676022 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 34: r (abs) 38128.546539596064 (atol=1e-05) r (rel) 89952666.20989919 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 35: r (abs) 37002.53751336006 (atol=1e-05) r (rel) 87296191.64480779 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 36: r (abs) 34637.83903126864 (atol=1e-05) r (rel) 81717407.4384461 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 37: r (abs) 33028.185793569784 (atol=1e-05) r (rel) 77919921.99655959 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 38: r (abs) 19415.28313112672 (atol=1e-05) r (rel) 45804433.721365504 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 39: r (abs) 14497.26853282591 (atol=1e-05) r (rel) 34201879.57949837 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 40: r (abs) 13596.301195776368 (atol=1e-05) r (rel) 32076322.18245793 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 41: r (abs) 13508.685235757088 (atol=1e-05) r (rel) 31869619.070969284 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 42: r (abs) 9074.034354748748 (atol=1e-05) r (rel) 21407414.06552759 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 43: r (abs) 708.5026801735291 (atol=1e-05) r (rel) 1671495.7920644516 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 44: r (abs) 63.648939439991125 (atol=1e-05) r (rel) 150160.242749192 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 45: r (abs) 5.587626665463191 (atol=1e-05) r (rel) 13182.299404515074 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 46: r (abs) 0.4168350594593352 (atol=1e-05) r (rel) 983.3950772078471 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 47: r (abs) 7.627612481389865e-06 (atol=1e-05) r (rel) 0.01799502319880962 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 48: r (abs) 8.741690982319112e-08 (atol=1e-05) r (rel) 0.00020623351331423907 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 48 iterations and   48 linear solver iterations
+Newton Iteration 0: r (abs) 73887966.68058614 (atol=1e-05) r (rel) 174316101896.1131 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 56181392.58586159 (atol=1e-05) r (rel) 93985075646.99207 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 2: r (abs) 242545.53546630274 (atol=1e-05) r (rel) 405751076.10232735 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 293102.4018699446 (atol=1e-05) r (rel) 490326959.5882935 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 4: r (abs) 290223.54681205755 (atol=1e-05) r (rel) 485510962.72636575 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 5: r (abs) 291659.5933798726 (atol=1e-05) r (rel) 487913305.1941576 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 6: r (abs) 287125.9707423671 (atol=1e-05) r (rel) 480329070.50489324 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 7: r (abs) 306500.4378237956 (atol=1e-05) r (rel) 512740348.87406737 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 8: r (abs) 298540.3686838329 (atol=1e-05) r (rel) 499424059.15890366 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 9: r (abs) 290469.51368647476 (atol=1e-05) r (rel) 485922437.3131415 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 10: r (abs) 303757.0752749763 (atol=1e-05) r (rel) 508151015.5590582 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 11: r (abs) 305607.442413404 (atol=1e-05) r (rel) 511246469.18659246 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 12: r (abs) 289574.3360866977 (atol=1e-05) r (rel) 484424907.07118535 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 13: r (abs) 287194.163023918 (atol=1e-05) r (rel) 480443148.4307885 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 14: r (abs) 303227.98268200015 (atol=1e-05) r (rel) 507265903.8684013 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 15: r (abs) 289845.5390215818 (atol=1e-05) r (rel) 484878598.7149412 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 16: r (abs) 288994.52670143684 (atol=1e-05) r (rel) 483454951.95924515 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 17: r (abs) 279966.8137334994 (atol=1e-05) r (rel) 468352615.6311767 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 18: r (abs) 281026.65567384346 (atol=1e-05) r (rel) 470125610.5740283 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 19: r (abs) 280431.34717595857 (atol=1e-05) r (rel) 469129727.210662 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 20: r (abs) 271907.57914817554 (atol=1e-05) r (rel) 454870433.41219884 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 21: r (abs) 278983.2880420328 (atol=1e-05) r (rel) 466707289.0869481 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 22: r (abs) 245006.26761356235 (atol=1e-05) r (rel) 409867600.922422 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 23: r (abs) 233531.20444100598 (atol=1e-05) r (rel) 390671126.2412634 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 24: r (abs) 234504.06832639256 (atol=1e-05) r (rel) 392298616.7973678 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 25: r (abs) 235207.82314564256 (atol=1e-05) r (rel) 393475918.51382244 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 26: r (abs) 229969.43826821787 (atol=1e-05) r (rel) 384712696.8079811 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 27: r (abs) 202347.36346070754 (atol=1e-05) r (rel) 338504109.39457387 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 28: r (abs) 200596.33650578483 (atol=1e-05) r (rel) 335574840.58788097 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 29: r (abs) 113712.36092092202 (atol=1e-05) r (rel) 190227837.92369786 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 30: r (abs) 64378.066845759466 (atol=1e-05) r (rel) 107697178.79916848 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 31: r (abs) 7919.869954750521 (atol=1e-05) r (rel) 13249041.05347662 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 32: r (abs) 7273.114159804287 (atol=1e-05) r (rel) 12167092.217476258 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 33: r (abs) 2159.253302471921 (atol=1e-05) r (rel) 3612185.024849517 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 34: r (abs) 186.05986205304748 (atol=1e-05) r (rel) 311256.9732620913 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 35: r (abs) 19.02762966286269 (atol=1e-05) r (rel) 31831.05884237445 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 36: r (abs) 1.612003119081612 (atol=1e-05) r (rel) 2696.6977519919906 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 37: r (abs) 0.02701863098304381 (atol=1e-05) r (rel) 45.19909457457235 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 38: r (abs) 1.0449327216145224e-07 (atol=1e-05) r (rel) 0.00017480535167736813 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 38 iterations and   38 linear solver iterations
+Newton Iteration 0: r (abs) 978126430.8740981 (atol=1e-05) r (rel) 1636294195761.1611 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 454843.2287366168 (atol=1e-05) r (rel) 544854257.1810682 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 335142.3722894768 (atol=1e-05) r (rel) 401465245.0931024 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 335136.42443035793 (atol=1e-05) r (rel) 401458120.18465644 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 4: r (abs) 333339.3032268615 (atol=1e-05) r (rel) 399305358.3613901 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 5: r (abs) 331404.2698943227 (atol=1e-05) r (rel) 396987392.3405492 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 6: r (abs) 329578.3443979654 (atol=1e-05) r (rel) 394800126.0097981 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 7: r (abs) 327989.8042835322 (atol=1e-05) r (rel) 392897222.3511992 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 8: r (abs) 136807.85811957458 (atol=1e-05) r (rel) 163881397.37579206 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 130103.0111713103 (atol=1e-05) r (rel) 155849697.2806705 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 10: r (abs) 97798.14659493564 (atol=1e-05) r (rel) 117151873.76687256 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 11: r (abs) 79528.47020420794 (atol=1e-05) r (rel) 95266726.68782784 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 12: r (abs) 71124.4407109808 (atol=1e-05) r (rel) 85199584.96170229 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 13: r (abs) 63398.77102966756 (atol=1e-05) r (rel) 75945046.8054891 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 14: r (abs) 61075.277888306104 (atol=1e-05) r (rel) 73161746.86911723 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 15: r (abs) 51569.62604240144 (atol=1e-05) r (rel) 61774977.65215408 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 16: r (abs) 41514.15639332597 (atol=1e-05) r (rel) 49729584.64614684 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 17: r (abs) 38660.57655759058 (atol=1e-05) r (rel) 46311296.709828466 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 18: r (abs) 36061.92932225068 (atol=1e-05) r (rel) 43198391.16428577 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 19: r (abs) 29234.760790084267 (atol=1e-05) r (rel) 35020162.70175433 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 20: r (abs) 25334.568947966753 (atol=1e-05) r (rel) 30348143.872534536 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 21: r (abs) 24568.02722909728 (atol=1e-05) r (rel) 29429907.67059522 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 22: r (abs) 22258.70614473573 (atol=1e-05) r (rel) 26663584.36507451 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 23: r (abs) 19047.39352961097 (atol=1e-05) r (rel) 22816770.25650793 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 24: r (abs) 18496.139330902133 (atol=1e-05) r (rel) 22156425.816974957 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 25: r (abs) 14932.203815369714 (atol=1e-05) r (rel) 17887206.63270722 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 26: r (abs) 11839.88852003473 (atol=1e-05) r (rel) 14182938.773450946 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 27: r (abs) 10600.510141948665 (atol=1e-05) r (rel) 12698294.080742132 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 28: r (abs) 8541.427323670774 (atol=1e-05) r (rel) 10231729.848174974 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 29: r (abs) 4432.962917312702 (atol=1e-05) r (rel) 5310222.434513271 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 30: r (abs) 1296.9734067917443 (atol=1e-05) r (rel) 1553637.4678017187 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 31: r (abs) 439.41764777699683 (atol=1e-05) r (rel) 526376.0367210534 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 32: r (abs) 88.04542674906702 (atol=1e-05) r (rel) 105469.14312168835 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 33: r (abs) 18.68180536072307 (atol=1e-05) r (rel) 22378.834155432214 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 34: r (abs) 2.119030265594901 (atol=1e-05) r (rel) 2538.3749572613224 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 35: r (abs) 0.0017584909111191273 (atol=1e-05) r (rel) 2.1064868038132 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 36: r (abs) 1.4017937339810345e-07 (atol=1e-05) r (rel) 0.0001679201173931482 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 36 iterations and   36 linear solver iterations
+Newton Iteration 0: r (abs) 98069741.08446781 (atol=1e-05) r (rel) 117477215345.0237 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 98901828.60159896 (atol=1e-05) r (rel) 14305193859.980646 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 2: r (abs) 30708492.815952126 (atol=1e-05) r (rel) 4441686762.431772 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 19852646.411887065 (atol=1e-05) r (rel) 2871493475.613071 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 4: r (abs) 19631650.87330806 (atol=1e-05) r (rel) 2839528606.3456044 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 624405.3786878773 (atol=1e-05) r (rel) 90314204.65769127 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 595563.7378122807 (atol=1e-05) r (rel) 86142539.98981796 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 7: r (abs) 521448.8899081202 (atol=1e-05) r (rel) 75422543.38143519 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 8: r (abs) 486231.6923136013 (atol=1e-05) r (rel) 70328716.03852303 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 439615.7811715137 (atol=1e-05) r (rel) 63586174.921983816 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 10: r (abs) 398167.8318032056 (atol=1e-05) r (rel) 57591129.54015633 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 11: r (abs) 251847.85983272118 (atol=1e-05) r (rel) 36427359.423666544 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 12: r (abs) 241114.28241565215 (atol=1e-05) r (rel) 34874851.16438245 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 13: r (abs) 239998.3215297991 (atol=1e-05) r (rel) 34713438.20530976 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 14: r (abs) 186170.34735536124 (atol=1e-05) r (rel) 26927741.85830697 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 15: r (abs) 182496.8767951646 (atol=1e-05) r (rel) 26396409.83699291 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 16: r (abs) 151856.07027935088 (atol=1e-05) r (rel) 21964513.243851583 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 17: r (abs) 144203.170116001 (atol=1e-05) r (rel) 20857595.182014782 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 18: r (abs) 143796.9290040519 (atol=1e-05) r (rel) 20798836.33051027 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 19: r (abs) 143826.80882984126 (atol=1e-05) r (rel) 20803158.15859437 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 20: r (abs) 132666.52571655644 (atol=1e-05) r (rel) 19188931.04343235 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 21: r (abs) 117739.86439068582 (atol=1e-05) r (rel) 17029933.71276618 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 22: r (abs) 116412.52393506485 (atol=1e-05) r (rel) 16837946.741399445 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 23: r (abs) 112124.97387193816 (atol=1e-05) r (rel) 16217794.053581417 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 24: r (abs) 111236.10374962218 (atol=1e-05) r (rel) 16089227.57917076 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 25: r (abs) 104218.25968774135 (atol=1e-05) r (rel) 15074164.246128438 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 26: r (abs) 99582.78854798422 (atol=1e-05) r (rel) 14403688.136392497 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 27: r (abs) 99186.66821387738 (atol=1e-05) r (rel) 14346393.15761 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 28: r (abs) 93432.44756704739 (atol=1e-05) r (rel) 13514100.741687212 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 29: r (abs) 93976.20823499045 (atol=1e-05) r (rel) 13592750.468171969 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 30: r (abs) 91148.85836949153 (atol=1e-05) r (rel) 13183801.629633524 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 31: r (abs) 91360.51177240592 (atol=1e-05) r (rel) 13214415.249246277 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 32: r (abs) 87913.96594835284 (atol=1e-05) r (rel) 12715905.69833602 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 33: r (abs) 89909.2405204875 (atol=1e-05) r (rel) 13004502.88568686 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 34: r (abs) 87698.49408240222 (atol=1e-05) r (rel) 12684739.7749413 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 35: r (abs) 88492.3826480614 (atol=1e-05) r (rel) 12799568.084948834 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 36: r (abs) 86557.36515504103 (atol=1e-05) r (rel) 12519686.50185278 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 37: r (abs) 89084.18363492402 (atol=1e-05) r (rel) 12885166.379371682 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 38: r (abs) 88474.91456815253 (atol=1e-05) r (rel) 12797041.495976808 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 39: r (abs) 89295.17147572566 (atol=1e-05) r (rel) 12915683.731855873 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 40: r (abs) 86698.8597467153 (atol=1e-05) r (rel) 12540152.327335065 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 41: r (abs) 88435.46041937974 (atol=1e-05) r (rel) 12791334.834585857 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 42: r (abs) 87456.31488395775 (atol=1e-05) r (rel) 12649710.893963188 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 43: r (abs) 86799.0558669082 (atol=1e-05) r (rel) 12554644.727967525 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 44: r (abs) 67289.88936702647 (atol=1e-05) r (rel) 9732832.302722476 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 45: r (abs) 66603.84834702252 (atol=1e-05) r (rel) 9633603.098107984 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 46: r (abs) 62649.52898859542 (atol=1e-05) r (rel) 9061649.01185503 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 47: r (abs) 60470.39749751517 (atol=1e-05) r (rel) 8746458.69771166 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 48: r (abs) 56562.78717052396 (atol=1e-05) r (rel) 8181260.621525959 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 49: r (abs) 51270.30052253281 (atol=1e-05) r (rel) 7415753.566991596 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 50: r (abs) 49440.82565905585 (atol=1e-05) r (rel) 7151137.705444457 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 51: r (abs) 45894.038691739646 (atol=1e-05) r (rel) 6638129.241749673 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 52: r (abs) 39744.26984666442 (atol=1e-05) r (rel) 5748624.60096846 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 53: r (abs) 34003.32175342176 (atol=1e-05) r (rel) 4918251.931674914 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 54: r (abs) 29998.71269344385 (atol=1e-05) r (rel) 4339023.926021106 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 55: r (abs) 24570.678494301283 (atol=1e-05) r (rel) 3553911.2279523076 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 56: r (abs) 21425.27320480781 (atol=1e-05) r (rel) 3098958.7455703467 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 57: r (abs) 20625.795155329564 (atol=1e-05) r (rel) 2983321.970737241 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 58: r (abs) 14620.908850290996 (atol=1e-05) r (rel) 2114773.189432597 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 59: r (abs) 7203.078690549737 (atol=1e-05) r (rel) 1041855.7322340918 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 60: r (abs) 4045.3476588118283 (atol=1e-05) r (rel) 585120.4503349948 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+  ⚠ 压下步 8/40 未收敛：('Newton solver did not converge because maximum number ', 'of iterations (60) was reached')
+
+  步           u_y            P         a_采样         p0     p_mean   p_mean/σy  max p_eq       穿透/a
+  1    -8.000e-07    1.558e+05       0.0025  1.327e+08  1.558e+08      0.9330         0  4.813e-07
+  2    -1.600e-06    2.205e+05    0.0005482  5.165e+08  2.205e+08      1.3205   0.00328  1.896e-08
+  3    -2.400e-06    5.639e+05     0.001437  5.033e+08  5.639e+08      3.3768    0.0125  1.868e-06
+  4    -3.200e-06    4.563e+05    0.0006604  6.569e+08  4.563e+08      2.7321    0.0251   2.34e-06
+  5    -4.000e-06    7.824e+05     0.001263  5.246e+08  7.824e+08      4.6850    0.0274  9.231e-07
+  6    -4.800e-06    5.356e+05    0.0006978  9.862e+08  5.356e+08      3.2073     0.044  7.683e-06
+  7    -5.600e-06    9.517e+05       0.0015  5.929e+08  9.517e+08      5.6990    0.0608  5.961e-07
+
+  最终 p_mean = 9.517e+08 Pa = 5.6990 σ_y；与 Prandtl 2.9685 σ_y 之比 1.9198
+  重跑 E_clamp = 1.38e+12 -> 3.45e+11（20x -> 5x E_wire）检查刚性前提 ...
+Info    : Clearing all models and views...
+Info    : Done clearing all models and views
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 20%] Meshing curve 2 (Line)
+Info    : [ 30%] Meshing curve 3 (Line)
+Info    : [ 40%] Meshing curve 4 (Line)
+Info    : [ 60%] Meshing curve 5 (Line)
+Info    : [ 70%] Meshing curve 6 (Line)
+Info    : [ 80%] Meshing curve 7 (Line)
+Info    : [ 90%] Meshing curve 8 (Line)
+Info    : Done meshing 1D (Wall 0.0167106s, CPU 0.007565s)
+Info    : Meshing 2D...
+Info    : [  0%] Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : [  0%] Simple recombination completed (Wall 0.0190938s, CPU 0.019097s): 812 quads, 228 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.779699, min Q = 0.508224
+Info    : [ 60%] Meshing surface 2 (Plane, Frontal-Delaunay)
+Info    : [ 60%] Simple recombination completed (Wall 0.127444s, CPU 0.127426s): 3511 quads, 976 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.779394, min Q = 0.415532
+Info    : Done meshing 2D (Wall 0.339628s, CPU 0.336055s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 20%] Meshing curve 2 order 2
+Info    : [ 30%] Meshing curve 3 order 2
+Info    : [ 40%] Meshing curve 4 order 2
+Info    : [ 50%] Meshing curve 5 order 2
+Info    : [ 60%] Meshing curve 6 order 2
+Info    : [ 70%] Meshing curve 7 order 2
+Info    : [ 80%] Meshing curve 8 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : [100%] Meshing surface 2 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.682738
+Info    : Done meshing order 2 (Wall 0.0785056s, CPU 0.067645s)
+Info    : Done refining mesh (Wall 0.0919031s, CPU 0.079707s)
+Info    : 21168 nodes 21436 elements
+Info    : Writing '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/verify_prandtl_punch/punch_block.msh'...
+Info    : Done writing '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/verify_prandtl_punch/punch_block.msh'
+Info    : Reading '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/verify_prandtl_punch/punch_block.msh'...
+Info    : 18 entities
+Info    : 21168 nodes
+Info    : 21324 elements
+Info    : Done reading '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/verify_prandtl_punch/punch_block.msh'
+Newton Iteration 0: r (abs) 3358510.9016477447 (atol=1e-05) r (rel) inf (rtol=0.001) Krylov iterations: 0 converged: 0 relaxation: 1.0
+Newton Iteration 1: r (abs) 3444163.3275702037 (atol=1e-05) r (rel) 52561723833.7931 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 2: r (abs) 40051.90530519349 (atol=1e-05) r (rel) 611236165.4910228 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 15191.183360821764 (atol=1e-05) r (rel) 231834181.07042453 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 13675.359975384788 (atol=1e-05) r (rel) 208701047.5374244 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 5: r (abs) 10675.505718161308 (atol=1e-05) r (rel) 162919969.22803777 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 6: r (abs) 9715.765058240631 (atol=1e-05) r (rel) 148273270.24166843 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 7: r (abs) 7573.381464569464 (atol=1e-05) r (rel) 115578138.19169226 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 8: r (abs) 4197.638053122904 (atol=1e-05) r (rel) 64060577.5969751 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 2377.9295911925146 (atol=1e-05) r (rel) 36289823.2693983 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 10: r (abs) 2321.009488953675 (atol=1e-05) r (rel) 35421159.849600546 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 11: r (abs) 1861.2022567901251 (atol=1e-05) r (rel) 28403995.314952426 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 12: r (abs) 575.4625916782127 (atol=1e-05) r (rel) 8782192.638293955 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 13: r (abs) 407.44589517898527 (atol=1e-05) r (rel) 6218072.891078334 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 14: r (abs) 174.827843441419 (atol=1e-05) r (rel) 2668065.3475014893 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 15: r (abs) 64.68536457376624 (atol=1e-05) r (rel) 987169.8713002517 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 16: r (abs) 18.676164948475908 (atol=1e-05) r (rel) 285018.8364872624 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 17: r (abs) 3.729130610131495e-09 (atol=1e-05) r (rel) 5.691063826759844e-05 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 17 iterations and   17 linear solver iterations
+Newton Iteration 0: r (abs) 6381254.453533438 (atol=1e-05) r (rel) 97384967668.30524 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 5311910.5732481815 (atol=1e-05) r (rel) 40930962869.79083 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 34998.797854625394 (atol=1e-05) r (rel) 269683473.718385 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 34004.27743774501 (atol=1e-05) r (rel) 262020189.91583252 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 12332.151290619655 (atol=1e-05) r (rel) 95025475.22601387 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 11983.74394203424 (atol=1e-05) r (rel) 92340820.04368997 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 5326.428620370945 (atol=1e-05) r (rel) 41042831.780144185 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 7: r (abs) 4037.626923696346 (atol=1e-05) r (rel) 31111961.584629167 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 8: r (abs) 3123.3704150832186 (atol=1e-05) r (rel) 24067151.870405067 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 9: r (abs) 2296.9776822975446 (atol=1e-05) r (rel) 17699377.075425465 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 10: r (abs) 155.95156206925654 (atol=1e-05) r (rel) 1201685.8169054843 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 11: r (abs) 2.462212419616125 (atol=1e-05) r (rel) 18972.594462037232 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 12: r (abs) 0.0009750090439320417 (atol=1e-05) r (rel) 7.512938786258458 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 13: r (abs) 8.105844424463122e-09 (atol=1e-05) r (rel) 6.245963906789208e-05 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 13 iterations and   13 linear solver iterations
+Newton Iteration 0: r (abs) 19523908.93741913 (atol=1e-05) r (rel) 150441612442.6617 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 4114363.140185483 (atol=1e-05) r (rel) 21365031576.85822 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 62755.428459639894 (atol=1e-05) r (rel) 325875880.4160949 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 12218.091286177245 (atol=1e-05) r (rel) 63446005.43119413 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 10200.213998328058 (atol=1e-05) r (rel) 52967588.601128094 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 3787.435300712912 (atol=1e-05) r (rel) 19667363.34104697 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 2524.6651490613303 (atol=1e-05) r (rel) 13110060.729412692 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 7: r (abs) 1217.6655021115891 (atol=1e-05) r (rel) 6323083.552972963 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 8: r (abs) 374.231305291517 (atol=1e-05) r (rel) 1943305.2898295405 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 44.27150943751995 (atol=1e-05) r (rel) 229892.73548789113 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 10: r (abs) 0.0024813744231288125 (atol=1e-05) r (rel) 12.88526099856257 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 11: r (abs) 2.0442842077021982e-08 (atol=1e-05) r (rel) 0.000106155424695111 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 11 iterations and   11 linear solver iterations
+Newton Iteration 0: r (abs) 12426844.860435732 (atol=1e-05) r (rel) 64530019300.133644 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 6663017.859006086 (atol=1e-05) r (rel) 25517648207.990498 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 2: r (abs) 3400610.6931464477 (atol=1e-05) r (rel) 13023466122.449501 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 3: r (abs) 2406261.681381879 (atol=1e-05) r (rel) 9215364626.237062 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 4: r (abs) 180325.34710738502 (atol=1e-05) r (rel) 690599795.4441059 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 71273.29849433516 (atol=1e-05) r (rel) 272958439.56702834 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 16630.51120312312 (atol=1e-05) r (rel) 63690589.36660924 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 7: r (abs) 15046.130769902917 (atol=1e-05) r (rel) 57622818.96916241 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 8: r (abs) 102.63839226929707 (atol=1e-05) r (rel) 393078.69826906634 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 0.9790519358915281 (atol=1e-05) r (rel) 3749.5176219081563 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 10: r (abs) 0.00014757657332539764 (atol=1e-05) r (rel) 0.5651803974633127 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 11: r (abs) 1.866800544158671e-08 (atol=1e-05) r (rel) 7.149366933774368e-05 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 11 iterations and   11 linear solver iterations
+Newton Iteration 0: r (abs) 64323655.76773291 (atol=1e-05) r (rel) 246343091683.9432 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 240634.04334230907 (atol=1e-05) r (rel) 705649389.795846 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 247932.97331376237 (atol=1e-05) r (rel) 727053200.3663725 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 3: r (abs) 190476.43341855393 (atol=1e-05) r (rel) 558564271.0623869 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 4: r (abs) 186457.2845342812 (atol=1e-05) r (rel) 546778283.018911 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 5: r (abs) 185051.11756403578 (atol=1e-05) r (rel) 542654756.4774348 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 6: r (abs) 176102.15491788933 (atol=1e-05) r (rel) 516412293.2629675 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 7: r (abs) 175012.71207061847 (atol=1e-05) r (rel) 513217547.12598574 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 8: r (abs) 134170.3267912602 (atol=1e-05) r (rel) 393448939.7839725 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 9: r (abs) 128120.3174154351 (atol=1e-05) r (rel) 375707537.25832456 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 10: r (abs) 77706.11076523703 (atol=1e-05) r (rel) 227869959.22640908 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 11: r (abs) 73506.31319359498 (atol=1e-05) r (rel) 215554226.37110606 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 12: r (abs) 72349.55861894654 (atol=1e-05) r (rel) 212162091.37471628 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 13: r (abs) 17454.8191421262 (atol=1e-05) r (rel) 51185535.951440305 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 14: r (abs) 10372.806426927293 (atol=1e-05) r (rel) 30417826.272483714 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 15: r (abs) 9091.694801178086 (atol=1e-05) r (rel) 26661019.361816037 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 16: r (abs) 307.7109532491781 (atol=1e-05) r (rel) 902349.6566730507 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 17: r (abs) 1.7857003030977063 (atol=1e-05) r (rel) 5236.492358841574 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 18: r (abs) 0.0009174453691294352 (atol=1e-05) r (rel) 2.690370638772305 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 19: r (abs) 2.5591995044559594e-08 (atol=1e-05) r (rel) 7.504746808065873e-05 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 19 iterations and   19 linear solver iterations
+Newton Iteration 0: r (abs) 18472251.552075204 (atol=1e-05) r (rel) 54169114456.239494 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 14281408.009766212 (atol=1e-05) r (rel) 35724904124.717674 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 2: r (abs) 3191215.7589017316 (atol=1e-05) r (rel) 7982817727.081995 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 3123449.288052493 (atol=1e-05) r (rel) 7813300080.6213665 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 4: r (abs) 3115789.685114886 (atol=1e-05) r (rel) 7794139604.2599125 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 5: r (abs) 2810346.0386838824 (atol=1e-05) r (rel) 7030073135.688345 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 6: r (abs) 2742398.5323309256 (atol=1e-05) r (rel) 6860102629.397015 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 7: r (abs) 2644038.339296226 (atol=1e-05) r (rel) 6614054868.318386 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 8: r (abs) 2212249.050665638 (atol=1e-05) r (rel) 5533935112.068923 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 9: r (abs) 637088.9747482649 (atol=1e-05) r (rel) 1593676374.6426303 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 10: r (abs) 12140.703478325206 (atol=1e-05) r (rel) 30369937.437064685 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 11: r (abs) 2866.322009371736 (atol=1e-05) r (rel) 7170096.8773771245 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 12: r (abs) 122.07197168879249 (atol=1e-05) r (rel) 305362.7122700454 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 13: r (abs) 11.81772204456983 (atol=1e-05) r (rel) 29562.000240180165 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 14: r (abs) 0.5599180479080793 (atol=1e-05) r (rel) 1400.6335065517578 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 15: r (abs) 3.6512207449618477e-05 (atol=1e-05) r (rel) 0.09133518975351895 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 16: r (abs) 3.293021890619392e-08 (atol=1e-05) r (rel) 8.237485494604263e-05 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 16 iterations and   16 linear solver iterations
+Newton Iteration 0: r (abs) 307359957.4663295 (atol=1e-05) r (rel) 768860115525.9392 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 882491.4645703674 (atol=1e-05) r (rel) 1493313921.132209 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 198361.71288231993 (atol=1e-05) r (rel) 335659118.7100135 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 193372.90546211574 (atol=1e-05) r (rel) 327217274.3755015 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 4: r (abs) 164147.02330638093 (atol=1e-05) r (rel) 277762499.53325915 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 160635.86570216581 (atol=1e-05) r (rel) 271821070.363498 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 6: r (abs) 157423.1608472324 (atol=1e-05) r (rel) 266384670.03899536 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 7: r (abs) 126946.08582843606 (atol=1e-05) r (rel) 214812680.7018336 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 8: r (abs) 125988.24488696925 (atol=1e-05) r (rel) 213191863.65198356 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 123416.97899976236 (atol=1e-05) r (rel) 208840878.63008568 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 10: r (abs) 113112.75442930835 (atol=1e-05) r (rel) 191404515.0897054 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 11: r (abs) 85066.66618505806 (atol=1e-05) r (rel) 143946136.52189568 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 12: r (abs) 80852.75262846806 (atol=1e-05) r (rel) 136815534.09780636 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 13: r (abs) 71001.26599775653 (atol=1e-05) r (rel) 120145274.13483725 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 14: r (abs) 69159.19741253923 (atol=1e-05) r (rel) 117028205.27647214 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 15: r (abs) 62709.7060015333 (atol=1e-05) r (rel) 106114654.61344494 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 16: r (abs) 60974.841537312 (atol=1e-05) r (rel) 103178991.93600422 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 17: r (abs) 60341.71801109324 (atol=1e-05) r (rel) 102107647.66418275 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 18: r (abs) 56038.09299650805 (atol=1e-05) r (rel) 94825239.38758641 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 19: r (abs) 55620.736465782866 (atol=1e-05) r (rel) 94119006.7015731 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 20: r (abs) 53751.802814548704 (atol=1e-05) r (rel) 90956477.9394177 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 21: r (abs) 53171.36780791128 (atol=1e-05) r (rel) 89974290.90359622 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 22: r (abs) 52506.376501474304 (atol=1e-05) r (rel) 88849021.35119587 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 23: r (abs) 51688.49312557737 (atol=1e-05) r (rel) 87465034.44579944 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 24: r (abs) 49430.32635929469 (atol=1e-05) r (rel) 83643862.22633812 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 25: r (abs) 40871.66152632545 (atol=1e-05) r (rel) 69161259.44263886 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 26: r (abs) 34848.26533299981 (atol=1e-05) r (rel) 58968728.69406444 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 27: r (abs) 28764.192983180797 (atol=1e-05) r (rel) 48673524.37547827 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 28: r (abs) 24181.30015017841 (atol=1e-05) r (rel) 40918551.164591424 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 29: r (abs) 21102.894887168008 (atol=1e-05) r (rel) 35709406.80603594 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 30: r (abs) 18115.46118686523 (atol=1e-05) r (rel) 30654200.594728813 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 31: r (abs) 17087.83655132522 (atol=1e-05) r (rel) 28915298.593339607 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 32: r (abs) 14678.647500673755 (atol=1e-05) r (rel) 24838572.990414232 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 33: r (abs) 12741.52690638781 (atol=1e-05) r (rel) 21560661.22979749 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 34: r (abs) 8935.777794789012 (atol=1e-05) r (rel) 15120737.041461207 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 35: r (abs) 6756.949488967356 (atol=1e-05) r (rel) 11433817.936329233 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 36: r (abs) 4844.106804354229 (atol=1e-05) r (rel) 8196988.205336493 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 37: r (abs) 2807.964222827433 (atol=1e-05) r (rel) 4751515.716960273 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 38: r (abs) 309.9845067179178 (atol=1e-05) r (rel) 524542.386868895 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 39: r (abs) 45.983665637987365 (atol=1e-05) r (rel) 77811.57189472165 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 40: r (abs) 9.294233921817083 (atol=1e-05) r (rel) 15727.301009608767 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 41: r (abs) 1.3834190344548125 (atol=1e-05) r (rel) 2340.9619082450895 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 42: r (abs) 0.0006112904264807618 (atol=1e-05) r (rel) 1.0343992439212752 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 43: r (abs) 5.186148347659582e-08 (atol=1e-05) r (rel) 8.775776124233925e-05 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 43 iterations and   43 linear solver iterations
+Newton Iteration 0: r (abs) 24518592.953258846 (atol=1e-05) r (rel) 41489303470.48816 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 18446541.6437685 (atol=1e-05) r (rel) 31873492395.967915 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 2: r (abs) 12823135.560621364 (atol=1e-05) r (rel) 22156896489.158524 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 3: r (abs) 12021716.23535389 (atol=1e-05) r (rel) 20772136501.99184 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 4: r (abs) 10868706.435773928 (atol=1e-05) r (rel) 18779868802.76144 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 5: r (abs) 6861014.282762255 (atol=1e-05) r (rel) 11855039865.650082 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 6756493.135328594 (atol=1e-05) r (rel) 11674439400.680538 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 7: r (abs) 4548768.852940863 (atol=1e-05) r (rel) 7859746951.223472 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 8: r (abs) 92197.02600606998 (atol=1e-05) r (rel) 159305807.2393771 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 88737.48061809923 (atol=1e-05) r (rel) 153328112.5719194 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 10: r (abs) 80701.95808041647 (atol=1e-05) r (rel) 139443658.16043457 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 11: r (abs) 77204.24198084192 (atol=1e-05) r (rel) 133400008.914089 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 12: r (abs) 75803.60764334754 (atol=1e-05) r (rel) 130979874.62725155 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 13: r (abs) 56759.82267777119 (atol=1e-05) r (rel) 98074414.78482108 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 14: r (abs) 56140.48129984252 (atol=1e-05) r (rel) 97004264.45089188 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 15: r (abs) 38764.69888433068 (atol=1e-05) r (rel) 66980920.27125808 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 16: r (abs) 34906.97327920709 (atol=1e-05) r (rel) 60315216.19972146 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 17: r (abs) 29744.526833421416 (atol=1e-05) r (rel) 51395105.28072289 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 18: r (abs) 25121.34754229083 (atol=1e-05) r (rel) 43406785.69070227 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 19: r (abs) 24372.001521343147 (atol=1e-05) r (rel) 42112002.356141925 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 20: r (abs) 24249.293389437833 (atol=1e-05) r (rel) 41899976.88357706 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 21: r (abs) 19788.212257743908 (atol=1e-05) r (rel) 34191744.182035625 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 22: r (abs) 15668.672205446679 (atol=1e-05) r (rel) 27073654.999387268 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 23: r (abs) 15291.032695461394 (atol=1e-05) r (rel) 26421137.56374105 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 24: r (abs) 14180.88422444237 (atol=1e-05) r (rel) 24502929.287482742 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 25: r (abs) 12709.452902705676 (atol=1e-05) r (rel) 21960465.99272164 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 26: r (abs) 11019.718243123823 (atol=1e-05) r (rel) 19040799.75590269 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 27: r (abs) 7472.063414279925 (atol=1e-05) r (rel) 12910862.155980077 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 28: r (abs) 5831.8403633955195 (atol=1e-05) r (rel) 10076746.257745234 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 29: r (abs) 4530.33958569342 (atol=1e-05) r (rel) 7827903.3069882365 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 30: r (abs) 2046.246545302956 (atol=1e-05) r (rel) 3535677.579109901 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 31: r (abs) 43.57480968392845 (atol=1e-05) r (rel) 75292.23590729952 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 32: r (abs) 0.7937775693385067 (atol=1e-05) r (rel) 1371.5559159539066 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 33: r (abs) 0.00750276358503929 (atol=1e-05) r (rel) 12.963908503536725 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 34: r (abs) 4.543966701338605e-08 (atol=1e-05) r (rel) 7.85144938816072e-05 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 34 iterations and   34 linear solver iterations
+Newton Iteration 0: r (abs) 1265537609.4056554 (atol=1e-05) r (rel) 2186702751614.637 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 1172521.9768430039 (atol=1e-05) r (rel) 1253592211.894876 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 1314293.6652899755 (atol=1e-05) r (rel) 1405166244.6331184 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 3: r (abs) 633056.1257633514 (atol=1e-05) r (rel) 676826741.5217409 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 622593.7349269268 (atol=1e-05) r (rel) 665640962.5518186 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 5: r (abs) 619144.4365787534 (atol=1e-05) r (rel) 661953173.6393973 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 6: r (abs) 530139.1049773498 (atol=1e-05) r (rel) 566793856.6148599 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 7: r (abs) 526683.5316152568 (atol=1e-05) r (rel) 563099358.8230022 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 8: r (abs) 499291.3422752173 (atol=1e-05) r (rel) 533813225.25655127 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 9: r (abs) 498646.3839842836 (atol=1e-05) r (rel) 533123673.41319185 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 10: r (abs) 483622.3293888959 (atol=1e-05) r (rel) 517060829.2159583 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 11: r (abs) 270835.23680103064 (atol=1e-05) r (rel) 289561262.19025785 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 12: r (abs) 268982.3488782506 (atol=1e-05) r (rel) 287580262.3323574 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 13: r (abs) 264864.41742805805 (atol=1e-05) r (rel) 283177609.847346 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 14: r (abs) 244331.3853716644 (atol=1e-05) r (rel) 261224887.78256425 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 15: r (abs) 207450.58432233494 (atol=1e-05) r (rel) 221794083.17763337 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 16: r (abs) 189049.71432486383 (atol=1e-05) r (rel) 202120944.61265066 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 17: r (abs) 186183.36708495763 (atol=1e-05) r (rel) 199056413.0750777 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 18: r (abs) 174947.26229269887 (atol=1e-05) r (rel) 187043424.20340195 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 19: r (abs) 172600.1357691992 (atol=1e-05) r (rel) 184534013.21725285 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 20: r (abs) 168231.64331311715 (atol=1e-05) r (rel) 179863475.49700403 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 21: r (abs) 166752.54515612763 (atol=1e-05) r (rel) 178282109.88778746 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 22: r (abs) 163107.16351387856 (atol=1e-05) r (rel) 174384680.13690796 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 23: r (abs) 162542.5250574876 (atol=1e-05) r (rel) 173781001.582947 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 24: r (abs) 158740.59798157643 (atol=1e-05) r (rel) 169716202.57134375 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 25: r (abs) 152328.1015604326 (atol=1e-05) r (rel) 162860334.85106987 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 26: r (abs) 152122.13333853355 (atol=1e-05) r (rel) 162640125.62346488 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 27: r (abs) 144504.58469964008 (atol=1e-05) r (rel) 154495886.2522263 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 28: r (abs) 141612.32537508185 (atol=1e-05) r (rel) 151403651.02282047 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 29: r (abs) 136010.34870251652 (atol=1e-05) r (rel) 145414343.81439364 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 30: r (abs) 135412.3811677706 (atol=1e-05) r (rel) 144775031.75088608 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 31: r (abs) 133102.28144046076 (atol=1e-05) r (rel) 142305207.65884364 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 32: r (abs) 131613.6970556748 (atol=1e-05) r (rel) 140713699.92732936 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 33: r (abs) 117525.84305279405 (atol=1e-05) r (rel) 125651786.88082618 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 34: r (abs) 115966.79859285754 (atol=1e-05) r (rel) 123984947.3404395 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 35: r (abs) 112280.34314144359 (atol=1e-05) r (rel) 120043603.86487179 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 36: r (abs) 97371.88352321362 (atol=1e-05) r (rel) 104104347.08515452 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 37: r (abs) 91020.49686708755 (atol=1e-05) r (rel) 97313814.36670573 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 38: r (abs) 86826.79962938336 (atol=1e-05) r (rel) 92830157.51416133 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 39: r (abs) 82451.57213246747 (atol=1e-05) r (rel) 88152419.08049063 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 40: r (abs) 77245.72007972424 (atol=1e-05) r (rel) 82586625.24593322 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 41: r (abs) 76748.7464890138 (atol=1e-05) r (rel) 82055290.0256677 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 42: r (abs) 69107.13218099345 (atol=1e-05) r (rel) 73885321.04254353 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 43: r (abs) 67949.03852823486 (atol=1e-05) r (rel) 72647154.75447792 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 44: r (abs) 62927.076550011414 (atol=1e-05) r (rel) 67277965.47814247 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 45: r (abs) 61763.73089751953 (atol=1e-05) r (rel) 66034184.05782982 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 46: r (abs) 59071.261269127615 (atol=1e-05) r (rel) 63155552.336142674 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 47: r (abs) 57795.6740360359 (atol=1e-05) r (rel) 61791768.754617184 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 48: r (abs) 54878.148152694164 (atol=1e-05) r (rel) 58672519.992042705 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 49: r (abs) 54674.23350817434 (atol=1e-05) r (rel) 58454506.32977461 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 50: r (abs) 54061.97990202678 (atol=1e-05) r (rel) 57799920.430721655 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 51: r (abs) 52583.30334477445 (atol=1e-05) r (rel) 56219005.57139084 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 52: r (abs) 49441.611929003055 (atol=1e-05) r (rel) 52860092.07657338 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 53: r (abs) 48735.91156168472 (atol=1e-05) r (rel) 52105598.342661835 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 54: r (abs) 48632.92267093449 (atol=1e-05) r (rel) 51995488.61857479 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 55: r (abs) 47888.18327540951 (atol=1e-05) r (rel) 51199256.62927331 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 56: r (abs) 47496.247817126285 (atol=1e-05) r (rel) 50780222.062951416 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 57: r (abs) 43063.721544450724 (atol=1e-05) r (rel) 46041223.115224645 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 58: r (abs) 37806.98940849744 (atol=1e-05) r (rel) 40421031.258871146 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 59: r (abs) 36138.37314709438 (atol=1e-05) r (rel) 38637043.92963741 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 60: r (abs) 29525.459868207105 (atol=1e-05) r (rel) 31566902.177011404 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+  ⚠ 压下步 9/40 未收敛：('Newton solver did not converge because maximum number ', 'of iterations (60) was reached')
+  重跑 γ = 100 -> 200 检查敏感性 ...
+Info    : Clearing all models and views...
+Info    : Done clearing all models and views
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 20%] Meshing curve 2 (Line)
+Info    : [ 30%] Meshing curve 3 (Line)
+Info    : [ 40%] Meshing curve 4 (Line)
+Info    : [ 60%] Meshing curve 5 (Line)
+Info    : [ 70%] Meshing curve 6 (Line)
+Info    : [ 80%] Meshing curve 7 (Line)
+Info    : [ 90%] Meshing curve 8 (Line)
+Info    : Done meshing 1D (Wall 0.0152641s, CPU 0.009688s)
+Info    : Meshing 2D...
+Info    : [  0%] Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : [  0%] Simple recombination completed (Wall 0.0209182s, CPU 0.020917s): 812 quads, 228 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.779699, min Q = 0.508224
+Info    : [ 60%] Meshing surface 2 (Plane, Frontal-Delaunay)
+Info    : [ 60%] Simple recombination completed (Wall 0.101229s, CPU 0.101229s): 3511 quads, 976 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.779394, min Q = 0.415532
+Info    : Done meshing 2D (Wall 0.305715s, CPU 0.302461s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 20%] Meshing curve 2 order 2
+Info    : [ 30%] Meshing curve 3 order 2
+Info    : [ 40%] Meshing curve 4 order 2
+Info    : [ 50%] Meshing curve 5 order 2
+Info    : [ 60%] Meshing curve 6 order 2
+Info    : [ 70%] Meshing curve 7 order 2
+Info    : [ 80%] Meshing curve 8 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : [100%] Meshing surface 2 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.682738
+Info    : Done meshing order 2 (Wall 0.053024s, CPU 0.046536s)
+Info    : Done refining mesh (Wall 0.0661966s, CPU 0.058119s)
+Info    : 21168 nodes 21436 elements
+Info    : Writing '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/verify_prandtl_punch/punch_block.msh'...
+Info    : Done writing '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/verify_prandtl_punch/punch_block.msh'
+Info    : Reading '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/verify_prandtl_punch/punch_block.msh'...
+Info    : 18 entities
+Info    : 21168 nodes
+Info    : 21324 elements
+Info    : Done reading '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/verify_prandtl_punch/punch_block.msh'
+Newton Iteration 0: r (abs) 13434043.606590979 (atol=1e-05) r (rel) inf (rtol=0.001) Krylov iterations: 0 converged: 0 relaxation: 1.0
+Newton Iteration 1: r (abs) 13424082.184677726 (atol=1e-05) r (rel) 186007777228.95868 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 2: r (abs) 117172.39628890445 (atol=1e-05) r (rel) 1623572970.3120139 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 16979.910217222965 (atol=1e-05) r (rel) 235278309.05698174 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 7687.569367102787 (atol=1e-05) r (rel) 106521076.8673904 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 7314.231492092561 (atol=1e-05) r (rel) 101348004.52391964 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 6: r (abs) 6878.465732430126 (atol=1e-05) r (rel) 95309914.22976042 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 7: r (abs) 5446.153199731938 (atol=1e-05) r (rel) 75463397.58607778 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 8: r (abs) 1962.2910780326217 (atol=1e-05) r (rel) 27190045.22466932 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 1761.2634654239916 (atol=1e-05) r (rel) 24404551.29900969 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 10: r (abs) 1497.273305041119 (atol=1e-05) r (rel) 20746630.983296625 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 11: r (abs) 1434.7011760374548 (atol=1e-05) r (rel) 19879614.343176536 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 12: r (abs) 1157.5341735663417 (atol=1e-05) r (rel) 16039112.077054366 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 13: r (abs) 398.1142695460515 (atol=1e-05) r (rel) 5516380.884937896 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 14: r (abs) 395.9445516996943 (atol=1e-05) r (rel) 5486316.677324837 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 15: r (abs) 313.71173391530573 (atol=1e-05) r (rel) 4346876.122587552 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 16: r (abs) 311.4742855006982 (atol=1e-05) r (rel) 4315873.421580505 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 17: r (abs) 88.17437041759969 (atol=1e-05) r (rel) 1221768.3432138725 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 18: r (abs) 1.2982877402991279e-08 (atol=1e-05) r (rel) 0.00017989432234874676 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 18 iterations and   18 linear solver iterations
+Newton Iteration 0: r (abs) 25524792.131282065 (atol=1e-05) r (rel) 353678544518.3099 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 14619977.19113949 (atol=1e-05) r (rel) 107715341378.4388 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 38781.42563948873 (atol=1e-05) r (rel) 285729207.8698846 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 23304.858502232488 (atol=1e-05) r (rel) 171702784.2468563 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 18250.265662639707 (atol=1e-05) r (rel) 134462152.05382392 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 17789.51678579116 (atol=1e-05) r (rel) 131067500.89188147 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 6: r (abs) 4742.785262829657 (atol=1e-05) r (rel) 34943333.15238965 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 7: r (abs) 4606.479670794304 (atol=1e-05) r (rel) 33939076.90862639 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 8: r (abs) 1267.3394462336398 (atol=1e-05) r (rel) 9337353.903407715 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 884.224880910792 (atol=1e-05) r (rel) 6514687.653571635 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 10: r (abs) 5.494093595770813 (atol=1e-05) r (rel) 40478.733960830636 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 11: r (abs) 0.09228986058237246 (atol=1e-05) r (rel) 679.9623356747495 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 12: r (abs) 3.619731866356982e-07 (atol=1e-05) r (rel) 0.0026669032966710575 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 13: r (abs) 2.194860817529986e-08 (atol=1e-05) r (rel) 0.0001617103632567124 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 13 iterations and   13 linear solver iterations
+Newton Iteration 0: r (abs) 164519747.44800466 (atol=1e-05) r (rel) 1212129166015.1453 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 8147349.584666945 (atol=1e-05) r (rel) 36552157637.27658 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 80172.50422184211 (atol=1e-05) r (rel) 359684825.3580603 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 63170.66954403246 (atol=1e-05) r (rel) 283408027.01915383 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 20647.844667526482 (atol=1e-05) r (rel) 92634207.64192985 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 19348.84846564721 (atol=1e-05) r (rel) 86806408.86542065 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 6: r (abs) 19156.381700698705 (atol=1e-05) r (rel) 85942928.60607666 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 7: r (abs) 17102.230164978693 (atol=1e-05) r (rel) 76727211.27810085 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 8: r (abs) 16832.927663846953 (atol=1e-05) r (rel) 75519016.22384596 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 16300.874712970437 (atol=1e-05) r (rel) 73132021.14897935 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 10: r (abs) 16482.633261364786 (atol=1e-05) r (rel) 73947460.21217309 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 11: r (abs) 15034.392004462468 (atol=1e-05) r (rel) 67450090.46401283 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 12: r (abs) 11851.23696037257 (atol=1e-05) r (rel) 53169227.25244335 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 13: r (abs) 11513.671009549776 (atol=1e-05) r (rel) 51654775.992039226 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 14: r (abs) 8798.562486192222 (atol=1e-05) r (rel) 39473750.283402525 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 15: r (abs) 4396.132156552396 (atol=1e-05) r (rel) 19722747.122943368 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 16: r (abs) 581.9787591607399 (atol=1e-05) r (rel) 2610981.537655425 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 17: r (abs) 235.70092621584834 (atol=1e-05) r (rel) 1057445.4085666894 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 18: r (abs) 0.12811763303912185 (atol=1e-05) r (rel) 574.785194902395 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 19: r (abs) 1.5705610342564572e-06 (atol=1e-05) r (rel) 0.007046143522691732 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 20: r (abs) 4.797005645517152e-08 (atol=1e-05) r (rel) 0.00021521220455770636 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 20 iterations and   20 linear solver iterations
+Newton Iteration 0: r (abs) 49706388.79416962 (atol=1e-05) r (rel) 223002062192.53793 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 26449942.819361124 (atol=1e-05) r (rel) 97466306825.95229 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 2: r (abs) 16071245.961014085 (atol=1e-05) r (rel) 59221488704.503006 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 3: r (abs) 10102524.450978877 (atol=1e-05) r (rel) 37227140889.5082 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 4: r (abs) 1592938.3618624983 (atol=1e-05) r (rel) 5869873526.474043 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 11762.178777606976 (atol=1e-05) r (rel) 43342858.37626762 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 11758.17393978751 (atol=1e-05) r (rel) 43328100.811218575 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 7: r (abs) 10296.420708792388 (atol=1e-05) r (rel) 37941635.899403736 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 8: r (abs) 9904.209576949528 (atol=1e-05) r (rel) 36496363.56827536 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 9: r (abs) 8115.2250754645565 (atol=1e-05) r (rel) 29904072.85825638 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 10: r (abs) 1065.3096471778892 (atol=1e-05) r (rel) 3925596.2723852536 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 11: r (abs) 5.10452145351352 (atol=1e-05) r (rel) 18809.827211559237 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 12: r (abs) 0.6306099117679863 (atol=1e-05) r (rel) 2323.756220103233 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 13: r (abs) 4.1078555853948836e-05 (atol=1e-05) r (rel) 0.15137178768860202 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 14: r (abs) 5.225386112236184e-08 (atol=1e-05) r (rel) 0.0001925520556235303 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 14 iterations and   14 linear solver iterations
+Newton Iteration 0: r (abs) 695319707.1189177 (atol=1e-05) r (rel) 2562207577499.0522 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 905505.6272350244 (atol=1e-05) r (rel) 2143152446.5232 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 774943.1909568023 (atol=1e-05) r (rel) 1834137023.186604 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 3: r (abs) 404742.1844063994 (atol=1e-05) r (rel) 957944574.4256858 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 370396.87588854297 (atol=1e-05) r (rel) 876656032.6842071 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 5: r (abs) 39599.30539675529 (atol=1e-05) r (rel) 93723711.58069912 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 35580.024218070335 (atol=1e-05) r (rel) 84210869.21696241 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 7: r (abs) 29488.299452535877 (atol=1e-05) r (rel) 69792963.41701028 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 8: r (abs) 25609.87412828342 (atol=1e-05) r (rel) 60613498.95834073 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 9: r (abs) 24918.04063065641 (atol=1e-05) r (rel) 58976066.115925945 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 10: r (abs) 24219.754164223465 (atol=1e-05) r (rel) 57323360.374627024 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 11: r (abs) 23755.6549136166 (atol=1e-05) r (rel) 56224929.38264652 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 12: r (abs) 16806.06006715362 (atol=1e-05) r (rel) 39776615.03807271 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 13: r (abs) 12082.11583605588 (atol=1e-05) r (rel) 28595974.81717152 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 14: r (abs) 11573.300747504332 (atol=1e-05) r (rel) 27391710.294611976 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 15: r (abs) 10351.926808183318 (atol=1e-05) r (rel) 24500960.124269728 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 16: r (abs) 9749.40214340317 (atol=1e-05) r (rel) 23074903.597865626 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 17: r (abs) 6695.187034808504 (atol=1e-05) r (rel) 15846181.450461617 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 18: r (abs) 6154.260189891008 (atol=1e-05) r (rel) 14565914.761656035 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 19: r (abs) 5927.62430974782 (atol=1e-05) r (rel) 14029512.528042145 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 20: r (abs) 4084.284181473863 (atol=1e-05) r (rel) 9666691.594783217 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 21: r (abs) 288.53332474112335 (atol=1e-05) r (rel) 682901.2236076508 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 22: r (abs) 14.406430949841566 (atol=1e-05) r (rel) 34097.16826398787 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 23: r (abs) 0.49993983762323196 (atol=1e-05) r (rel) 1183.258561725698 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 24: r (abs) 9.429413053463882e-06 (atol=1e-05) r (rel) 0.02231755280915968 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 25: r (abs) 9.07422896513278e-08 (atol=1e-05) r (rel) 0.00021476902431097103 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 25 iterations and   25 linear solver iterations
+Newton Iteration 0: r (abs) 73887962.99592221 (atol=1e-05) r (rel) 174878171819.71606 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 60650452.3783201 (atol=1e-05) r (rel) 102565054734.27794 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 2: r (abs) 219781.71128325025 (atol=1e-05) r (rel) 371669498.9634997 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 1184921.1633466284 (atol=1e-05) r (rel) 2003802102.1899824 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 4: r (abs) 1112981.7119118148 (atol=1e-05) r (rel) 1882146393.3761256 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 5: r (abs) 1080599.860512842 (atol=1e-05) r (rel) 1827385938.492526 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 6: r (abs) 1067815.2271381663 (atol=1e-05) r (rel) 1805766040.034852 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 7: r (abs) 1051936.7660613786 (atol=1e-05) r (rel) 1778914216.7495408 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 8: r (abs) 1220372.3014360587 (atol=1e-05) r (rel) 2063752980.9708073 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 9: r (abs) 1182223.8592663899 (atol=1e-05) r (rel) 1999240732.4099352 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 10: r (abs) 1187883.0214589052 (atol=1e-05) r (rel) 2008810855.2575755 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 11: r (abs) 1120231.913492472 (atol=1e-05) r (rel) 1894407098.6601715 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 12: r (abs) 1102729.2002795197 (atol=1e-05) r (rel) 1864808527.366967 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 13: r (abs) 1164280.5321204339 (atol=1e-05) r (rel) 1968897045.6166298 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 14: r (abs) 1094351.4744776725 (atol=1e-05) r (rel) 1850641083.0739648 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 15: r (abs) 978203.8660773897 (atol=1e-05) r (rel) 1654225634.455007 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 16: r (abs) 964080.7860514304 (atol=1e-05) r (rel) 1630342309.2846758 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 17: r (abs) 967538.3501612996 (atol=1e-05) r (rel) 1636189343.202312 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 18: r (abs) 870839.5487869468 (atol=1e-05) r (rel) 1472663475.4340975 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 19: r (abs) 667497.6696321188 (atol=1e-05) r (rel) 1128795125.777057 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 20: r (abs) 622483.1526086677 (atol=1e-05) r (rel) 1052671762.7797234 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 21: r (abs) 39205.49306440693 (atol=1e-05) r (rel) 66299811.20260571 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 22: r (abs) 21911.751950565416 (atol=1e-05) r (rel) 37054629.43813101 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 23: r (abs) 4750.870539443889 (atol=1e-05) r (rel) 8034124.690019791 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 24: r (abs) 5.41931577534048 (atol=1e-05) r (rel) 9164.522230650635 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 25: r (abs) 0.31105619527589 (atol=1e-05) r (rel) 526.0223863608314 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 26: r (abs) 4.0034607814378875e-05 (atol=1e-05) r (rel) 0.06770191450731687 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 27: r (abs) 9.505979056127369e-08 (atol=1e-05) r (rel) 0.00016075416158694913 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 27 iterations and   27 linear solver iterations
+Newton Iteration 0: r (abs) 1861557646.2980788 (atol=1e-05) r (rel) 3148051735749.7153 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 583802.4591083557 (atol=1e-05) r (rel) 707120631.8232406 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 431651.552313842 (atol=1e-05) r (rel) 522830477.3944005 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 430683.65644994855 (atol=1e-05) r (rel) 521658130.26886636 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 4: r (abs) 429481.8957959772 (atol=1e-05) r (rel) 520202518.46100515 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 5: r (abs) 426043.85353813117 (atol=1e-05) r (rel) 516038249.23658955 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 6: r (abs) 420365.38652012486 (atol=1e-05) r (rel) 509160304.2692238 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 7: r (abs) 399803.6838737091 (atol=1e-05) r (rel) 484255297.5501677 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 8: r (abs) 394356.01118752884 (atol=1e-05) r (rel) 477656898.2256745 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 9: r (abs) 384856.7529320256 (atol=1e-05) r (rel) 466151085.95187443 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 10: r (abs) 339985.24033471505 (atol=1e-05) r (rel) 411801242.3641385 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 11: r (abs) 343332.27300414885 (atol=1e-05) r (rel) 415855277.79858637 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 12: r (abs) 341286.1479761363 (atol=1e-05) r (rel) 413376944.2458168 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 13: r (abs) 331421.7365726244 (atol=1e-05) r (rel) 401428846.5367576 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 14: r (abs) 318648.5082404857 (atol=1e-05) r (rel) 385957494.6304306 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 15: r (abs) 235258.77958145778 (atol=1e-05) r (rel) 284953128.0044311 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 16: r (abs) 53121.7624332603 (atol=1e-05) r (rel) 64342816.01475612 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 17: r (abs) 57082.5110619803 (atol=1e-05) r (rel) 69140204.29076833 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 18: r (abs) 52211.56125364161 (atol=1e-05) r (rel) 63240350.5777293 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 19: r (abs) 44065.99888896007 (atol=1e-05) r (rel) 53374179.03972938 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 20: r (abs) 40634.753798991725 (atol=1e-05) r (rel) 49218142.76734965 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 21: r (abs) 33160.048760656035 (atol=1e-05) r (rel) 40164535.56351414 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 22: r (abs) 28283.590192234424 (atol=1e-05) r (rel) 34258009.46009782 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 23: r (abs) 28030.34870806174 (atol=1e-05) r (rel) 33951275.09216531 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 24: r (abs) 26005.219688788115 (atol=1e-05) r (rel) 31498372.591858167 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 25: r (abs) 23751.700932611187 (atol=1e-05) r (rel) 28768836.972691495 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 26: r (abs) 19985.104290418614 (atol=1e-05) r (rel) 24206611.93253255 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 27: r (abs) 15311.943720673584 (atol=1e-05) r (rel) 18546327.0140063 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 28: r (abs) 13250.767250742809 (atol=1e-05) r (rel) 16049762.662525678 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 29: r (abs) 11500.129832539787 (atol=1e-05) r (rel) 13929333.366726212 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 30: r (abs) 10200.810427367927 (atol=1e-05) r (rel) 12355555.208736653 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 31: r (abs) 10027.087646974449 (atol=1e-05) r (rel) 12145136.49549323 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 32: r (abs) 8755.188629839227 (atol=1e-05) r (rel) 10604570.808281748 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 33: r (abs) 4652.964623304734 (atol=1e-05) r (rel) 5635822.927686157 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 34: r (abs) 1021.8510063865726 (atol=1e-05) r (rel) 1237699.3587332182 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 35: r (abs) 529.1621881056518 (atol=1e-05) r (rel) 640938.548566113 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 36: r (abs) 107.80972808308876 (atol=1e-05) r (rel) 130582.668588342 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 37: r (abs) 9.987938747854404 (atol=1e-05) r (rel) 12097.718068508131 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 38: r (abs) 0.19609432008045743 (atol=1e-05) r (rel) 237.51585377701477 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 39: r (abs) 2.511987255213799e-06 (atol=1e-05) r (rel) 0.0030426011184530254 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 40: r (abs) 1.7378822981593342e-07 (atol=1e-05) r (rel) 0.0002104979877244346 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 40 iterations and   40 linear solver iterations
+Newton Iteration 0: r (abs) 98069717.86165135 (atol=1e-05) r (rel) 118785249659.57156 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 122659641.5904887 (atol=1e-05) r (rel) 15549798380.703867 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 2: r (abs) 46550124.04573802 (atol=1e-05) r (rel) 5901248643.17319 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 25236164.792747777 (atol=1e-05) r (rel) 3199237086.7963977 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 4: r (abs) 13567064.602306606 (atol=1e-05) r (rel) 1719922840.5393507 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 262743.41224806634 (atol=1e-05) r (rel) 33308487.07316293 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 281238.6573510767 (atol=1e-05) r (rel) 35653164.82229319 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 7: r (abs) 270867.8989655662 (atol=1e-05) r (rel) 34338443.86062533 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 8: r (abs) 249991.1539205703 (atol=1e-05) r (rel) 31691858.789238513 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 9: r (abs) 182088.32552801038 (atol=1e-05) r (rel) 23083686.79971824 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 10: r (abs) 168973.8560276188 (atol=1e-05) r (rel) 21421140.309636272 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 11: r (abs) 156028.51648671157 (atol=1e-05) r (rel) 19780034.749399006 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 12: r (abs) 142283.05868641415 (atol=1e-05) r (rel) 18037496.66047578 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 13: r (abs) 110557.05387550226 (atol=1e-05) r (rel) 14015530.08827625 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 14: r (abs) 98209.05477191186 (atol=1e-05) r (rel) 12450150.522705829 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 15: r (abs) 84338.69831825625 (atol=1e-05) r (rel) 10691778.7915792 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 16: r (abs) 77916.12988800659 (atol=1e-05) r (rel) 9877577.454597631 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 17: r (abs) 73562.10173854689 (atol=1e-05) r (rel) 9325608.94246024 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 18: r (abs) 71266.64024760092 (atol=1e-05) r (rel) 9034608.879912794 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 19: r (abs) 55166.49210502373 (atol=1e-05) r (rel) 6993562.173186136 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 20: r (abs) 51278.34633145146 (atol=1e-05) r (rel) 6500654.464751067 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 21: r (abs) 45941.739433223294 (atol=1e-05) r (rel) 5824122.55720181 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 22: r (abs) 44228.54584665331 (atol=1e-05) r (rel) 5606937.7153675435 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 23: r (abs) 43771.76918999868 (atol=1e-05) r (rel) 5549031.261183495 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 24: r (abs) 38263.85180750509 (atol=1e-05) r (rel) 4850781.994474478 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 25: r (abs) 30544.68734909581 (atol=1e-05) r (rel) 3872208.688378441 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 26: r (abs) 26767.81825177019 (atol=1e-05) r (rel) 3393407.7379419575 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 27: r (abs) 25736.983006987615 (atol=1e-05) r (rel) 3262726.773834726 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 28: r (abs) 20310.77887212665 (atol=1e-05) r (rel) 2574836.4524906566 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 29: r (abs) 17933.21378915177 (atol=1e-05) r (rel) 2273427.959869334 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 30: r (abs) 17217.26045483091 (atol=1e-05) r (rel) 2182665.180406384 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 31: r (abs) 16919.47329042254 (atol=1e-05) r (rel) 2144914.1295564948 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 32: r (abs) 12841.657609829677 (atol=1e-05) r (rel) 1627961.6026724721 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 33: r (abs) 8467.500789635627 (atol=1e-05) r (rel) 1073441.3402810288 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 34: r (abs) 6991.832630599683 (atol=1e-05) r (rel) 886368.0531566296 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 35: r (abs) 4146.1789571862 (atol=1e-05) r (rel) 525619.0707764284 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 36: r (abs) 1678.2525438640744 (atol=1e-05) r (rel) 212755.29873236894 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 37: r (abs) 168.06365794441058 (atol=1e-05) r (rel) 21305.75275023313 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 38: r (abs) 23.190252561280783 (atol=1e-05) r (rel) 2939.872863230995 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 39: r (abs) 1.509995694910063 (atol=1e-05) r (rel) 191.42505478674912 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 40: r (abs) 0.00025321111889710157 (atol=1e-05) r (rel) 0.03210005993452762 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 41: r (abs) 1.0766992812820627e-07 (atol=1e-05) r (rel) 1.3649523611426469e-05 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 41 iterations and   41 linear solver iterations
+Newton Iteration 0: r (abs) 4137113239.820544 (atol=1e-05) r (rel) 524469792371.6941 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 1069592.8786556497 (atol=1e-05) r (rel) 1029697241.28047 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 2: r (abs) 1611572.5102183344 (atol=1e-05) r (rel) 1551461122.2738955 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 3: r (abs) 624985.9140659426 (atol=1e-05) r (rel) 601674042.8953816 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 1041080.2358909302 (atol=1e-05) r (rel) 1002248115.3725371 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 5: r (abs) 1022096.1176886506 (atol=1e-05) r (rel) 983972101.6376673 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 6: r (abs) 990312.2191216715 (atol=1e-05) r (rel) 953373737.2275643 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 7: r (abs) 746454.2257212902 (atol=1e-05) r (rel) 718611606.6268387 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 8: r (abs) 738237.8231406035 (atol=1e-05) r (rel) 710701674.5027425 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 9: r (abs) 393953.7442257589 (atol=1e-05) r (rel) 379259334.75850475 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 10: r (abs) 191687.03078272875 (atol=1e-05) r (rel) 184537136.25534126 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 11: r (abs) 184919.24754466707 (atol=1e-05) r (rel) 178021790.21211103 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 12: r (abs) 159814.0177390566 (atol=1e-05) r (rel) 153852981.323779 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 13: r (abs) 157473.16381545932 (atol=1e-05) r (rel) 151599440.86416203 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 14: r (abs) 145634.83924950685 (atol=1e-05) r (rel) 140202683.84548655 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 15: r (abs) 143259.7976191262 (atol=1e-05) r (rel) 137916230.8748918 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 16: r (abs) 134477.27241020682 (atol=1e-05) r (rel) 129461292.40291272 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 17: r (abs) 143936.48005724107 (atol=1e-05) r (rel) 138567673.17004392 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 18: r (abs) 135589.38368170586 (atol=1e-05) r (rel) 130531922.10801958 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 19: r (abs) 131460.83867070446 (atol=1e-05) r (rel) 126557371.14272745 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 20: r (abs) 128911.45639804387 (atol=1e-05) r (rel) 124103080.40695949 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 21: r (abs) 125021.79032328741 (atol=1e-05) r (rel) 120358498.2331206 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 22: r (abs) 123636.61069027605 (atol=1e-05) r (rel) 119024985.57119788 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 23: r (abs) 122831.93235046483 (atol=1e-05) r (rel) 118250321.60030161 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 24: r (abs) 110547.96757656595 (atol=1e-05) r (rel) 106424546.67969057 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 25: r (abs) 105448.91805903467 (atol=1e-05) r (rel) 101515690.86536083 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 26: r (abs) 101129.65968077522 (atol=1e-05) r (rel) 97357540.1098497 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 27: r (abs) 95835.00633360734 (atol=1e-05) r (rel) 92260376.45635983 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 28: r (abs) 91085.4617317087 (atol=1e-05) r (rel) 87687989.08214651 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 29: r (abs) 86953.25431141078 (atol=1e-05) r (rel) 83709912.31481858 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 30: r (abs) 82997.04606357272 (atol=1e-05) r (rel) 79901269.97994247 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 31: r (abs) 79162.17636775489 (atol=1e-05) r (rel) 76209440.28917564 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 32: r (abs) 76496.71029801678 (atol=1e-05) r (rel) 73643395.66275135 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 33: r (abs) 74880.87547988827 (atol=1e-05) r (rel) 72087831.21594699 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 34: r (abs) 72088.33792190101 (atol=1e-05) r (rel) 69399454.84675714 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 35: r (abs) 71672.84404004249 (atol=1e-05) r (rel) 68999458.81793506 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 36: r (abs) 69939.1087223382 (atol=1e-05) r (rel) 67330391.54067867 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 37: r (abs) 69422.78986870123 (atol=1e-05) r (rel) 66833331.29484074 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 38: r (abs) 65954.39246363835 (atol=1e-05) r (rel) 63494304.539028354 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 39: r (abs) 66615.12361121397 (atol=1e-05) r (rel) 64130390.52413871 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 40: r (abs) 65882.229928423 (atol=1e-05) r (rel) 63424833.65443492 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 41: r (abs) 63983.46089078042 (atol=1e-05) r (rel) 61596888.387683764 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 42: r (abs) 61460.04125497764 (atol=1e-05) r (rel) 59167591.88671517 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 43: r (abs) 61192.853441863845 (atol=1e-05) r (rel) 58910370.13481568 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 44: r (abs) 57144.7126773486 (atol=1e-05) r (rel) 55013224.35092126 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 45: r (abs) 51903.95932333511 (atol=1e-05) r (rel) 49967950.22976062 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 46: r (abs) 47504.86430286541 (atol=1e-05) r (rel) 45732940.72558213 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 47: r (abs) 45803.79620943898 (atol=1e-05) r (rel) 44095322.19054387 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 48: r (abs) 39622.0798311988 (atol=1e-05) r (rel) 38144182.81024748 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 49: r (abs) 38650.814419703376 (atol=1e-05) r (rel) 37209145.43787362 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 50: r (abs) 35603.182984054896 (atol=1e-05) r (rel) 34275190.150445804 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 51: r (abs) 35190.985206799756 (atol=1e-05) r (rel) 33878367.282070845 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 52: r (abs) 33469.683486917434 (atol=1e-05) r (rel) 32221269.831495192 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 53: r (abs) 31421.00381324344 (atol=1e-05) r (rel) 30249005.570629038 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 54: r (abs) 31137.2735698489 (atol=1e-05) r (rel) 29975858.41836079 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 55: r (abs) 30704.173686820257 (atol=1e-05) r (rel) 29558913.08929875 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 56: r (abs) 30152.686054384714 (atol=1e-05) r (rel) 29027995.85429162 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 57: r (abs) 29127.60740044628 (atol=1e-05) r (rel) 28041152.46451273 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 58: r (abs) 28540.81177668267 (atol=1e-05) r (rel) 27476244.22041122 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 59: r (abs) 27045.97086159928 (atol=1e-05) r (rel) 26037160.624090746 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 60: r (abs) 26682.34172012294 (atol=1e-05) r (rel) 25687094.78941729 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+  ⚠ 压下步 9/40 未收敛：('Newton solver did not converge because maximum number ', 'of iterations (60) was reached')
+
+  1 所有压下步 Newton 收敛                              **未通过**
+  2 极限平均压力 p_mean/σy ∈ [0.95, 1.03]（Prandtl 2.9685） **未通过**
+  3 末两级 p_mean 变化 < 2%（已饱和）                      **未通过**
+  4a 力平衡：顶面合力 vs 接触面压力积分 < 1%                    通过
+  4b 穿透 max|g_n| / a < 1%                        通过
+  4d 冲头变软 4 倍后收敛                                 **未通过**
+  4c γ 加倍后收敛                                     **未通过**
+
+Phase 6.1（Prandtl 独立验证）未通过
+WARNING! There are options you set that were not used!
+WARNING! could be spelling mistake, etc!
+There are 2 unused database options. They are:
+Option left: name:-Newton_solver_ksp_atol value: 1e-10 source: code
+Option left: name:-Newton_solver_ksp_rtol value: 1e-10 source: code

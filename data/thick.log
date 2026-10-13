@@ -1,0 +1,155 @@
+Info    : Clearing all models and views...
+Info    : Done clearing all models and views
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Circle)
+Info    : [ 20%] Meshing curve 2 (Line)
+Info    : [ 30%] Meshing curve 3 (Line)
+Info    : [ 40%] Meshing curve 4 (Line)
+Info    : [ 60%] Meshing curve 5 (Line)
+Info    : [ 70%] Meshing curve 6 (Line)
+Info    : [ 80%] Meshing curve 7 (Line)
+Info    : [ 90%] Meshing curve 8 (Line)
+Info    : Done meshing 1D (Wall 0.0184753s, CPU 0.001813s)
+Info    : Meshing 2D...
+Info    : [  0%] Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : [  0%] Simple recombination completed (Wall 0.171312s, CPU 0.171309s): 4712 quads, 1323 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.777792, min Q = 0.416682
+Info    : [ 60%] Meshing surface 2 (Plane, Frontal-Delaunay)
+Info    : [ 60%] Simple recombination completed (Wall 0.569893s, CPU 0.568261s): 13371 quads, 3742 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.780994, min Q = 0.438484
+Info    : Done meshing 2D (Wall 1.54132s, CPU 1.5313s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 20%] Meshing curve 2 order 2
+Info    : [ 30%] Meshing curve 3 order 2
+Info    : [ 40%] Meshing curve 4 order 2
+Info    : [ 50%] Meshing curve 5 order 2
+Info    : [ 60%] Meshing curve 6 order 2
+Info    : [ 70%] Meshing curve 7 order 2
+Info    : [ 80%] Meshing curve 8 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : [100%] Meshing surface 2 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.674129
+Info    : Done meshing order 2 (Wall 0.23805s, CPU 0.230629s)
+Info    : Done refining mesh (Wall 0.337333s, CPU 0.306862s)
+Info    : 88135 nodes 88746 elements
+Info    : Writing '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/indent_plastic_clamp/clamp_wire.msh'...
+Info    : Done writing '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/indent_plastic_clamp/clamp_wire.msh'
+Info    : Reading '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/indent_plastic_clamp/clamp_wire.msh'...
+Info    : 19 entities
+Info    : 88134 nodes
+Info    : 88605 elements
+Info    : Done reading '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/indent_plastic_clamp/clamp_wire.msh'
+Newton Iteration 0: r (abs) 15643957.83024355 (atol=1e-05) r (rel) inf (rtol=0.001) Krylov iterations: 0 converged: 0 relaxation: 1.0
+Newton Iteration 1: r (abs) 15532939.756310876 (atol=1e-05) r (rel) 102354440554.49521 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 2: r (abs) 13836531.287922626 (atol=1e-05) r (rel) 91175942314.11922 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 3: r (abs) 8132855.847048618 (atol=1e-05) r (rel) 53591523780.7323 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 4: r (abs) 2887739.9951921063 (atol=1e-05) r (rel) 19028787615.98495 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 10595.66061740434 (atol=1e-05) r (rel) 69820197.06598629 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 2359.8067022239047 (atol=1e-05) r (rel) 15549966.626551945 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 7: r (abs) 790.110965086065 (atol=1e-05) r (rel) 5206443.022126527 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 8: r (abs) 788.1787890686221 (atol=1e-05) r (rel) 5193710.9315872695 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 9: r (abs) 35.175093459240536 (atol=1e-05) r (rel) 231786.58186772867 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 10: r (abs) 5.157696179963955e-08 (atol=1e-05) r (rel) 0.00033986683482486427 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 10 iterations and   10 linear solver iterations
+Newton Iteration 0: r (abs) 30810027.546720788 (atol=1e-05) r (rel) 203022942371.99625 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 23753387.513756108 (atol=1e-05) r (rel) 76955200989.29987 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 2: r (abs) 19101359.040058818 (atol=1e-05) r (rel) 61883759663.55227 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 3: r (abs) 6034742.635194131 (atol=1e-05) r (rel) 19551099064.969765 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 28602.273380233968 (atol=1e-05) r (rel) 92664412.41073951 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 2094.6475647118837 (atol=1e-05) r (rel) 6786148.891428623 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 2029.1898283144326 (atol=1e-05) r (rel) 6574081.738570816 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.03125
+Newton Iteration 7: r (abs) 2055.37002290499 (atol=1e-05) r (rel) 6658899.204521243 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 8: r (abs) 847.4750632158357 (atol=1e-05) r (rel) 2745613.179822259 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 9: r (abs) 783.5907768894119 (atol=1e-05) r (rel) 2538643.622681795 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 10: r (abs) 1.227772267776512e-07 (atol=1e-05) r (rel) 0.0003977683670639084 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 10 iterations and   10 linear solver iterations
+Newton Iteration 0: r (abs) 47349827.97747502 (atol=1e-05) r (rel) 153401931691.0125 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 36453998.824403346 (atol=1e-05) r (rel) 76727036030.26697 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.25
+Newton Iteration 2: r (abs) 31841930.204740636 (atol=1e-05) r (rel) 67019723621.01673 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 3: r (abs) 12812133.149685074 (atol=1e-05) r (rel) 26966506652.27957 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 52790.534786674834 (atol=1e-05) r (rel) 111111576.10294232 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 2822.92922674272 (atol=1e-05) r (rel) 5941597.615518315 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 2744.4487603636467 (atol=1e-05) r (rel) 5776414.816217068 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.0625
+Newton Iteration 7: r (abs) 930.4644991274083 (atol=1e-05) r (rel) 1958407.4573909647 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 8: r (abs) 814.1564367356251 (atol=1e-05) r (rel) 1713606.52521529 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 9: r (abs) 818.9399272726447 (atol=1e-05) r (rel) 1723674.6401716839 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 10: r (abs) 1.6802235328028355e-07 (atol=1e-05) r (rel) 0.0003536472697035472 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 10 iterations and   10 linear solver iterations
+D=  3.75 mm  t/a=1.3  P=4.394e+05  节点法 a=1.4937 (差-5.65%)  插值法 a=1.5039 (差-5.00%)  p0=188.9 vs 176.7 MPa (+6.91%)  E*=73.67 GPa
+Info    : Clearing all models and views...
+Info    : Done clearing all models and views
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Circle)
+Info    : [ 20%] Meshing curve 2 (Line)
+Info    : [ 30%] Meshing curve 3 (Line)
+Info    : [ 40%] Meshing curve 4 (Line)
+Info    : [ 60%] Meshing curve 5 (Line)
+Info    : [ 70%] Meshing curve 6 (Line)
+Info    : [ 80%] Meshing curve 7 (Line)
+Info    : [ 90%] Meshing curve 8 (Line)
+Info    : Done meshing 1D (Wall 0.0287802s, CPU 0.019683s)
+Info    : Meshing 2D...
+Info    : [  0%] Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : [  0%] Simple recombination completed (Wall 0.176339s, CPU 0.176317s): 4710 quads, 1307 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.779291, min Q = 0.422166
+Info    : [ 60%] Meshing surface 2 (Plane, Frontal-Delaunay)
+Info    : [ 60%] Simple recombination completed (Wall 3.57868s, CPU 3.57837s): 50202 quads, 13545 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.779265, min Q = 0.374961
+Info    : Done meshing 2D (Wall 6.80574s, CPU 6.80096s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 20%] Meshing curve 2 order 2
+Info    : [ 30%] Meshing curve 3 order 2
+Info    : [ 40%] Meshing curve 4 order 2
+Info    : [ 50%] Meshing curve 5 order 2
+Info    : [ 60%] Meshing curve 6 order 2
+Info    : [ 70%] Meshing curve 7 order 2
+Info    : [ 80%] Meshing curve 8 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : [100%] Meshing surface 2 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.644757
+Info    : Done meshing order 2 (Wall 1.11465s, CPU 1.10824s)
+Info    : Done refining mesh (Wall 1.32449s, CPU 1.31572s)
+Info    : 264871 nodes 265541 elements
+Info    : Writing '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/indent_plastic_clamp/clamp_wire.msh'...
+Info    : Done writing '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/indent_plastic_clamp/clamp_wire.msh'
+Info    : Reading '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/indent_plastic_clamp/clamp_wire.msh'...
+Info    : 19 entities
+Info    : 264870 nodes
+Info    : 265192 elements
+Info    : Done reading '/mnt/c/Users/Administrator/Desktop/疲劳寿命/data/indent_plastic_clamp/clamp_wire.msh'
+Newton Iteration 0: r (abs) 16542747.332216872 (atol=1e-05) r (rel) inf (rtol=0.001) Krylov iterations: 0 converged: 0 relaxation: 1.0
+Newton Iteration 1: r (abs) 16459445.381922733 (atol=1e-05) r (rel) 108591764187.06662 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.015625
+Newton Iteration 2: r (abs) 16149575.010592816 (atol=1e-05) r (rel) 106547383619.48238 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 3: r (abs) 133789.08044354472 (atol=1e-05) r (rel) 882678118.0784076 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 3095.221833636984 (atol=1e-05) r (rel) 20420833.853497893 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 880.8643850127809 (atol=1e-05) r (rel) 5811533.460486463 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 5.025245631748403e-08 (atol=1e-05) r (rel) 0.00033154233083955984 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 6 iterations and   6 linear solver iterations
+Newton Iteration 0: r (abs) 31693332.275733583 (atol=1e-05) r (rel) 209097863562.81036 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 18890523.71496576 (atol=1e-05) r (rel) 45095739664.87544 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 2: r (abs) 3924157.788132532 (atol=1e-05) r (rel) 9367807938.39621 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 15092.94204207641 (atol=1e-05) r (rel) 36030096.1146627 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 3031.2539957214385 (atol=1e-05) r (rel) 7236254.701656122 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 968.1586110660102 (atol=1e-05) r (rel) 2311202.6610649913 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 6: r (abs) 967.3864546716493 (atol=1e-05) r (rel) 2309359.3578159087 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.125
+Newton Iteration 7: r (abs) 23.744182891724737 (atol=1e-05) r (rel) 56682.46716696964 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 8: r (abs) 1.1237106384009177e-07 (atol=1e-05) r (rel) 0.00026825387783099174 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton solver finished in 8 iterations and   8 linear solver iterations
+Newton Iteration 0: r (abs) 46858848.15043175 (atol=1e-05) r (rel) 111862140461.12964 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 1: r (abs) 26915605.076368634 (atol=1e-05) r (rel) 40254777982.319626 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 0.5
+Newton Iteration 2: r (abs) 6864735.694302382 (atol=1e-05) r (rel) 10266847447.693708 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 3: r (abs) 27512.753278410735 (atol=1e-05) r (rel) 41147868.374586195 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 4: r (abs) 1944.5927529023727 (atol=1e-05) r (rel) 2908318.401611572 (rtol=0.001) Krylov iterations: 1 converged: 4 relaxation: 1.0
+Newton Iteration 5: r (abs) 1906.5737208658716 (atol=1e-05) r (rel) 2851457.421173285 (rtol=0.001) Krylov iterations: 1 converged: 4 [0]PETSC ERROR: ------------------------------------------------------------------------
+[0]PETSC ERROR: Caught signal number 15 Terminate: Some process (or the batch system) has told this process to end
+[0]PETSC ERROR: Try option -start_in_debugger or -on_error_attach_debugger
+[0]PETSC ERROR: or see https://petsc.org/release/faq/#valgrind and https://petsc.org/release/faq/
+[0]PETSC ERROR: configure using --with-debugging=yes, recompile, link, and run 
+[0]PETSC ERROR: to get more information on the crash.
+[0]PETSC ERROR: ------------------------------------------------------------------------
+[0]PETSC ERROR: Caught signal number 15 Terminate: Some process (or the batch system) has told this process to end
+[0]PETSC ERROR: Try option -start_in_debugger or -on_error_attach_debugger
+[0]PETSC ERROR: or see https://petsc.org/release/faq/#valgrind and https://petsc.org/release/faq/
+[0]PETSC ERROR: configure using --with-debugging=yes, recompile, link, and run 
+[0]PETSC ERROR: to get more information on the crash.
+Abort(59) on node 0 (rank 0 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 59) - process 0

@@ -70,6 +70,9 @@ __all__ = [
     "PunchBlockTags",
     "PUNCH_BLOCK",
     "build_punch_block",
+    "ClampWireTags",
+    "CLAMP_WIRE",
+    "build_clamp_wire",
     "QuarterDisksTags",
     "QUARTER_DISKS",
     "ContactModel",
@@ -435,6 +438,157 @@ def _punch_block_gmsh(gmsh, stem, *, half_width, block_half_width, block_depth,
         gmsh.write(f"{stem}.msh")
 
 
+@dataclass(frozen=True)
+class ClampWireTags:
+    """线夹压单丝（Phase 6.1 本体）的物理组编号。
+
+    几何（PLAN §1.1）：2D 平面应变，**导线轴向–径向平面**。单丝截面在此平面里是矩形
+    （厚度 = 单丝直径 D = 3.75 mm），线夹是刚体、其轴向曲率半径 R_clamp = 330 mm（D-50）。
+    故把线夹建成「底边是半径 R_clamp 的**向下凸**圆弧的块体」，压在下方的平板（单丝）上
+    —— 弧-平接触，与 4.3 Hertz 同型（4.3/4.4 证明能收敛的正是这种形态）。
+    线夹在上（body 0）、单丝在下（body 1），朝向与 HalfdiskPlaneTags 一致。
+    """
+
+    clamp_contact: int = 3     # 线夹底面弧（接触）
+    wire_contact: int = 4      # 单丝顶面（接触，平面，外法向 (0, +1)）
+    clamp_top: int = 5         # 线夹顶面（加载面，外法向 (0, +1)）
+    wire_bottom: int = 6       # 单丝底面（全固定）
+    cell_clamp: int = 1
+    cell_wire: int = 2
+
+    @property
+    def body_cells(self) -> tuple[int, int]:
+        return (self.cell_clamp, self.cell_wire)
+
+    @property
+    def contact_facets(self) -> tuple[int, int]:
+        return (self.clamp_contact, self.wire_contact)
+
+    @property
+    def load_facet(self) -> int:
+        return self.clamp_top
+
+    @property
+    def sample_cell(self) -> int:
+        return self.cell_wire
+
+    @property
+    def sample_facet(self) -> int:
+        return self.wire_contact
+
+    @property
+    def force_facet(self) -> int:
+        # 单丝顶面是平面、外法向 (0,1)：按平衡即透过接触的合力（4.3 的做法，精度 0.0014%）
+        return self.wire_contact
+
+    @property
+    def force_body(self) -> int:
+        return 1
+
+    @property
+    def fixed_facet(self) -> int:
+        return self.wire_bottom
+
+
+CLAMP_WIRE = ClampWireTags()
+
+
+def build_clamp_wire(
+    workdir: pathlib.Path, *, R_clamp: float, Lc: float, Hc: float, Lw: float, D: float,
+    h_fine: float, h_coarse: float, fine_halfwidth: float, order: int, quads: bool,
+    gap: float = 0.0, comm=MPI.COMM_WORLD,
+):
+    """线夹（大半径圆弧底）压单丝（平板）网格，返回 (mesh, cell_tags, facet_tags)。
+
+    R_clamp = 330 mm 时弧的矢高在 ±Lc/2 上只有 Lc²/(8R_clamp) ≈ 54 µm，不能沿用上游
+    `create_halfdisk_plane_mesh`（它按半径 R 自动加密，R = 330 mm 会把 165 mm 半径全加密）。
+    这里自己建：|x| <= fine_halfwidth 内加密到 h_fine，远处 h_coarse。
+    """
+    import gmsh
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    stem = str(workdir / "clamp_wire")
+    if comm.rank == 0:
+        gmsh.initialize()
+        gmsh.clear()
+        try:
+            _clamp_wire_gmsh(gmsh, stem, R_clamp=R_clamp, Lc=Lc, Hc=Hc, Lw=Lw, D=D,
+                             h_fine=h_fine, h_coarse=h_coarse, fine_halfwidth=fine_halfwidth,
+                             order=order, quads=quads, gap=gap)
+        finally:
+            gmsh.finalize()
+    comm.barrier()
+    convert_mesh(stem, f"{stem}.xdmf", gdim=2)
+    with XDMFFile(comm, f"{stem}.xdmf", "r") as xdmf:
+        mesh = xdmf.read_mesh()
+        cell_tags = xdmf.read_meshtags(mesh, name="cell_marker")
+        mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
+        facet_tags = xdmf.read_meshtags(mesh, name="facet_marker")
+    mesh.topology.create_connectivity(0, mesh.topology.dim)
+    assert_tags_present(facet_tags, cell_tags, CLAMP_WIRE, comm=comm)
+    return mesh, cell_tags, facet_tags
+
+
+def _clamp_wire_gmsh(gmsh, stem, *, R_clamp, Lc, Hc, Lw, D, h_fine, h_coarse,
+                     fine_halfwidth, order, quads, gap):
+    """gmsh 建体：线夹 = 矩形但底边换成半径 R_clamp 的**向下凸**圆弧（圆心在 (0, R)）；
+    单丝 = 矩形（顶面平，位于 y = -gap）。"""
+    hc = Lc / 2.0
+    y_arc = R_clamp - np.sqrt(R_clamp**2 - hc * hc)          # 端点相对弧顶的抬高
+    p_bl = gmsh.model.occ.addPoint(-hc, y_arc, 0.0)
+    p_br = gmsh.model.occ.addPoint(hc, y_arc, 0.0)
+    center = gmsh.model.occ.addPoint(0.0, R_clamp, 0.0)
+    p_tl = gmsh.model.occ.addPoint(-hc, Hc, 0.0)
+    p_tr = gmsh.model.occ.addPoint(hc, Hc, 0.0)
+    arc = gmsh.model.occ.addCircleArc(p_bl, center, p_br)
+    l_right = gmsh.model.occ.addLine(p_br, p_tr)
+    l_top = gmsh.model.occ.addLine(p_tr, p_tl)
+    l_left = gmsh.model.occ.addLine(p_tl, p_bl)
+    clamp = gmsh.model.occ.addPlaneSurface(
+        [gmsh.model.occ.addCurveLoop([arc, l_right, -l_top, -l_left])])
+    wire = gmsh.model.occ.addRectangle(-Lw / 2.0, -gap - D, 0.0, Lw, D)
+    gmsh.model.occ.synchronize()
+
+    gmsh.model.addPhysicalGroup(2, [clamp], tag=CLAMP_WIRE.cell_clamp)
+    gmsh.model.addPhysicalGroup(2, [wire], tag=CLAMP_WIRE.cell_wire)
+    gmsh.model.addPhysicalGroup(1, [arc], tag=CLAMP_WIRE.clamp_contact)
+    gmsh.model.addPhysicalGroup(1, [l_top], tag=CLAMP_WIRE.clamp_top)
+
+    tol = 1e-3 * min(D, Hc, Lc)
+    top_wire, bot_wire = [], []
+    for d, e in gmsh.model.getBoundary([(2, wire)]):
+        ymin = gmsh.model.getBoundingBox(d, e)[1]
+        ymax = gmsh.model.getBoundingBox(d, e)[4]
+        if abs(ymin + gap) < tol and abs(ymax + gap) < tol:
+            top_wire.append(e)
+        elif abs(ymin + gap + D) < tol and abs(ymax + gap + D) < tol:
+            bot_wire.append(e)
+    if len(top_wire) != 1 or len(bot_wire) != 1:
+        raise RuntimeError("单丝顶/底边不唯一：%d / %d" % (len(top_wire), len(bot_wire)))
+    gmsh.model.addPhysicalGroup(1, top_wire, tag=CLAMP_WIRE.wire_contact)
+    gmsh.model.addPhysicalGroup(1, bot_wire, tag=CLAMP_WIRE.wire_bottom)
+
+    gmsh.model.mesh.field.add("Box", 1)
+    gmsh.model.mesh.field.setNumber(1, "VIn", h_fine)
+    gmsh.model.mesh.field.setNumber(1, "VOut", h_coarse)
+    gmsh.model.mesh.field.setNumber(1, "XMin", -fine_halfwidth)
+    gmsh.model.mesh.field.setNumber(1, "XMax", fine_halfwidth)
+    gmsh.model.mesh.field.setNumber(1, "YMin", -0.75 * D)
+    gmsh.model.mesh.field.setNumber(1, "YMax", 0.25 * Hc)
+    gmsh.model.mesh.field.setNumber(1, "Thickness", fine_halfwidth)
+    gmsh.model.mesh.field.setAsBackgroundMesh(1)
+    gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+    gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+    if quads:
+        gmsh.option.setNumber("Mesh.RecombinationAlgorithm", 8)
+        gmsh.option.setNumber("Mesh.RecombineAll", 2)
+        gmsh.option.setNumber("Mesh.SubdivisionAlgorithm", 1)
+    gmsh.model.mesh.generate(2)
+    gmsh.model.mesh.setOrder(order)
+    gmsh.write(f"{stem}.msh")
+
+
 class ContactModel:
     """一个两体摩擦接触问题：装配、加载、求解、取面力。"""
 
@@ -656,7 +810,8 @@ class ContactModel:
         return X[o], u[o]
 
     # ---- 取面力 ---------------------------------------------------------
-    def resultant(self, component: int, tag: int | None = None) -> float:
+    def resultant(self, component: int, tag: int | None = None,
+                  body: int | None = None) -> float:
         """某**平面**上的合力分量，用**精确面积分** ∫ -sigma[1, component] ds。
 
         默认取 `tags.force_facet`：对半圆柱+块是接触面本身（平面），
@@ -667,7 +822,10 @@ class ContactModel:
         数值残尾也算进去（D-49，Phase 4.3 实测差 3.1% vs 0.0014%）。
         """
         tag = self.tags.force_facet if tag is None else tag
-        body = self.tags.force_body if tag == self.tags.force_facet else self._body_of_facet_tag(tag)
+        if body is None:
+            body = self.tags.force_body if tag in (None, self.tags.force_facet) else None
+        if body is None:
+            raise ValueError("resultant(tag=%r)：请显式给 body（物体序号）" % (tag,))
         local = assemble_scalar(form(-self.stress(self.u, body)[1, component] * self.ds(tag)))
         return float(self.mesh.comm.allreduce(local, op=MPI.SUM))
 

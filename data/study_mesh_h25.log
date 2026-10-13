@@ -1,0 +1,290 @@
+D-57 S3：弹塑性单丝（Lw = 40 mm，D = 3.75 mm，σ_y = 167 MPa）+ 刚体圆弧线夹（罚函数）
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0158663s, CPU 0.015811s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0164173s, CPU 0.01622s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0168833s, CPU 0.016882s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0195973s, CPU 0.015654s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0182455s, CPU 0.017458s)
+Info    : Meshing 2D...
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Done meshing 1D (Wall 0.0190437s, CPU 0.019044s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Simple recombination completed (Wall 5.82232s, CPU 5.79466s): 61319 quads, 17684 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776025, min Q = 0.236382
+Info    : Simple recombination completed (Wall 5.82614s, CPU 5.80133s): 61319 quads, 17684 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776025, min Q = 0.236382
+Info    : Simple recombination completed (Wall 5.84247s, CPU 5.82999s): 61319 quads, 17684 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776025, min Q = 0.236382
+Info    : Simple recombination completed (Wall 5.83512s, CPU 5.80724s): 61319 quads, 17684 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776025, min Q = 0.236382
+Info    : Simple recombination completed (Wall 5.89367s, CPU 5.86837s): 61319 quads, 17684 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776025, min Q = 0.236382
+Info    : Simple recombination completed (Wall 5.87983s, CPU 5.85801s): 61319 quads, 17684 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776025, min Q = 0.236382
+Info    : Done meshing 2D (Wall 10.5499s, CPU 10.3674s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Done meshing 2D (Wall 10.6335s, CPU 10.4138s)
+Info    : Refining mesh...
+Info    : Done meshing 2D (Wall 10.6441s, CPU 10.4386s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : Done meshing 2D (Wall 10.6611s, CPU 10.4748s)
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : Refining mesh...
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Done meshing 2D (Wall 10.711s, CPU 10.4815s)
+Info    : Done meshing 2D (Wall 10.7093s, CPU 10.4786s)
+Info    : Refining mesh...
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.559151
+Info    : Done meshing order 2 (Wall 1.9238s, CPU 1.92376s)
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.559151
+Info    : Done meshing order 2 (Wall 1.89822s, CPU 1.8942s)
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.559151
+Info    : Done meshing order 2 (Wall 1.93006s, CPU 1.92613s)
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.559151
+Info    : Done meshing order 2 (Wall 1.94683s, CPU 1.94663s)
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.559151
+Info    : Done meshing order 2 (Wall 1.91733s, CPU 1.90855s)
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.559151
+Info    : Done meshing order 2 (Wall 1.91897s, CPU 1.91481s)
+Info    : Done refining mesh (Wall 2.22329s, CPU 2.2031s)
+Info    : 299249 nodes 300172 elements
+Info    : Done refining mesh (Wall 2.20754s, CPU 2.20361s)
+Info    : 299249 nodes 300172 elements
+Info    : Done refining mesh (Wall 2.18014s, CPU 2.16805s)
+Info    : 299249 nodes 300172 elements
+Info    : Done refining mesh (Wall 2.21665s, CPU 2.21242s)
+Info    : 299249 nodes 300172 elements
+Info    : Done refining mesh (Wall 2.18629s, CPU 2.17722s)
+Info    : 299249 nodes 300172 elements
+Info    : Done refining mesh (Wall 2.1897s, CPU 2.18152s)
+Info    : 299249 nodes 300172 elements
+  δ =  1.00 µm  P =       45713 N/m  p0 =    57.9 MPa (0.347 σy)  a = 0.4986 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 12
+  δ =  2.00 µm  P =  1.0862e+05 N/m  p0 =    90.5 MPa (0.542 σy)  a = 0.7606 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 12
+  δ =  3.00 µm  P =  1.8318e+05 N/m  p0 =   118.9 MPa (0.712 σy)  a = 0.9841 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 11
+  δ =  4.00 µm  P =  2.6772e+05 N/m  p0 =   145.5 MPa (0.871 σy)  a = 1.1722 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 12
+  δ =  5.00 µm  P =  3.6127e+05 N/m  p0 =   171.0 MPa (1.024 σy)  a = 1.3469 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 12
+  δ =  6.00 µm  P =   4.632e+05 N/m  p0 =   195.9 MPa (1.173 σy)  a = 1.5090 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 11
+  δ =  7.00 µm  P =    5.73e+05 N/m  p0 =   220.4 MPa (1.320 σy)  a = 1.6588 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 12
+  δ =  8.00 µm  P =  6.9027e+05 N/m  p0 =   244.8 MPa (1.466 σy)  a = 1.8071 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 11
+  δ =  9.00 µm  P =  8.1021e+05 N/m  p0 =   262.5 MPa (1.572 σy)  a = 1.9451 mm  a_pl = 0.0000 mm  塑性深 = 0.000 mm  p_eq,max = 0.0000  Newton = 11
+  δ = 10.00 µm  P =  9.2683e+05 N/m  p0 =   273.1 MPa (1.635 σy)  a = 2.0803 mm  a_pl = 0.7850 mm  塑性深 = 1.885 mm  p_eq,max = 0.0004  Newton = 10
+  δ = 11.00 µm  P =  1.0425e+06 N/m  p0 =   283.2 MPa (1.696 σy)  a = 2.2078 mm  a_pl = 1.1435 mm  塑性深 = 2.302 mm  p_eq,max = 0.0007  Newton = 11
+  δ = 12.00 µm  P =  1.1583e+06 N/m  p0 =   293.2 MPa (1.756 σy)  a = 2.3327 mm  a_pl = 1.4089 mm  塑性深 = 2.589 mm  p_eq,max = 0.0011  Newton = 11
+  δ = 13.00 µm  P =  1.2747e+06 N/m  p0 =   303.1 MPa (1.815 σy)  a = 2.4573 mm  a_pl = 1.6383 mm  塑性深 = 2.803 mm  p_eq,max = 0.0014  Newton = 11
+  δ = 14.00 µm  P =  1.3921e+06 N/m  p0 =   312.8 MPa (1.873 σy)  a = 2.5768 mm  a_pl = 1.8468 mm  塑性深 = 2.969 mm  p_eq,max = 0.0016  Newton = 11
+  δ = 15.00 µm  P =  1.5103e+06 N/m  p0 =   322.2 MPa (1.930 σy)  a = 2.6938 mm  a_pl = 2.0365 mm  塑性深 = 3.105 mm  p_eq,max = 0.0019  Newton = 10
+  δ = 16.00 µm  P =  1.6293e+06 N/m  p0 =   331.5 MPa (1.985 σy)  a = 2.8049 mm  a_pl = 2.2111 mm  塑性深 = 3.218 mm  p_eq,max = 0.0022  Newton = 9
+  δ = 17.00 µm  P =  1.7487e+06 N/m  p0 =   340.4 MPa (2.038 σy)  a = 2.9069 mm  a_pl = 2.3837 mm  塑性深 = 3.311 mm  p_eq,max = 0.0025  Newton = 11
+  δ = 18.00 µm  P =  1.8666e+06 N/m  p0 =   348.7 MPa (2.088 σy)  a = 3.0172 mm  a_pl = 2.9324 mm  塑性深 = 3.750 mm  p_eq,max = 0.0028  Newton = 9
+  δ = 19.00 µm  P =  1.9838e+06 N/m  p0 =   356.3 MPa (2.134 σy)  a = 3.1188 mm  a_pl = 3.6955 mm  塑性深 = 3.750 mm  p_eq,max = 0.0031  Newton = 10
+  δ = 20.00 µm  P =   2.101e+06 N/m  p0 =   363.8 MPa (2.178 σy)  a = 3.2183 mm  a_pl = 4.1684 mm  塑性深 = 3.750 mm  p_eq,max = 0.0034  Newton = 10
+  δ = 21.00 µm  P =  2.2188e+06 N/m  p0 =   371.0 MPa (2.222 σy)  a = 3.3146 mm  a_pl = 4.5490 mm  塑性深 = 3.750 mm  p_eq,max = 0.0037  Newton = 10
+  δ = 22.00 µm  P =  2.3372e+06 N/m  p0 =   378.0 MPa (2.263 σy)  a = 3.4061 mm  a_pl = 4.8886 mm  塑性深 = 3.750 mm  p_eq,max = 0.0040  Newton = 10
+  δ = 23.00 µm  P =  2.4563e+06 N/m  p0 =   384.9 MPa (2.305 σy)  a = 3.5055 mm  a_pl = 5.1876 mm  塑性深 = 3.750 mm  p_eq,max = 0.0043  Newton = 11
+  δ = 24.00 µm  P =  2.5761e+06 N/m  p0 =   391.7 MPa (2.345 σy)  a = 3.5935 mm  a_pl = 5.4862 mm  塑性深 = 3.750 mm  p_eq,max = 0.0046  Newton = 11
+  δ = 25.00 µm  P =  2.6967e+06 N/m  p0 =   398.9 MPa (2.389 σy)  a = 3.6859 mm  a_pl = 5.6198 mm  塑性深 = 3.750 mm  p_eq,max = 0.0049  Newton = 11
+  饱和指数 m = d ln p0 / d ln P（末 4 点）= 0.375（Hertz 0.5，完全饱和 → 0）
+
+  κ 敏感性：末步在 κ = 1 下重算 ...
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0132574s, CPU 0.009562s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0142669s, CPU 0.014268s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0144859s, CPU 0.014485s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Done meshing 1D (Wall 0.0148499s, CPU 0.01485s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0151122s, CPU 0.015112s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0221017s, CPU 0.021873s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Simple recombination completed (Wall 6.33779s, CPU 6.3343s): 61319 quads, 17684 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776025, min Q = 0.236382
+Info    : Simple recombination completed (Wall 6.44768s, CPU 6.43596s): 61319 quads, 17684 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776025, min Q = 0.236382
+Info    : Simple recombination completed (Wall 6.3499s, CPU 6.34603s): 61319 quads, 17684 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776025, min Q = 0.236382
+Info    : Simple recombination completed (Wall 6.40201s, CPU 6.39073s): 61319 quads, 17684 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776025, min Q = 0.236382
+Info    : Simple recombination completed (Wall 6.43133s, CPU 6.42363s): 61319 quads, 17684 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776025, min Q = 0.236382
+Info    : Simple recombination completed (Wall 6.49357s, CPU 6.48625s): 61319 quads, 17684 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776025, min Q = 0.236382
+Info    : Done meshing 2D (Wall 10.8238s, CPU 10.8202s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Done meshing 2D (Wall 10.8445s, CPU 10.8327s)
+Info    : Refining mesh...
+Info    : Done meshing 2D (Wall 10.8674s, CPU 10.8581s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Done meshing 2D (Wall 10.9294s, CPU 10.918s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : Done meshing 2D (Wall 10.9528s, CPU 10.9445s)
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : Refining mesh...
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Done meshing 2D (Wall 10.9663s, CPU 10.9588s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.559151
+Info    : Done meshing order 2 (Wall 1.76653s, CPU 1.76646s)
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.559151
+Info    : Done meshing order 2 (Wall 1.81848s, CPU 1.81841s)
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.559151
+Info    : Done meshing order 2 (Wall 1.82589s, CPU 1.82342s)
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.559151
+Info    : Done meshing order 2 (Wall 1.80706s, CPU 1.807s)
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.559151
+Info    : Done meshing order 2 (Wall 1.82106s, CPU 1.81754s)
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.559151
+Info    : Done meshing order 2 (Wall 1.83499s, CPU 1.83496s)
+Info    : Done refining mesh (Wall 2.04264s, CPU 2.04255s)
+Info    : 299249 nodes 300172 elements
+Info    : Done refining mesh (Wall 2.12449s, CPU 2.12442s)
+Info    : 299249 nodes 300172 elements
+Info    : Done refining mesh (Wall 2.14579s, CPU 2.1426s)
+Info    : 299249 nodes 300172 elements
+Info    : Done refining mesh (Wall 2.11168s, CPU 2.11148s)
+Info    : 299249 nodes 300172 elements
+Info    : Done refining mesh (Wall 2.1321s, CPU 2.13203s)
+Info    : 299249 nodes 300172 elements
+Info    : Done refining mesh (Wall 2.12786s, CPU 2.12423s)
+Info    : 299249 nodes 300172 elements
+
+  1 全部 δ 的 Newton 收敛                                                   通过
+  2 工作点 p0/σy = 2.038 ∈ [1.60, 3.40]（饱和）                               通过
+  3 工作点 P 与 W' = 1.75e+06 相对差 < 50%（P = 1.75e+06）                      通过
+  4 a_pl = 2.384 mm < 0.50 × Lw/2（远离域边界）                               通过
+  5 κ 敏感性：末步合力相对变化 0.41% < 3%                                          通过
+
+Phase 6.1 v2 通过
+RC=0

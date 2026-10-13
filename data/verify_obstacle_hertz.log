@@ -1,0 +1,37 @@
+D-57 S2：罚函数障碍 vs Hertz（线弹性，E = 69 GPa，ν = 0.33，R = 330 mm）
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0239642s, CPU 0.00029s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Simple recombination completed (Wall 4.42886s, CPU 4.42568s): 53648 quads, 14710 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.776661, min Q = 0.301496
+Info    : Done meshing 2D (Wall 8.20385s, CPU 7.998s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.405583
+Info    : Done meshing order 2 (Wall 1.20894s, CPU 1.20338s)
+Info    : Done refining mesh (Wall 1.42125s, CPU 1.40554s)
+Info    : 259171 nodes 259622 elements
+  网格：258722 单元
+
+      δ (µm)      P (N/m)  a_FE (mm)  a_Hz (mm)      a 偏差     p0 偏差 判定
+        1.00        26126     0.3866     0.3765     2.68%     2.53% 通过
+        2.00        57054     0.5617     0.5564     0.96%     1.70% 通过
+        4.00   1.2579e+05     0.8360     0.8262     1.18%     1.11% 通过
+
+  κ 敏感性：κ = 10 → 1，合力相对变化 0.572%（阈值 1.0%）
+
+  1 全部 δ 的 Newton 收敛                       通过
+  2 a、p0 与 Hertz 偏差 < 3%                   通过
+  3 κ 敏感性（合力 < 1.0%）                       通过
+
+S2 通过
+RC=0

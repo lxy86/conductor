@@ -1,0 +1,15 @@
+cells 14400
+  step        d/w            P    p_mean/sy         比值      塑性深/w
+     3      0.030    3.919e+05       2.3465     0.7905      3.650
+     6      0.060    4.367e+05       2.6147     0.8808      4.900
+     9      0.090    4.573e+05       2.7381     0.9224      5.550
+    12      0.120    4.697e+05       2.8124     0.9474      8.100
+    15      0.150    4.772e+05       2.8574     0.9626      9.300
+    18      0.180    4.806e+05       2.8779     0.9695      9.700
+    21      0.210    4.824e+05       2.8884     0.9730      9.900
+    24      0.240    4.837e+05       2.8961     0.9756     10.100
+WARNING! There are options you set that were not used!
+WARNING! could be spelling mistake, etc!
+There are 2 unused database options. They are:
+Option left: name:-prandtl_ksp_atol value: 1e-11 source: code
+Option left: name:-prandtl_ksp_rtol value: 1e-11 source: code

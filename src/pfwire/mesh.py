@@ -635,3 +635,89 @@ def fretting_mesh(
         facet_tags=data.facet_tags,
         spec=spec,
     )
+
+
+# --------------------------------------------------------------------------
+# 矩形单丝网格（D-57 / Phase 6.2）：上表面 y = 0 为接触面，底面 y = −depth 全固定。
+# 加密区由若干轴对齐矩形盒给出，盒内尺寸 h_fine，盒外 h_coarse，过渡厚度 transition。
+# --------------------------------------------------------------------------
+BLOCK_TOP, BLOCK_BOTTOM = 2, 3
+
+
+def block_mesh(workdir, *, width: float, depth: float, refine_boxes, h_fine: float,
+               h_coarse: float, transition: float, order: int = 1, quads: bool = True,
+               comm=MPI.COMM_WORLD):
+    """矩形网格 [−width/2, width/2] × [−depth, 0]，在 refine_boxes 内加密到 h_fine。
+
+    refine_boxes：(xmin, xmax, ymin, ymax) 列表，单位 m；盒子之间取较小的尺寸场（gmsh Min）。
+    返回 (mesh, cell_tags, facet_tags)；facet_tags 中 BLOCK_TOP / BLOCK_BOTTOM 为两个边界面。
+    gmsh 只在 rank 0 上生成网格，之后由 dolfinx 读入（与 contact.py 的做法一致）。
+    """
+    import gmsh
+    import pathlib as _pl
+
+    if not refine_boxes:
+        raise ValueError("refine_boxes 为空：至少要有一个加密盒")
+    workdir = _pl.Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    gmsh.initialize()
+    try:
+        gmsh.model.add("block")
+        gmsh.model.occ.addRectangle(-0.5 * width, -depth, 0.0, width, depth)
+        gmsh.model.occ.synchronize()
+        surf = gmsh.model.getEntities(2)[0][1]
+        gmsh.model.addPhysicalGroup(2, [surf], tag=1)
+        tol = 1e-4 * max(width, depth)           # gmsh 包围盒有 ~1e-7 m 绝对误差（实测）
+        for d, e in gmsh.model.getBoundary([(2, surf)]):
+            bb = gmsh.model.getBoundingBox(d, e)
+            if abs(bb[1]) < tol and abs(bb[4]) < tol:
+                gmsh.model.addPhysicalGroup(1, [e], tag=BLOCK_TOP)
+            elif abs(bb[1] + depth) < tol and abs(bb[4] + depth) < tol:
+                gmsh.model.addPhysicalGroup(1, [e], tag=BLOCK_BOTTOM)
+        boxes = []
+        for i, (x0, x1, y0, y1) in enumerate(refine_boxes):
+            fid = 1 + i
+            gmsh.model.mesh.field.add("Box", fid)
+            gmsh.model.mesh.field.setNumber(fid, "VIn", h_fine)
+            gmsh.model.mesh.field.setNumber(fid, "VOut", h_coarse)
+            gmsh.model.mesh.field.setNumber(fid, "XMin", x0)
+            gmsh.model.mesh.field.setNumber(fid, "XMax", x1)
+            gmsh.model.mesh.field.setNumber(fid, "YMin", y0)
+            gmsh.model.mesh.field.setNumber(fid, "YMax", y1)
+            # 过渡厚度单独给（D-57）：取成加密盒的半宽会把大量过渡单元拉进网格
+            gmsh.model.mesh.field.setNumber(fid, "Thickness", transition)
+            boxes.append(fid)
+        mid = 1 + len(boxes)
+        gmsh.model.mesh.field.add("Min", mid)
+        gmsh.model.mesh.field.setNumbers(mid, "FieldsList", boxes)
+        gmsh.model.mesh.field.setAsBackgroundMesh(mid)
+        gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
+        gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
+        gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
+        if quads:
+            gmsh.option.setNumber("Mesh.RecombinationAlgorithm", 8)
+            gmsh.option.setNumber("Mesh.RecombineAll", 2)
+            gmsh.option.setNumber("Mesh.SubdivisionAlgorithm", 1)
+        gmsh.model.mesh.generate(2)
+        gmsh.model.mesh.setOrder(order)
+        data = gmshio.model_to_mesh(gmsh.model, comm, 0, gdim=2)
+    finally:
+        gmsh.finalize()
+    return data.mesh, data.cell_tags, data.facet_tags
+
+
+def clamp_mesh(workdir, *, width: float, depth: float, a_pl: float, halfwidth_factor: float,
+               fine_depth: float, h_fine: float, h_coarse: float, transition: float,
+               extra_boxes=(), order: int = 1, quads: bool = True, comm=MPI.COMM_WORLD):
+    """线夹压单丝的网格：主加密盒 |x| ≤ halfwidth_factor · a_pl、深 fine_depth（PLAN §6.2）。
+
+    a_pl 是 6.1 实测的塑性接触半宽，必须由结果给出，不能沿用旧模型的 11.62 µm。
+    extra_boxes：额外的加密盒（如钳口边缘的裂纹带），格式同 block_mesh。
+    """
+    if a_pl <= 0 or halfwidth_factor <= 0:
+        raise ValueError("a_pl 与 halfwidth_factor 必须为正：%r %r" % (a_pl, halfwidth_factor))
+    hw = halfwidth_factor * a_pl
+    boxes = [(-hw, hw, -fine_depth, 0.0), *extra_boxes]
+    return block_mesh(workdir, width=width, depth=depth, refine_boxes=boxes, h_fine=h_fine,
+                      h_coarse=h_coarse, transition=transition, order=order, quads=quads,
+                      comm=comm)
