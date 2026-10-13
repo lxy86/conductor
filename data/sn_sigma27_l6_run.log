@@ -34,3 +34,49 @@ Abort(59) on node 4 (rank 4 in comm 0): application called MPI_Abort(MPI_COMM_WO
 [0]PETSC ERROR: configure using --with-debugging=yes, recompile, link, and run 
 [0]PETSC ERROR: to get more information on the crash.
 Abort(59) on node 0 (rank 0 in comm 0): application called MPI_Abort(MPI_COMM_WORLD, 59) - process 0
+INFO pfwire.fretting: 从断点续跑：ckpt_0.bp（N=40700，已走 25 步）
+INFO pfwire.fretting: 微动基准：p0=2.4e+08 Pa, μ=0.7, Q/μP=0.6 -> a=11.6230 µm, c/a=0.6325；σ_a=2.7e+07 Pa；网格 205290 单元（0.4 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=1600（max Δd = 0.0258 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=1600（max Δd = 0.0301 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=46300 ΔN=800 深度=0.00 µm(0.00 a) x_init=- max_d=0.3549 ᾱ=1.799e+10 已用 138 s（取裂纹 0 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=800（max Δd = 0.8690 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=400（max Δd = 0.8635 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=200（max Δd = 0.8582 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=200（max Δd = 0.8551 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=100（max Δd = 0.8548 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=100（max Δd = 0.8541 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=50（max Δd = 0.8540 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=25（max Δd = 0.8539 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=25（max Δd = 0.8539 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=12.5（max Δd = 0.8539 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=6.25（max Δd = 0.8487 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=6.25（max Δd = 0.8487 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=3.125（max Δd = 0.8487 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=48673 ΔN=1.562 深度=0.00 µm(0.00 a) x_init=- max_d=0.4375 ᾱ=1.895e+10 已用 7394 s（取裂纹 0 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=3.125（max Δd = 0.8487 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=1.5625（max Δd = 0.8487 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=2（max Δd = 0.8487 > dd_max = 0.0200），减半重试
+WARNING pfwire.cyclejump: ΔN 已到下界 1 但 max Δd = 0.8487 仍超过 0.0200：裂纹扩展太快，考虑减小 dd_max 或加密网格
+INFO pfwire.fretting: N=48930 ΔN=128 深度=1.33 µm(0.11 a) x_init=-1.01 a max_d=1.0000 ᾱ=1.895e+10 已用 9899 s（取裂纹 0 s）
+INFO pfwire.fretting: 存断点：N=48930.4（1.4 s）
+INFO pfwire.cyclejump: 拒绝 ΔN=1024（max Δd = 0.0217 > dd_max = 0.0200），减半重试
+INFO pfwire.cyclejump: 拒绝 ΔN=1024（max Δd = 0.0225 > dd_max = 0.0200），减半重试
+INFO pfwire.fretting: N=55330 ΔN=512 深度=1.67 µm(0.14 a) x_init=-1.01 a max_d=1.0000 ᾱ=1.896e+10 已用 10823 s（取裂纹 1 s）
+[0]PETSC ERROR: ------------------------------------------------------------------------
+[4]PETSC ERROR: ------------------------------------------------------------------------
+[4]PETSC ERROR: Caught signal number 15 Terminate: Some process (or the batch system) has told this process to end
+[4]PETSC ERROR: Try option -start_in_debugger or -on_error_attach_debugger
+[4]PETSC ERROR: or see https://petsc.org/release/faq/#valgrind and https://petsc.org/release/faq/
+[4]PETSC ERROR: configure using --with-debugging=yes, recompile, link, and run 
+[4]PETSC ERROR: to get more information on the crash.
+
+===================================================================================
+=   BAD TERMINATION OF ONE OF YOUR APPLICATION PROCESSES
+=   PID 166713 RUNNING AT User-2025VQFRDH
+=   EXIT CODE: 15
+=   CLEANING UP REMAINING PROCESSES
+=   YOU CAN IGNORE THE BELOW CLEANUP MESSAGES
+===================================================================================
+YOUR APPLICATION TERMINATED WITH THE EXIT STRING: Terminated (signal 15)
+This typically refers to a problem with your application.
+Please see the FAQ page for debugging suggestions
