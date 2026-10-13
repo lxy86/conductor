@@ -76,7 +76,11 @@ class ObstacleContact:
             stress = plastic.sigma
         self._stress = stress
 
-        self.ds = ufl.Measure("ds", domain=mesh, subdomain_data=facet_tags)
+        # 接触测度固定求积阶 2：与 ClampContact（6.5）同一规则，两者离散的是同一个
+        # 接触项，必须逐位一致（T2 对拍）。核含 sqrt/max_value，默认按表达式估计
+        # 求积阶会让 F 与 dF/du 落到不同规则（见 ClampContact 的注释，D-67）。
+        self.ds = ufl.Measure("ds", domain=mesh, subdomain_data=facet_tags,
+                              metadata={"quadrature_degree": 2})
         x = ufl.SpatialCoordinate(mesh)
         xu = x + self.u
         self.gap = clamp_gap(xu, self.R_clamp, self.delta)

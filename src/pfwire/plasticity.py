@@ -225,6 +225,11 @@ class PlasticLaw:
         import ufl
         from dolfinx import fem
         self.mesh, self.prm = mesh, prm
+        self.quad_degree = quad_degree
+        """积分求积阶。求解器（PhaseFieldSolver）有塑性时必须用**同一个阶**固定其
+        dx 测度：返回映射含 sqrt/conditional，UFL 对残差与其 u 导数估计出的多项式阶
+        不同，默认按表达式估计会让 F 与 dF/du 落到不同求积规则（切线校验差 ~1e-4，
+        与差分步长无关）。见 D-67。"""
         self.V_ep = fem.functionspace(mesh, ("DG", degree, (3,)))
         self.V_p = fem.functionspace(mesh, ("DG", degree))
         self.ep_n, self.p_n = fem.Function(self.V_ep), fem.Function(self.V_p)

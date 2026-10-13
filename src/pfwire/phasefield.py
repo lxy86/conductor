@@ -588,11 +588,16 @@ class PhaseFieldSolver:
         f_alpha: fem.Function | fem.Constant | None = None,
         config: SolverConfig | None = None,
         plastic=None,
+        contact=None,
     ) -> None:
         """``plastic``：可选 :class:`pfwire.plasticity.PlasticLaw`（D-61/D-62）。
 
         给了则 u、d 两个方程的弹性应变取 ε_e = ε − ε_p(u; g(d))，屈服按退化应力判断（B），
         且 u 只能用 ``u_solver='newton'``（返回映射在残差里，不是冻结形式）。
+
+        ``contact``：可选接触对象，须提供 ``residual(u, v) -> ufl.Form``，表示接触力的虚功
+        （见 :class:`pfwire.clamp_contact.ClampContact`，D-67）。它只出现在 u 方程里，
+        取负号加入残差，切线由 AD 给出；同样要求 ``u_solver='newton'``。
         """
         self.mesh = mesh
         self.model = model
@@ -606,6 +611,9 @@ class PhaseFieldSolver:
             raise ValueError(
                 "带塑性（plastic）时 u_solver 必须是 'newton'：返回映射不是冻结形式。"
             )
+        if contact is not None and self.config.u_solver == "linear":
+            raise ValueError("接触（contact）时 u_solver 必须是 'newton'：接触力依赖 u，不是冻结形式。")
+        self.contact = contact
         if plastic is not None and model.split != "spectral":
             raise NotImplementedError(
                 "带塑性时只支持 split='spectral'（D-65）：amor 的三维（含 ε_e,zz）形式未定义。"
@@ -635,6 +643,15 @@ class PhaseFieldSolver:
         )
 
         self.dx = ufl.Measure("dx", domain=mesh)
+        # 有塑性时固定 dx 的求积阶（D-67）：返回映射含 sqrt/conditional，UFL 对残差 F
+        # 与其 u 导数估计出的多项式阶不同，默认规则会让 F 与 dF/du 用不同求积——
+        # 切线校验差 ~1e-4 且与差分步长无关（系统失配，非折点噪声）。固定为
+        # PlasticLaw 的 quad_degree 后 F 与 dF/du 同规则，误差回到 ~1e-9。
+        if plastic is not None:
+            self.dx = ufl.Measure(
+                "dx", domain=mesh,
+                metadata={"quadrature_degree": plastic.quad_degree},
+            )
         self.external_work = _resolve_external_work(external_work, self.V_u)
 
         self._build_u_problem()
@@ -719,6 +736,8 @@ class PhaseFieldSolver:
             F = ufl.inner(self._sigma_deg_2d(), ufl.sym(ufl.grad(v))) * self.dx
         if self.external_work is not None:
             F = F - self.external_work
+        if self.contact is not None:
+            F = F - self.contact.residual(self.u, v)
         return F
 
     def _build_d_problem(self) -> None:
