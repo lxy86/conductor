@@ -2599,3 +2599,31 @@ Ren, Rabczuk & Zhuang, [arXiv:2302.13783](https://arxiv.org/abs/2302.13783)（�
 ### 状态
 - PLAN §1.5 标注：默认式有间接文献支撑（Ren et al. 2023 的 Eq. 61–63、73，据摘录），直接出处 Ambati 2015 待核对。
 - 尚未实现 6.3.2。
+
+## D-61 Phase 6.3.2：ψ⁺(ε_e) 的函数定义完成；求解器耦合归 6.5（2026-10-13，用户确认签名）
+
+### 实现
+- `src/pfwire/phasefield.py`：新增 `psi_plus(eps_elastic, split, lam, mu)`，输入为 2×2 弹性应变 ε_e = ε − ε_p。
+  - amor：½(λ+μ)⟨tr⟩₊² + μ dev:dev（2D 体模量 K = λ + μ）；
+  - spectral：λ/2 ⟨tr⟩₊² + μ Σ⟨e_i⟩₊²（与 `energy_split` 同式）。
+  - 加入 `__all__`。`energy_split` 未改动。
+- `tests/test_psi_plus_elastic.py`（6 项，全部通过）：
+  1. 与 `energy_split(...)[0]` 逐点一致（随机应变，两种分解，rel 1e-13）；
+  2. 零应变处 ψ⁺ = 0（spectral 有 μ·1e-30 ≈ 3e-20 J/m³ 的底噪，来自既有 `EIGENVALUE_REGULARIZATION`，容差 1e-15 J/m³）；
+  3. 平面应变单轴 σ = ±100 MPa 的解析值：拉伸 spectral = [ν(1+ν)(1−2ν)+(1−ν)²(1+ν)]σ²/(2E)，
+     拉伸 amor = (1−ν²)σ²/(2E)，压缩 spectral = μ ε_yy² = ν²(1+ν)σ²/(2E)（与 D-59/D-60 一致）；
+  4. ε_p 历史为零的弹性步 J2 返回映射不屈服、ε_p = 0。
+- 全量 pytest：419 项通过，退出码 0（日志 `data/_pytest_632.log`）。
+
+### 没做的部分（与 D-60 设计草稿的差别）
+- **求解器耦合未做。** `PhaseFieldSolver` 仍用总应变 `strain(u)` 构造 u、d 两个方程的能量。
+  按 PLAN §1.5，要让 ψ⁺ 与 u 方程的应力都用 ε_e，需要：u 方程的应力换成 `PlasticLaw.sigma(u)`（塑性返回映射在 Newton 内），
+  d 方程的驱动力换成 `psi_plus(law.elastic_strain(u), ...)`，并在每步收敛后 `law.commit(u)`。
+  这是 6.5 基准工况的前提，而不是 6.3.2 的内容，故本次不改求解器，避免在无塑性算例的情况下静默改变既有结果。
+- D-60 草稿中的「ε_p = 0 时与旧 ψ⁺ 逐位一致」，实际实现为**逐点对拍 rel 1e-13**（两函数的运算顺序不同，无法保证位级相等）。
+
+### 出处与分解
+- 出处见 D-60（间接：Ren et al. arXiv:2302.13783）。该文用体积-偏量分解，本项目仍用 spectral（PLAN §2.2），未经敏感性检验。
+
+### 状态
+- PLAN 6.3.2 标 `[x]`（函数与测试完成）。6.3.3 未做。

@@ -75,6 +75,7 @@ __all__ = [
     "strain",
     "degradation",
     "energy_split",
+    "psi_plus",
     "dissipation_density",
 ]
 
@@ -187,6 +188,31 @@ def energy_split(eps, material: Material, split: str, dim: int, *, freeze_from=N
         ufl.min_value(e1, 0.0) ** 2 + ufl.min_value(e2, 0.0) ** 2
     )
     return psi_plus, psi_minus
+
+
+def psi_plus(eps_elastic, split: str, lam: float, mu: float):
+    """弹性应变能的拉伸部分 ψ⁺(ε_e)（PLAN §1.5，D-60）。
+
+    ``eps_elastic`` 为 2×2 UFL 张量，取 ε_e = ε − ε_p；无塑性历史时 ε_p = 0，即 ε_e = ε。
+    ``lam``、``mu`` 为平面应变 Lamé 常数（``material.elastic.lame``）。
+
+    - amor：ψ⁺ = ½K⟨tr ε_e⟩₊² + μ dev(ε_e):dev(ε_e)，K = λ + μ（2D 体模量）；
+    - spectral：ψ⁺ = λ/2 ⟨tr ε_e⟩₊² + μ Σ⟨e_i⟩₊²，与 energy_split 同式。
+
+    与 ``energy_split(...)[0]`` 在 2D 下逐式一致（tests/test_psi_plus_elastic.py 对拍）。
+    本函数只定义 ψ⁺ 的输入，求解器尚未把 ε_e 接入 u、d 两个方程（6.5 的耦合）。
+    """
+    if split not in SPLITS:
+        raise ValueError("split 只能取 %r，收到 %r" % (SPLITS, split))
+    tr_eps = ufl.tr(eps_elastic)
+    tr_plus = ufl.max_value(tr_eps, 0.0)
+    if split == "amor":
+        dev = eps_elastic - (tr_eps / 2.0) * ufl.Identity(2)
+        return 0.5 * (lam + mu) * tr_plus**2 + mu * ufl.inner(dev, dev)
+    e1, e2 = _principal_strains_2d(eps_elastic)
+    return 0.5 * lam * tr_plus**2 + mu * (
+        ufl.max_value(e1, 0.0) ** 2 + ufl.max_value(e2, 0.0) ** 2
+    )
 
 
 def elastic_energy_density(eps, d, material: Material, split, dim, k_res, *, freeze_from=None):
