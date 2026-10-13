@@ -1,0 +1,48 @@
+# Phase 6.3.1：alpha_T / kappa 按 **spectral** 分解重标定（PLAN §2.2、§5 的生产口径）。
+#
+# 与 configs/calib_tension.yaml（amor，D-26）的区别：
+#   - model.split = spectral：ψ⁺ = λ/2 ⟨tr⟩₊² + μ Σ ⟨e_i⟩₊²。压缩半周期不为零，
+#     因为平面应变下压缩时 ε_yy > 0 仍计入 ψ⁺（解析式见 scripts/calibrate_alpha_t.py::uniaxial_ratios）；
+#   - solver.u_solver = newton：spectral 没有冻结形式（phasefield.py 对 linear 报错）；
+#   - output.dir 另起，两组标定结果并存，不覆盖 D-26 的 amor 记录。
+#
+# 其余（均匀试样、起裂判据 d ≥ 1e-3、R = −1、代理 S–N 靶曲线）与 calib_tension.yaml 相同，
+# 见那边的注释。靶曲线仍是代理曲线（D-3）。
+case_type: calibration
+material: configs/material_al1350.yaml
+sn_reference: configs/sn_al1350_reference.yaml
+
+model:
+  split: spectral       # PLAN §2.2：生产工况用 spectral（D-8）
+  dissipation: AT1      # 生产工况是 AT1（硬约束 1）
+  k_res: 1.0e-6
+
+solver:
+  u_solver: newton      # spectral 没有冻结形式，必须走精确非线性路径（同 benchmark_sent.yaml）
+  tol_d: 1.0e-4
+  max_iter: 200
+
+mesh:
+  # 均匀试样，场处处相同，网格只需够解析相场带宽即可（同 calib_tension.yaml）。
+  type: plain
+  W: 2.0e-5
+  H: 2.0e-5
+  h: 4.0e-6
+
+loading:
+  type: uniaxial_cyclic
+  stress_ratio_R: -1.0
+  cycle:
+    n_sub: 8            # 每周期子步数；8 能采到拉伸峰（相位 1/4）与压缩峰（3/4）
+    dN_init: 100.0
+    dN_min: 1.0
+    dN_max: 1.0e+6
+    dd_max: 0.02
+    grow_below: 0.5
+    factor: 2.0
+    N_max: 1.0e+8
+    peak_phase: null
+  nucleation_d: 1.0e-3
+
+output:
+  dir: data/calib_tension_spectral

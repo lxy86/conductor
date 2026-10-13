@@ -3,11 +3,11 @@
 做法（三步，每一步都能独立验证）
 --------------------------------
 1. **实测每周期累积系数**。均匀试样跑一个显式循环，量出 Δᾱ_cyc，再除以
-   ψ⁺_peak 得无量纲系数 ``r``。解析预期：R = −1 且 Amor 分解下 r = 1.5
-   （压缩半周期的体积项归 psi−，但**偏量项仍在 psi+**，故半周期再贡献 0.5 倍；
-   见 cyclejump.homogeneous_cycles_to_damage 的 docstring）。
-   同时量出 ψ⁺_peak 与 σ²/(2E) 的比值 —— 平面应变下应为 (1−ν²) = 0.891，
-   而不是一维杆的 1。D-14 的解析预拟合用的是一维式子，这一步就是来纠正它的。
+   ψ⁺_peak 得无量纲系数 ``r``。解析预期随分解不同，见 ``uniaxial_ratios``：
+   amor 下 ψ⁺_peak = (1−ν²)σ²/(2E)，压缩半周期的偏量能仍在 psi+ 中，r ≈ 1.746（ν = 0.33）；
+   spectral 下压缩半周期由 ε_yy > 0 贡献 ψ⁺，整周期 Δᾱ 恰为全能量 (1−ν²)σ²/(2E)。
+   实测的 ψ⁺_peak/(σ²/2E) 与 Δᾱ/(σ²/2E) 都与解析值对比。
+   D-14 的解析预拟合用的是一维式子，这一步就是来纠正它的。
 
 2. **闭式最小二乘重拟合**。对数型 f 的起裂寿命闭式为
 
@@ -58,6 +58,31 @@ from pfwire.phasefield import (  # noqa: E402
     energy_split,
     strain,
 )
+
+
+def uniaxial_ratios(nu: float, split: str) -> dict[str, float]:
+    """平面应变、R = −1 单轴循环的解析系数，单位 σ²/(2E)。
+
+    推导（平面应变，ε_zz = 0，σ 沿 x）：
+      ε_xx = (1−ν²)σ/E，ε_yy = −ν(1+ν)σ/E，tr ε = (1+ν)(1−2ν)σ/E；
+      全能量 ψ = λ/2 tr² + μ ε:ε = (1−ν²)σ²/(2E)。
+
+    - ``peak``：拉伸峰值的 ψ⁺。amor 中 tr > 0，ψ⁺ = ψ；spectral 中 ε_yy < 0 不计入，
+      ψ⁺ = λ/2 tr² + μ ε_xx²。
+    - ``cycle``：一整周期的 Δᾱ = Σ max(Δψ⁺, 0)，即两段半周期的 ψ⁺ 峰值之和。
+      amor：压缩半周期 tr⁺ = 0，但偏量能 μ dev:dev = (1+ν)/4 · σ²/E 仍在 ψ⁺ 中，
+      合计 (1+ν)(3/2−ν)，ν → 0 时为 1.5（旧 docstring 的特例）。
+      spectral：压缩半周期只有 μ ε_yy² = ν²(1+ν)/2 · σ²/E，与拉伸半周期互不重叠，
+      合计恰为全能量 1−ν²。
+
+    ``split`` 只能取 'amor' 或 'spectral'。
+    """
+    if split == "amor":
+        return {"peak": 1.0 - nu**2, "cycle": (1.0 + nu) * (1.5 - nu)}
+    if split == "spectral":
+        peak = nu * (1.0 + nu) * (1.0 - 2.0 * nu) + (1.0 - nu) ** 2 * (1.0 + nu)
+        return {"peak": peak, "cycle": 1.0 - nu**2}
+    raise ValueError("split 只能取 'amor' 或 'spectral'，收到 %r" % (split,))
 
 
 def build_case(cfg: dict, material, sigma_a: float, alpha_T: float, kappa: float):
@@ -195,14 +220,19 @@ def measure_accumulation(case, cfg) -> dict:
 
     E = case["solver"].model.material.elastic.E
     nu = case["solver"].model.material.elastic.nu
+    split = case["solver"].model.split
     sigma = case["sigma_a"]
     psi_1d = sigma**2 / (2.0 * E)
+    ana = uniaxial_ratios(nu, split)
     return {
+        "split": split,
         "psi_peak": psi_peak,
         "psi_1d": psi_1d,
         "psi_peak_over_1d": psi_peak / psi_1d,
-        "plane_strain_factor": 1.0 - nu**2,
+        "analytic_peak_over_1d": ana["peak"],
         "delta_alpha_cycle": d_alpha,
+        "delta_alpha_over_1d": d_alpha / psi_1d,
+        "analytic_cycle_over_1d": ana["cycle"],
         "r": d_alpha / psi_peak if psi_peak > 0 else float("nan"),
     }
 
@@ -215,9 +245,10 @@ def fit_parameters(targets, sigma_c, E, coeff, gamma) -> tuple[float, float, dic
 
         1 - d = f sigma_c^2 / (2 E psi+)
 
-    平面应变单轴拉伸下 psi+_peak = (1-nu^2) sigma^2/(2E)，于是 2E psi+ =
-    (1-nu^2) sigma^2，起裂（d 从 0 起动）条件为 **f = (1-nu^2) s^2 = (gamma s)^2**，
-    gamma = sqrt(1-nu^2)。一维杆才是 f = s^2。
+    平面应变单轴拉伸下 psi+_peak = gamma^2 sigma^2/(2E)，gamma^2 由分解决定
+    （amor 为 1-nu^2，spectral 见 uniaxial_ratios；main 从第 1 步实测值取 gamma）。
+    于是 2E psi+ = gamma^2 sigma^2，起裂（d 从 0 起动）条件为 **f = (gamma s)^2**。
+    一维杆才是 f = s^2。
     对数型 f = [1 - kappa log10(a/a_T)]^2 反解得
 
         a_needed = a_T * 10^((1 - gamma s)/kappa)
@@ -328,14 +359,15 @@ def main(argv: list[str]) -> int:
     case = build_case(cfg, material, probe_sigma, guess_aT, guess_k)
     acc = measure_accumulation(case, cfg)
     if root:
-        print("=== 第 1 步：实测每周期累积（σ_a = %.4g MPa）===" % (probe_sigma / 1e6))
-        print("  ψ⁺_peak = %.6e J/m³；σ²/(2E) = %.6e；比值 = %.6f"
-              % (acc["psi_peak"], acc["psi_1d"], acc["psi_peak_over_1d"]))
-        print("  平面应变预期 (1−ν²) = %.6f  ->  差 %.2e"
-              % (acc["plane_strain_factor"],
-                 abs(acc["psi_peak_over_1d"] - acc["plane_strain_factor"])))
-        print("  Δᾱ_cyc = %.6e J/m³；r = Δᾱ_cyc/ψ⁺_peak = %.6f（R=−1 解析预期 1.5）"
-              % (acc["delta_alpha_cycle"], acc["r"]))
+        print("=== 第 1 步：实测每周期累积（split = %s，σ_a = %.4g MPa）==="
+              % (acc["split"], probe_sigma / 1e6))
+        print("  ψ⁺_peak = %.6e J/m³；σ²/(2E) = %.6e；比值 = %.6f，解析 %.6f，差 %.2e"
+              % (acc["psi_peak"], acc["psi_1d"], acc["psi_peak_over_1d"],
+                 acc["analytic_peak_over_1d"],
+                 abs(acc["psi_peak_over_1d"] - acc["analytic_peak_over_1d"])))
+        print("  Δᾱ_cyc = %.6e J/m³；Δᾱ/(σ²/2E) = %.6f，解析 %.6f；r = Δᾱ/ψ⁺_peak = %.6f"
+              % (acc["delta_alpha_cycle"], acc["delta_alpha_over_1d"],
+                 acc["analytic_cycle_over_1d"], acc["r"]))
 
     # 每周期累积量相对 σ²/(2E) 的总系数
     coeff = acc["r"] * acc["psi_peak_over_1d"]

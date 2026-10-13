@@ -1,0 +1,90 @@
+{
+  "material": "Al 1350-H19",
+  "sn_reference": "Al 1350-H19 单丝纯拉伸疲劳（代理曲线）",
+  "is_surrogate": true,
+  "accumulation": {
+    "split": "spectral",
+    "psi_peak": 43802.31147925173,
+    "psi_1d": 58695.65217391304,
+    "psi_peak_over_1d": 0.7462616029798443,
+    "analytic_peak_over_1d": 0.7462629999999999,
+    "delta_alpha_cycle": 52303.654570235456,
+    "delta_alpha_over_1d": 0.891099300085493,
+    "analytic_cycle_over_1d": 0.8911,
+    "r": 1.1940843486081925
+  },
+  "coeff_delta_alpha_over_psi_1d": 0.891099300085493,
+  "alpha_T": 176867.93093810818,
+  "kappa": 0.12860792014313013,
+  "closed_form_fit": {
+    "residual_log10": [
+      -0.05296559072840523,
+      0.07722040880937442,
+      0.04529413625435197,
+      -0.06954895433533714
+    ],
+    "mean_abs_log10": 0.06125727253186719,
+    "max_abs_log10": 0.07722040880937442
+  },
+  "fe_results": [
+    {
+      "sigma_a": 90000000.0,
+      "N_nucleation": 109529.125,
+      "max_d": 0.9999999999873748,
+      "n_jumps": 15,
+      "runout": false,
+      "converged": true,
+      "reached_nucleation": true,
+      "seconds": 0.5277317959989887,
+      "N_target": 123000.0,
+      "N_analytic": 108877.84608924312,
+      "dlog10_vs_target": -0.05037549322303058,
+      "dlog10_vs_analytic": 0.0025900975053736045
+    },
+    {
+      "sigma_a": 70000000.0,
+      "N_nucleation": 965440.0625,
+      "max_d": 0.9999999999988967,
+      "n_jumps": 25,
+      "runout": false,
+      "converged": true,
+      "reached_nucleation": true,
+      "seconds": 0.7827453939826228,
+      "N_target": 802000.0,
+      "N_analytic": 958064.5638025509,
+      "dlog10_vs_target": 0.08055094832579165,
+      "dlog10_vs_analytic": 0.00333053951641907
+    },
+    {
+      "sigma_a": 55000000.0,
+      "N_nucleation": 5491999.73046875,
+      "max_d": 0.9999999999988991,
+      "n_jumps": 26,
+      "runout": false,
+      "converged": true,
+      "reached_nucleation": true,
+      "seconds": 0.7660624939890113,
+      "N_target": 4900000.0,
+      "N_analytic": 5438638.7950327275,
+      "dlog10_vs_target": 0.049534427222304084,
+      "dlog10_vs_analytic": 0.004240290967952816
+    },
+    {
+      "sigma_a": 45000000.0,
+      "N_nucleation": 18969620.80895996,
+      "max_d": 0.9999999999959152,
+      "n_jumps": 41,
+      "runout": false,
+      "converged": true,
+      "reached_nucleation": true,
+      "seconds": 0.9104756930028088,
+      "N_target": 22000000.0,
+      "N_analytic": 18744494.22332078,
+      "dlog10_vs_target": -0.06436403112606856,
+      "dlog10_vs_analytic": 0.005184923209269066
+    }
+  ],
+  "mean_abs_log10_error": 0.06120622497429872,
+  "tolerance": 0.3,
+  "passed": true
+}
