@@ -1,0 +1,43 @@
+# Phase 6.2：线夹压单丝网格的加密区（PLAN §6.2）。
+#
+# 输入量取自 6.1 v2 的**长加载结果**（configs/indent_plastic_obstacle_long.yaml，
+# 工作点 δ = 17 µm，P = 1.748e6 N/m ≈ W'）。注意：标准 15 µm 加载序列的末步 P 只有 1.51e6，
+# 不在 W' 上，不能用它取工作点。
+#
+# ⚠️ gmsh 的四边形单元边长 ≈ 0.45 × 设定的 h（实测，D-58）：
+#    设 h_fine = 0.5 µm 实际得到约 0.22 µm 的单元。PLAN 要的是**单元边长** ℓ/4 = 0.5 µm，
+#    所以 h_fine 设定值须取 0.5 µm / 0.45 ≈ 1.1 µm。下面的 h_fine 按这个换算。
+#
+# 候选布局（用户选择；脚本只报告单元数，不解算）：
+#   A  PLAN 字面：|x| ≤ 3 a_pl，深 150 µm
+#   B  同 A，但深度取单丝厚度（塑性已贯穿厚度，PLAN 的 150 µm 不成立，D-57）
+#   C  钳口裂纹带：两个以接触边缘 ±a 为中心的带，各宽 2·w、深 d
+
+inputs:
+  a_pl: 2.389e-3          # 6.1 工作点的塑性接触半宽（D-57）
+  a_contact: 2.917e-3     # 6.1 工作点的接触半宽
+
+geometry:
+  width: 40.0e-3          # Lw（D-55）
+  depth: 3.75e-3          # 单丝厚度 D
+
+element:
+  edge_ratio: 0.45        # 实测：单元边长 / h_setting（D-58）
+  edge_target: 0.5e-6     # PLAN：单元边长 ℓ/4，ℓ = 2 µm（D-28）
+  h_fine: 1.1111e-6       # = edge_target / edge_ratio（设定值）
+  h_coarse: 750.0e-6
+  transition: 1.0e-3
+
+layouts:
+  A:
+    halfwidth_factor: 3.0   # 3 a_pl（PLAN §6.2）
+    fine_depth: 150.0e-6    # PLAN §6.2（待修订，见上）
+  B:
+    halfwidth_factor: 3.0
+    fine_depth: 3.75e-3     # 单丝整厚
+  C:
+    crack_band_halfwidth: 0.3e-3   # 每个边缘带的半宽 w
+    crack_band_depth: 0.3e-3       # 带深 d（≈ 3 倍 D-1 的失效深度 100 µm）
+    # 不用 a_pl 主加密盒，直接用两个边缘带（block_mesh）
+
+generate: [C]            # 只实际生成 C（A、B 过大，仅估算）

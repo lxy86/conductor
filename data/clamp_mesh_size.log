@@ -1,0 +1,30 @@
+Phase 6.2 加密布局（目标单元边长 ℓ/4 = 0.50 µm；h_fine 设定 1.111 µm → 实际边长 ≈ 0.50 µm）
+  输入：a_pl = 2.389 mm，a（接触半宽）= 2.917 mm（6.1 工作点，δ = 17 µm）
+
+  布局 A（估算）：|x| ≤ 3.00 a_pl = 7.17 mm，深 0.150 mm  →  加密面积 2.15e-06 m²，单元 ≈ 8.60e+06
+  布局 B（估算）：|x| ≤ 3.00 a_pl = 7.17 mm，深 3.750 mm  →  加密面积 5.38e-05 m²，单元 ≈ 2.15e+08
+  布局 C（估算）：两个边缘带 ±a 各宽 2w = 0.60 mm、深 0.30 mm  →  面积 3.60e-07 m²，单元 ≈ 1.44e+06
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0350368s, CPU 0.028779s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Simple recombination completed (Wall 54.4589s, CPU 54.4086s): 300389 quads, 82981 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.788738, min Q = 0.216672
+Info    : Done meshing 2D (Wall 78.3093s, CPU 77.6416s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.404612
+Info    : Done meshing order 2 (Wall 12.0675s, CPU 12.0308s)
+Info    : Done refining mesh (Wall 13.4727s, CPU 13.4141s)
+Info    : 1451761 nodes 1453025 elements
+
+  布局 C（实际生成）：总单元 1450499；加密带内单元边长中位数 0.500 µm（目标 0.500 µm，比值 1.00）
+RC=0
