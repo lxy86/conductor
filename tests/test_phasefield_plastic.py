@@ -94,9 +94,10 @@ def test_plastic_with_linear_u_solver_is_refused():
         _build(u_solver="linear", split="amor")
 
 
-def test_cycle_jump_refuses_plastic_solver():
+def test_cycle_jump_requires_shakedown_config_for_plastic_solver():
+    """6.4（D-66）：塑性 cycle-jump 必须给出循环稳定性判据，缺省时报错，不静默外推。"""
     _, _, _, solver = _build()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="shakedown"):
         CycleJumpDriver(solver, None, lambda phase: None)
 
 

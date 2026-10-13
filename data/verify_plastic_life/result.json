@@ -1,0 +1,28 @@
+{
+  "elastic": {
+    "plastic": false,
+    "N_nucleation": 108901.0,
+    "reached_nucleation": true,
+    "max_d": 0.9999999999988944,
+    "n_jumps": 13,
+    "shakedown_counts": {
+      "null": 13
+    },
+    "max_eps_p": 0.0,
+    "seconds": 13.940907297015656
+  },
+  "plastic": {
+    "plastic": true,
+    "N_nucleation": 108904.0,
+    "reached_nucleation": true,
+    "max_d": 0.9999999999988944,
+    "n_jumps": 16,
+    "shakedown_counts": {
+      "undetermined": 3,
+      "closed": 13
+    },
+    "max_eps_p": 0.0,
+    "seconds": 95.7704869590234
+  },
+  "rel_diff_N": 2.754795640076767e-05
+}

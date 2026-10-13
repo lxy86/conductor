@@ -316,6 +316,8 @@ class CycleJumpConfig:
     peak_phase: float | None = None
     """重解 (u,d) 所用的相位。None 表示自动取显式循环中 ∫psi+ dx 最大的子步——
     比硬编码 1/4 稳健：接触工况下驱动力最大的相位不一定在拉伸峰值。"""
+    shakedown: "ShakedownConfig | None" = None
+    """循环稳定性判据（PLAN §2.4）。带塑性的求解器必须给出，否则 CycleJumpDriver 报 ValueError。"""
 
     def __post_init__(self) -> None:
         if self.n_sub < 1:
@@ -331,6 +333,66 @@ class CycleJumpConfig:
             raise ValueError("factor 必须 > 1")
         if self.peak_phase is not None and not 0.0 <= self.peak_phase <= 1.0:
             raise ValueError("peak_phase 须在 [0,1] 内（以周期为单位）")
+
+
+@dataclass(frozen=True)
+class ShakedownConfig:
+    """循环稳定性判据的阈值（PLAN §2.4，D-66）。三个值都必须由配置给出，代码里不设默认。
+
+    zero_tol：净增量视为零的阈值（无量纲应变）；
+    decay_ratio：衰减判据 e_k / e_{k−1} 的上限，须在 (0,1) 内；
+    n_check：判定所需的连续周期增量个数（≥ 2）。
+    """
+
+    zero_tol: float
+    decay_ratio: float
+    n_check: int
+
+    def __post_init__(self) -> None:
+        if not self.zero_tol >= 0.0:
+            raise ValueError("zero_tol 必须 >= 0，收到 %r" % (self.zero_tol,))
+        if not 0.0 < self.decay_ratio < 1.0:
+            raise ValueError("decay_ratio 须在 (0,1) 内，收到 %r" % (self.decay_ratio,))
+        if self.n_check < 2:
+            raise ValueError("n_check 须 >= 2，收到 %r" % (self.n_check,))
+
+
+#: 允许外推的判定结果；其余（not_decaying、undetermined）一律不外推
+SHAKEDOWN_ALLOWED = ("closed", "decaying")
+
+
+def classify_plastic_history(increments, cfg: ShakedownConfig) -> str:
+    """由逐周期的净塑性应变增量 e_k（取范数）判定循环稳定性（PLAN §2.4）。
+
+    返回：
+      ``undetermined``：周期数不足 n_check，继续显式推进；
+      ``closed``：末两个增量均 ≤ zero_tol（弹性安定，或滞回环闭合）；
+      ``decaying``：最近 n_check 个增量单调衰减，每步 e_k ≤ decay_ratio · e_{k−1}，且 e_{k−1} > zero_tol；
+      ``not_decaying``：其余情形，包括慢衰减与重新出现增量——视为棘轮，禁止外推。
+    """
+    e = np.asarray(increments, dtype=float)
+    if e.size < cfg.n_check:
+        return "undetermined"
+    if e[-1] <= cfg.zero_tol and e[-2] <= cfg.zero_tol:
+        return "closed"
+    recent = e[-cfg.n_check:]
+    prev, cur = recent[:-1], recent[1:]
+    if np.all(prev > cfg.zero_tol) and np.all(cur <= cfg.decay_ratio * prev):
+        return "decaying"
+    return "not_decaying"
+
+
+class RatchetDetected(RuntimeError):
+    """棘轮：塑性应变净增量不衰减，外推被禁止（PLAN §2.4，硬约束 6）。"""
+
+    def __init__(self, N: float, increments) -> None:
+        self.N = float(N)
+        self.increments = [float(x) for x in increments]
+        super().__init__(
+            "N=%g 处判定为棘轮：最近的周期塑性应变增量 %s 不衰减，停止外推；"
+            "该工况的寿命结果不可用。"
+            % (self.N, ["%.3e" % x for x in self.increments[-4:]])
+        )
 
 
 @dataclass
@@ -354,6 +416,8 @@ class JumpReport:
     runout: bool = False
     staggered: StaggeredResult | None = None
     failure_mode: str | None = None
+    shakedown: str | None = None
+    """塑性求解器的循环稳定性判定（见 classify_plastic_history）；弹性时为 None。"""
 
 
 class CycleJumpDriver:
@@ -380,18 +444,19 @@ class CycleJumpDriver:
         set_phase: Callable[[float], None],
         config: CycleJumpConfig | None = None,
     ) -> None:
-        if getattr(solver, "plastic", None) is not None:
-            # 外推只作用于 alpha_bar；塑性历史 (ε_p, p) 不能按 ΔN 外推，须先过 6.4 的安定性检查
-            raise NotImplementedError(
-                "cycle-jump 暂不支持带塑性的求解器（需先完成 6.4 循环稳定性检查）"
-            )
         self.solver = solver
         self.state = state
         self.set_phase = set_phase
         self.config = config or CycleJumpConfig()
+        if getattr(solver, "plastic", None) is not None and self.config.shakedown is None:
+            # 外推只作用于 alpha_bar，塑性历史 (ε_p, p) 不能按 ΔN 外推；必须先判定循环稳定（PLAN §2.4）
+            raise ValueError("带塑性的 cycle-jump 必须给出 CycleJumpConfig.shakedown（PLAN §2.4）")
         self.N = 0.0
         self.delta_N = float(self.config.dN_init)
         self.reports: list[JumpReport] = []
+        #: 逐周期的净塑性应变增量 e_k（范数），仅塑性求解器有
+        self.plastic_increments: list[float] = []
+        self._ep_cycle_end: np.ndarray | None = None
 
         self._psi_integral = fem.form(solver.psi_plus_expr() * solver.dx)
 
@@ -412,13 +477,18 @@ class CycleJumpDriver:
         )
 
     def _snapshot(self) -> dict[str, np.ndarray]:
-        return {
+        snap = {
             "u": self.solver.u.x.array.copy(),
             "d": self.solver.d.x.array.copy(),
             "d_old": self.solver.d_old.x.array.copy(),
             "alpha_bar": self.state.alpha_bar.x.array.copy(),
             "psi_prev": self.state.psi_plus_prev.x.array.copy(),
         }
+        plastic = self.solver.plastic
+        if plastic is not None:
+            snap["ep"] = plastic.ep_n.x.array.copy()
+            snap["p"] = plastic.p_n.x.array.copy()
+        return snap
 
     def _restore(self, snap: dict[str, np.ndarray]) -> None:
         self.solver.u.x.array[:] = snap["u"]
@@ -426,7 +496,13 @@ class CycleJumpDriver:
         self.solver.d_old.x.array[:] = snap["d_old"]
         self.state.alpha_bar.x.array[:] = snap["alpha_bar"]
         self.state.psi_plus_prev.x.array[:] = snap["psi_prev"]
-        for fn in (self.solver.u, self.solver.d, self.solver.d_old):
+        fns = [self.solver.u, self.solver.d, self.solver.d_old]
+        plastic = self.solver.plastic
+        if plastic is not None:
+            plastic.ep_n.x.array[:] = snap["ep"]
+            plastic.p_n.x.array[:] = snap["p"]
+            fns += [plastic.ep_n, plastic.p_n]
+        for fn in fns:
             fn.x.scatter_forward()
         self.state.alpha_bar.x.scatter_forward()
         self.state.psi_plus_prev.x.scatter_forward()
@@ -447,6 +523,7 @@ class CycleJumpDriver:
         cfg = self.config
         self.set_phase(0.0)
         self.solver.solve_displacement()
+        self._commit_plastic_substep()
         self.state.prime()
         alpha_before = self.state.alpha_bar.x.array.copy()
 
@@ -455,14 +532,37 @@ class CycleJumpDriver:
             phase = k / cfg.n_sub
             self.set_phase(phase)
             self.solver.solve_displacement()
+            self._commit_plastic_substep()
             self.state.accumulate()
             value = self._psi_plus_total()
             if value > best_value:
                 best_value, best_phase = value, phase
 
+        self._record_cycle_increment()
         delta_alpha = self.state.alpha_bar.x.array - alpha_before
         phase = cfg.peak_phase if cfg.peak_phase is not None else best_phase
         return delta_alpha, phase
+
+    def _commit_plastic_substep(self) -> None:
+        """塑性时每个子步都提交 (ε_p, p)。
+
+        塑性历史是路径相关的：只在周期末提交会丢掉周期内的屈服（R = −1 时周期末卸到零应力，
+        单步返回映射不改变 ε_p，净增量被误判为零）。故逐子步提交。d 在显式周期内不变，
+        commit_step 对 d_old 的写入是空操作。
+        """
+        if self.solver.plastic is not None:
+            self.solver.commit_step()
+
+    def _record_cycle_increment(self) -> None:
+        """记录本周期的净塑性应变增量 e_k = max|ε_p(周期末) − ε_p(上一周期末)|（全进程取最大）。"""
+        plastic = self.solver.plastic
+        if plastic is None:
+            return
+        ep = plastic.ep_n.x.array
+        if self._ep_cycle_end is not None:
+            local = float(np.max(np.abs(ep - self._ep_cycle_end), initial=0.0))
+            self.plastic_increments.append(self.solver.comm.allreduce(local, op=MPI.MAX))
+        self._ep_cycle_end = ep.copy()
 
     # ---------------- 一次 jump ----------------
     def step(self) -> JumpReport:
@@ -488,6 +588,13 @@ class CycleJumpDriver:
 
         delta_alpha, peak_phase = self.explicit_cycle()
         delta_alpha_max = self._max_over_owned(delta_alpha, self.state.n_owned)
+        # 塑性：先判定循环稳定性（PLAN §2.4）。棘轮直接停；未定或不允许时本步只做显式周期
+        shake, allow_jump = None, True
+        if self.solver.plastic is not None:
+            shake = classify_plastic_history(self.plastic_increments, cfg.shakedown)
+            if shake == "not_decaying":
+                raise RatchetDetected(self.N, self.plastic_increments)
+            allow_jump = shake in SHAKEDOWN_ALLOWED
         snap = self._snapshot()
         d_before = snap["d"]
 
@@ -496,6 +603,8 @@ class CycleJumpDriver:
         while True:
             # 不要跨过 N_max；但至少推进 dN_min
             delta_N = max(cfg.dN_min, min(self.delta_N, cfg.N_max - self.N))
+            if not allow_jump:
+                delta_N = 1.0   # 本步只做一个显式周期，不外推（ΔN = 1 即无外推）
             if rejections == 0:
                 delta_N_attempted = delta_N
             self.state.extrapolate(delta_N - 1.0, delta_alpha)
@@ -544,6 +653,7 @@ class CycleJumpDriver:
                     accepted=False,
                     staggered=result,
                     failure_mode=failure,
+                    shakedown=shake,
                 )
                 self.reports.append(report)
                 return report
@@ -553,7 +663,7 @@ class CycleJumpDriver:
         # 接受
         self.N += delta_N
         self.solver.commit_step()
-        if max_dd == max_dd and max_dd < cfg.grow_below * cfg.dd_max:  # 非 NaN 且够小
+        if allow_jump and max_dd == max_dd and max_dd < cfg.grow_below * cfg.dd_max:  # 非 NaN 且够小
             self.delta_N = min(self.delta_N * cfg.factor, cfg.dN_max)
 
         report = JumpReport(
@@ -569,6 +679,7 @@ class CycleJumpDriver:
             accepted=True,
             runout=self.N >= cfg.N_max,
             staggered=result,
+            shakedown=shake,
         )
         self.reports.append(report)
         return report

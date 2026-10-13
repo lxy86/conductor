@@ -2761,6 +2761,64 @@ Ren, Rabczuk & Zhuang, [arXiv:2302.13783](https://arxiv.org/abs/2302.13783)（�
 - T-a1（无塑性回归）：全量既有测试通过。
 - 全量 pytest：447 项通过，无失败（日志 `data/_pytest_full_d65.log`）。
 
+## D-66 Phase 6.4：循环稳定性检查（PLAN §2.4），塑性 cycle-jump 解除拒绝（2026-10-13，用户确认）
+
+### 实现（`src/pfwire/cyclejump.py`）
+- `classify_plastic_history(increments, cfg) -> str`，由逐周期净增量 e_k = max|ε_p(周期末 k) − ε_p(周期末 k−1)| 判定：
+  - `undetermined`：周期数不足 n_check；
+  - `closed`：末两个增量均 ≤ zero_tol（弹性安定或滞回环闭合）；
+  - `decaying`：最近 n_check 个增量满足 e_k ≤ decay_ratio·e_{k−1} 且 e_{k−1} > zero_tol；
+  - `not_decaying`：其余，包括慢衰减与增量重新出现——视为棘轮。
+  允许外推：`closed`、`decaying`（`SHAKEDOWN_ALLOWED`）。
+- `ShakedownConfig(zero_tol, decay_ratio, n_check)`：三个值必须由配置给出，代码不设默认。
+- `CycleJumpDriver`：
+  - 塑性求解器未给 `CycleJumpConfig.shakedown` → ValueError（取代原来的 NotImplementedError）；
+  - `step()`：显式周期之后判定；`not_decaying` → 抛 `RatchetDetected`，不外推；
+    `undetermined` 时本步只做显式周期（ΔN = 1，不外推），不再依赖 dN_min；
+  - `JumpReport.shakedown` 记录判定结果。
+- 弹性求解器的行为不变（判定只在有塑性时发生）。
+
+### 与确认稿不同的一处（需复核）
+确认稿写"周期末调用 `commit_step()`"。**这不够**：塑性历史是路径相关的，只在周期末提交会丢掉周期内的屈服。
+对 R = −1 的循环，周期末卸到零应力，单步返回映射不改变 ε_p，净增量被误判为零。
+实现改为**每个子步都提交** ε_p、p（`_commit_plastic_substep`），周期末的 ε_p 才是真实的历史。
+d 在显式周期内不变，故逐子步的 `commit_step()` 对 d_old 是空操作。
+
+### 回滚
+- `_snapshot` / `_restore` 增加 ε_p、p，被拒绝的 jump 步回滚后塑性历史逐位恢复（测试 `test_snapshot_round_trips_plastic_history`）。
+
+### 阈值（待确认）
+- `decay_ratio = 0.5`、`n_check = 3`：按确认稿。
+- `zero_tol = 1e-10`：我的建议值，确认稿未明确。量级依据：ε_y/E ≈ 2.4e-3，1e-10 比它小约 7 个数量级。
+- 这些值目前只在测试与 `scripts/verify_plastic_life.py` 中硬写，尚未进入 yaml；接入 run_case 的配置由 6.5 处理。
+
+### 测试（`tests/test_shakedown.py`，15 项）
+- 判据（合成历史）：常数增量、增大、几何衰减、首周期后闭合、全零、慢衰减 0.9、周期不足、零后重现；配置校验。
+- 驱动器（90 MPa）：未给判据配置报错；注入棘轮历史后 `step()` 抛 `RatchetDetected` 且 N 不变；
+  前三步 `undetermined`（ΔN = 1），第四步 `closed` 并放行；弹性与弹塑性在前 8 步内 N、ΔN、max d 一致；快照回滚恢复 ε_p、p。
+- `tests/test_phasefield_plastic.py` 中原来的"拒绝"测试改为"缺判据配置报错"。
+
+### 限制
+- 真实棘轮在本标定试样上难以构造：各向同性硬化下，单轴循环的增量会趋于零。棘轮只在合成历史中验证。
+- 慢衰减（比值接近 1，如 H/(3G) 量级）会被保守地判为 `not_decaying` 而拒绝。这是有意的：宁可停下报告（硬约束 6）。
+
+### N 比对（6.3.3 推迟项）
+- 脚本 `scripts/verify_plastic_life.py`（mpirun -n 6）：90 MPa 下弹性与弹塑性全寿命 cycle-jump，比较 N_起裂。
+- 结果（`data/verify_plastic_life/result.json`，mpirun -n 6，日志 `data/_verify_plastic_life.log`）：
+
+  | | N_起裂 | cycle-jump 步数 | 判定 | max ε_p | 耗时 |
+  |---|---|---|---|---|---|
+  | 弹性 | 108901 | 13 | — | 0 | 14 s |
+  | 弹塑性 | 108904 | 16 | 3 × undetermined，13 × closed | 0 | 96 s |
+
+- 相对差 2.8e-5，即 **3 个周期**。成因是计数偏移，不是物理差异：弹塑性前三步各只推 1 个周期（判据未定），
+  弹性侧第一步就外推 100 个周期，之后两边的 ΔN 序列相差 3，最终 N 也错开 3。同一状态下逐步的 N、ΔN、max d 一致
+  由 `test_elastic_and_plastic_jumps_agree_over_first_steps` 锁定（误差 < 1e-8）。
+- 结论：90 MPa 下塑性对寿命无影响（ε_p ≡ 0），6.3.3 的 N 项关闭。
+- 日志中有"裂纹扩展太快"警告（max Δd = 0.9999 在 ΔN 下界处）：与 D-59 标定中的同类警告一致，
+  是均匀试样在 ΔN 下界内直接跳到 d = 1，不是假损伤。
+- 耗时：弹塑性约为弹性的 7 倍（每个显式周期都要做 ε_p 的逐子步提交与判定），单工况 96 s，可接受。
+
 ### 对 D-64 的影响
 - 作废：「u 方程取 dE/du」。
 - 修正：「ε_e 取返回映射后的值」现已按实现；ε_e 维度由 2D 改为 3D 嵌入。

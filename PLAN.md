@@ -390,9 +390,11 @@ cycle-jump、断点续跑、失稳判别器、硬关卡、后处理出图**全�
   - [x] 6.3.2 ψ⁺ 在弹性应变上的定义（**函数完成，D-61**：`phasefield.psi_plus(eps_e, split, lam, mu)`，
         6 项测试通过；出处为间接文献，D-60）。u、d 方程的 ε_e 耦合已接入 `PhaseFieldSolver(plastic=...)`（D-64）
   - [x] 6.3.3 确认塑性不改变标定（σ_a = 90 MPa 下 ε_p ≡ 0、逐周期 Δᾱ_cyc / ψ⁺_peak / max d 与纯弹性一致；
-        **N 的直接比对推迟到 6.4**，因 cycle-jump 对塑性求解器仍拒绝，见 D-65、`tests/test_calibrate_plastic.py`）
-- [ ] 6.4 循环稳定性检查（§2.4）实现 + 单测：构造棘轮与安定两种合成历史，
-      确认棘轮被拦下、安定被放行；
+        N 比对已在 6.4 完成（D-66：相差 3 个周期，为计数偏移，见 `scripts/verify_plastic_life.py`）；
+        逐周期驱动量见 D-65、`tests/test_calibrate_plastic.py`）
+- [x] 6.4 循环稳定性检查（§2.4）实现 + 单测（**完成，D-66**）：`classify_plastic_history` 对合成历史判定，
+      棘轮（不衰减）抛 `RatchetDetected` 不外推，衰减/闭合放行；塑性 cycle-jump 解除拒绝，改为必须给出判据配置；
+      每子步提交 ε_p（路径相关，见 D-66）。`tests/test_shakedown.py` 15 项通过。
 - [ ] 6.5 基准工况 `clamp_base.yaml` 跑通。**必须复现**：裂纹在钳口
       接触边缘附近萌生、初始倾斜、随后转向；不满足则停下报告，不得调参凑（硬约束 6）。
 
