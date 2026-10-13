@@ -2689,6 +2689,10 @@ Ren, Rabczuk & Zhuang, [arXiv:2302.13783](https://arxiv.org/abs/2302.13783)（�
 
 ## D-64 PhaseFieldSolver 接入塑性：u、d 方程取 ε_e，屈服按 B 口径（2026-10-13）
 
+> **D-65 更正（2026-10-13）**：本条中「u 方程：残差取 dE/du」**作废**，改为标准应力残差；
+> 「ε_e 取返回映射后的值」这一口径**实现有误**（`ee3` 曾用试探应变 ε − ε_p,n），已在 D-65 修正。
+> D-64 的其余条目（d 方程驱动力、commit 时机、linear 互斥、cycle-jump 拒绝、g 范围）保持有效。
+
 ### 实现
 - `PhaseFieldSolver(..., plastic=None)`：给了 `PlasticLaw` 时，
   - 能量与残差用 ε_e = ε − ε_p(u; g(d))（`_eps_e()`，g = `_g()` = (1−d)² + k_res）；
@@ -2717,3 +2721,48 @@ Ren, Rabczuk & Zhuang, [arXiv:2302.13783](https://arxiv.org/abs/2302.13783)（�
 - 只检验了**均匀**场。非均匀场（裂尖附近、接触边缘）下的收敛性与裂纹路径尚未检验，这是 6.5 的内容。
 - d 方程对 ε_p 的依赖是通过返回映射的 AD，返回映射含 `ufl.conditional`，在屈服边界附近 Newton 可能振荡，需在非均匀算例里监控交错迭代次数。
 - 6.3.3（塑性不改变标定）现在可以实测：标定工况加上 PlasticLaw 后，σ_a = 90 MPa 下 ε_p 应为零、N 不变。尚未做。
+
+## D-65 耦合的 u 残差改为标准应力残差；ε_e 取三维嵌入（2026-10-13，用户确认）
+
+### 起因：6.3.3 探针发现 D-64 三处问题
+1. **ε_e 用错了应变（已修，见下）**：`stress_update_ufl` 的 `ee3 = eps3 − ep3` 用的是旧 ε_p,n（试探应变）。
+   能量在屈服步里因此等价于线弹性。修复为 `eps3 − ep3_new`，并加 `test_elastic_strain_is_strain_minus_returned_plastic_strain`。
+2. **dE/du 残差在屈服步不收敛**：90 MPa 无屈服时一切正常；220 MPa、d = 0 的第一个峰值状态上，u 的 Newton 报
+   `SNESConvergedReason=-6`。之前的测试只在均匀仿射态上做，那里 Newton 是平凡的，所以没暴露。
+   原因：E 不含硬化能，dE/du 比标准残差多出 ∫σ:δε_p 项，与返回映射的切线不一致。
+3. **elastic_strain 丢掉了 ε_e,zz**：只返回 2×2 面内分量，塑性产生的 ε_p,zz 从能量和应力中消失。
+
+### 决定
+- **残差**：F_u = ∫ σ_deg : sym∇v dx − W_ext，σ_deg = g(d) ∂ψ⁺/∂ε_e + ∂ψ⁻/∂ε_e，ε_e 为返回映射后的值。
+  导数用 `ufl.variable` + `ufl.diff` 求得，切线由 `ufl.derivative(F_u, u)` 给出。选项 (a)。
+- **ε_e 三维嵌入**（选项 (i)）：ε_e 为 3×3。**与确认时的表述有一处差别，需用户复核**：
+  确认稿写"ε_e,zz 只进 trace"，但 μ·ε_zz² 这一项若只进 trace 就会从能量中丢失，总能量不再是三维能量。
+  实现改为：ε_e 块对角（面内 2×2 块与 ε_zz），其三个特征值 (e₁, e₂, ε_zz) 都进入谱分解。
+  即**精确的三维 spectral 分解**，不是近似；ε_zz = 0 时逐式退化为原二维 spectral。
+  "三维特征分解待查"这一项因此关闭。
+  - `energy_split_3d(eps3, material, split)`：ψ⁺ = ½λ⟨tr₃⟩₊² + μ Σᵢ⟨eᵢ⟩₊²，ψ⁻ 同理（i = 1..3）。
+  - `stress_split_3d(eps3, material, split, d, k_res)`：σ_deg = g(d) ∂ψ⁺/∂ε + ∂ψ⁻/∂ε（`ufl.variable` + `ufl.diff`）。
+- **amor 不支持塑性**：其三维形式未定义（2D 的 K = λ+μ 与二维偏量不能直接推广），`PhaseFieldSolver(plastic=...)` 对 amor 报 NotImplementedError。
+- **无塑性路径不变**：仍用 dE/du，代码未改动；它与标准残差数学等价（ε_e = ε），由既有测试回归保护。
+- **d 方程**：驱动力仍为 ψ⁺(ε_e)，改为通过 `psi_plus_expr()` 取得；`FatigueState` 与 cycle-jump 的 ψ⁺ 诊断共用同一表达式。
+- **反力**：塑性下 `reaction` 取 ∫σ_deg : sym∇probe，与残差同式。
+
+### 待查（不阻塞本次）
+- D-60 的直接出处（Ambati 2015）仍未核对。
+- 一致切线的 k_res 影响：σ_deg 在 d = 0 时为 (1+k_res)σ⁺ + σ⁻，与标准 σ 差 O(k_res)。T-a2 的容差按此取 1e-5。
+
+### 测试（已实现，全部通过）
+- `tests/test_energy_3d.py`（5 项）：ε_zz = 0 时三维能量分裂与二维逐点一致（rel 1e-10）；ψ⁺ + ψ⁻ 为三维总能量（含 ε_zz）；
+  σ_deg 在纯拉伸态为 g·C:ε、纯压缩态为 C:ε；amor 三维被拒绝。
+- `tests/test_phasefield_plastic.py` 新增：
+  - T-a2：d ≡ 0 时耦合 u 与标准塑性 FE（`inner(law.sigma(u), sym∇v)`）在 4×4 网格、非均匀屈服场上相对误差 < 1e-5；
+  - T-a4：AD 的 Jacobian 与残差的有限差分一致（相对 1e-5）。
+- T-a3（220 MPa 第一个峰值，屈服步 Newton 收敛）由 `tests/test_calibrate_plastic.py::test_plastic_branch_is_active_at_220MPa_control` 覆盖，已通过。
+- T-a1（无塑性回归）：全量既有测试通过。
+- 全量 pytest：447 项通过，无失败（日志 `data/_pytest_full_d65.log`）。
+
+### 对 D-64 的影响
+- 作废：「u 方程取 dE/du」。
+- 修正：「ε_e 取返回映射后的值」现已按实现；ε_e 维度由 2D 改为 3D 嵌入。
+- 保留：d 方程驱动力、commit 时机、linear 互斥、cycle-jump 拒绝、g 的范围。
+- 6.3.3 的 T1 容差：比对用的 `snes_rtol = 1e-10` 只在测试里设置，标定配置不变（见 `tests/test_calibrate_plastic.py`）。

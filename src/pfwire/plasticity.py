@@ -172,7 +172,7 @@ class UFLUpdate:
     sigma3: object         # 3x3（含 sigma_zz）
     ep_new: object         # 3 分量向量 (xx, yy, xy)
     p_new: object
-    ee3: object            # 3x3 弹性应变（含 eps_e,zz = -eps_p,zz）
+    ee3: object            # 3x3 返回映射后的弹性应变 ε − ε_p,new（含 eps_e,zz = -eps_p,zz）；屈服时 ≠ 试探应变
     dgamma: object
 
 
@@ -208,7 +208,8 @@ def stress_update_ufl(eps2, ep_n, p_n, prm: J2Params, g=1.0) -> UFLUpdate:
     ep3_new = ep3 + 1.5**0.5 * dgamma * n
     ep_new = ufl.as_vector([ep3_new[0, 0], ep3_new[1, 1], ep3_new[0, 1]])
     sigma2 = ufl.as_tensor([[sigma3[0, 0], sigma3[0, 1]], [sigma3[1, 0], sigma3[1, 1]]])
-    return UFLUpdate(sigma2, sigma3, ep_new, p_n + dgamma, ee3, dgamma)
+    # 能量与驱动力必须用返回映射后的 ε_e = ε − ε_p,new，而不是试探应变 ee3（D-65）
+    return UFLUpdate(sigma2, sigma3, ep_new, p_n + dgamma, eps3 - ep3_new, dgamma)
 
 
 class PlasticLaw:
@@ -242,10 +243,11 @@ class PlasticLaw:
         return self.update(u, g).sigma
 
     def elastic_strain(self, u, g=1.0):
-        """ε_e = ε − ε_p（2x2 平面内分量），给 Phase 6 的 ψ⁺ 用。g 同 ``update``。"""
-        import ufl
-        e = self.update(u, g).ee3
-        return ufl.as_tensor([[e[0, 0], e[0, 1]], [e[1, 0], e[1, 1]]])
+        """返回映射后的弹性应变 ε_e = ε − ε_p，三维 3×3（含 ε_e,zz = −ε_p,zz）。
+
+        给求解器的能量与应力用（D-65）；g 同 ``update``。
+        """
+        return self.update(u, g).ee3
 
     def commit(self, u, cells=None, g=1.0) -> None:
         """收敛后把本步 (ε_p, p) 写回历史（在 DG 节点处对表达式插值）。

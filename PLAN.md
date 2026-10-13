@@ -170,8 +170,11 @@ D-42 第 2 条记的口径差（CSBL 来自导线弯曲、旧模型是均匀轴�
 ### 1.5 相场驱动力与塑性的关系（**须在实现前补文献出处**）
 
 ```text
-弹性应变 eps_e = eps - eps_p，psi+ = psi+(eps_e)
-能量与应力：E(u,d) = ∫ [ g(d) psi+(eps_e) + psi-(eps_e) ] dV，sigma = dE/d(eps_e)
+弹性应变 eps_e = eps - eps_p（返回映射**之后**的值；三维嵌入，eps_e,zz = -eps_p,zz）
+psi+ = psi+(eps_e)：spectral 分解取三维特征值 (e1, e2, eps_e,zz)（ε 块对角，故精确；D-65）；amor 的三维形式未定义，塑性下拒绝
+能量（只用于驱动力与诊断量）：E = ∫ [ g(d) psi+(eps_e) + psi-(eps_e) ] dV
+应力：sigma = g(d) ∂psi+/∂eps_e + ∂psi-/∂eps_e
+平衡（u 方程，标准应力残差）：∫ sigma : sym∇v dV = W_ext      （D-65：不取 dE/du）
 屈服面（B，损伤退化屈服应力）：
     F = g(d) · sigma_eq(s_tr) − sigma_y(p) ≤ 0，g(d) = (1−d)² + k_res
     s_tr 为未退化弹性试探应力的偏量，返回映射在 F = 0 上进行
@@ -189,6 +192,8 @@ D-42 第 2 条记的口径差（CSBL 来自导线弯曲、旧模型是均匀轴�
   本项目取 ψ⁺ 的弹性部分与退化屈服面，不计塑性能入驱动力，因此仍属「脆性型驱动 + 延性型屈服」的组合。
   直接出处 Ambati, Gerasimov & De Lorenzis (2015) 原文仍未核对（D-60），写作前必须补齐。
 - 备选的「塑性功计入驱动力」（Ren 的 ϕᵖ 项）未采用，需另立决策。
+- **u 方程取 dE/du 的旧写法已废止（D-65）**：E 不含硬化能，dE/du 比标准残差多出 ∫sigma:δε_p，
+  且 220 MPa 的屈服载荷步 Newton 不收敛。6.3.3 的探针复现了这一点。
 
 ---
 
@@ -384,7 +389,8 @@ cycle-jump、断点续跑、失稳判别器、硬关卡、后处理出图**全�
         material_al1350.yaml 尚未改为 spectral 值，待确认。
   - [x] 6.3.2 ψ⁺ 在弹性应变上的定义（**函数完成，D-61**：`phasefield.psi_plus(eps_e, split, lam, mu)`，
         6 项测试通过；出处为间接文献，D-60）。u、d 方程的 ε_e 耦合已接入 `PhaseFieldSolver(plastic=...)`（D-64）
-  - [ ] 6.3.3 确认塑性不改变标定（σ_a = 90 MPa 下弹塑性与纯弹性 N 一致）
+  - [x] 6.3.3 确认塑性不改变标定（σ_a = 90 MPa 下 ε_p ≡ 0、逐周期 Δᾱ_cyc / ψ⁺_peak / max d 与纯弹性一致；
+        **N 的直接比对推迟到 6.4**，因 cycle-jump 对塑性求解器仍拒绝，见 D-65、`tests/test_calibrate_plastic.py`）
 - [ ] 6.4 循环稳定性检查（§2.4）实现 + 单测：构造棘轮与安定两种合成历史，
       确认棘轮被拦下、安定被放行；
 - [ ] 6.5 基准工况 `clamp_base.yaml` 跑通。**必须复现**：裂纹在钳口

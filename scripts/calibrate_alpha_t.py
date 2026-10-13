@@ -55,7 +55,6 @@ from pfwire.phasefield import (  # noqa: E402
     PhaseFieldModel,
     PhaseFieldSolver,
     SolverConfig,
-    energy_split,
 )
 from pfwire.plasticity import J2Params, PlasticLaw  # noqa: E402
 
@@ -112,10 +111,14 @@ def build_case(
         dissipation=str(mo["dissipation"]),
     )
     scfg = cfg["solver"]
+    # snes_rtol / snes_atol 可选：缺省用 SolverConfig 的默认值（标定路径不改）。
+    # 6.3.3 的逐周期比对需要收紧 u 的 Newton 容差，否则停止误差会淹没 ψ⁺ 的差异（见 tests/test_calibrate_plastic.py）。
+    snes_kw = {k: float(scfg[k]) for k in ("snes_rtol", "snes_atol") if k in scfg}
     solver_cfg = SolverConfig(
         u_solver=str(scfg["u_solver"]),
         tol_d=float(scfg["tol_d"]),
         max_iter=int(scfg["max_iter"]),
+        **snes_kw,
     )
 
     fdim = msh.topology.dim - 1
@@ -182,8 +185,7 @@ def build_case(
         # R = -1：σ(t) = σ_a sin(2π t/T)，一个整周期覆盖拉与压
         traction.value = sigma_a * math.sin(2.0 * math.pi * float(phase))
 
-    psi_plus, _ = energy_split(solver.elastic_strain_expr(), material, model.split, 2)
-    psi_form = fem.form(psi_plus * ufl.dx)
+    psi_form = fem.form(solver.psi_plus_expr() * ufl.dx)
     area = msh.comm.allreduce(
         fem.assemble_scalar(fem.form(fem.Constant(msh, 1.0) * ufl.dx)), op=MPI.SUM
     )

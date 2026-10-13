@@ -190,6 +190,44 @@ def energy_split(eps, material: Material, split: str, dim: int, *, freeze_from=N
     return psi_plus, psi_minus
 
 
+def energy_split_3d(eps3, material: Material, split: str):
+    """三维嵌入的 (psi_plus, psi_minus)，ε 为 3×3 的 ε_e（含 ε_e,zz，D-65）。
+
+    只实现 spectral。ε 块对角（面内 2×2 块与 ε_zz），其特征值为 (e1, e2, ε_zz)，
+    故三维谱分解是精确的，不是近似。ε_zz = 0 时逐式退化为 ``energy_split(…, dim=2)`` 的 spectral。
+    amor 的三维形式未定义（2D 的 K = λ + μ 与 2D 偏量不能直接推广到含 ε_zz 的情形），按 NotImplementedError 拒绝。
+    """
+    if split != "spectral":
+        raise NotImplementedError(
+            "三维（含 ε_zz）能量分裂只实现 spectral（D-65）；%r 的三维形式未定义" % (split,)
+        )
+    lmbda, mu = material.elastic.lame
+    tr3 = ufl.tr(eps3)
+    e1, e2 = _principal_strains_2d(
+        ufl.as_tensor([[eps3[0, 0], eps3[0, 1]], [eps3[1, 0], eps3[1, 1]]])
+    )
+    e3 = eps3[2, 2]
+    tr_plus = ufl.max_value(tr3, 0.0)
+    tr_minus = ufl.min_value(tr3, 0.0)
+    psi_plus = 0.5 * lmbda * tr_plus**2 + mu * (
+        ufl.max_value(e1, 0.0) ** 2 + ufl.max_value(e2, 0.0) ** 2 + ufl.max_value(e3, 0.0) ** 2
+    )
+    psi_minus = 0.5 * lmbda * tr_minus**2 + mu * (
+        ufl.min_value(e1, 0.0) ** 2 + ufl.min_value(e2, 0.0) ** 2 + ufl.min_value(e3, 0.0) ** 2
+    )
+    return psi_plus, psi_minus
+
+
+def stress_split_3d(eps3, material: Material, split: str, d, k_res: float):
+    """σ_deg = g(d) ∂ψ⁺/∂ε + ∂ψ⁻/∂ε，ε 为三维 ε_e，返回 3×3 UFL 张量（D-65）。
+
+    对 ε_e 求导，不对 u 求导：返回映射 ε_p(u) 对 u 的依赖由 u 方程的 AD 另外计入。
+    """
+    var = ufl.variable(eps3)
+    psi_plus, psi_minus = energy_split_3d(var, material, split)
+    return degradation(d, k_res) * ufl.diff(psi_plus, var) + ufl.diff(psi_minus, var)
+
+
 def psi_plus(eps_elastic, split: str, lam: float, mu: float):
     """弹性应变能的拉伸部分 ψ⁺(ε_e)（PLAN §1.5，D-60）。
 
@@ -568,6 +606,12 @@ class PhaseFieldSolver:
             raise ValueError(
                 "带塑性（plastic）时 u_solver 必须是 'newton'：返回映射不是冻结形式。"
             )
+        if plastic is not None and model.split != "spectral":
+            raise NotImplementedError(
+                "带塑性时只支持 split='spectral'（D-65）：amor 的三维（含 ε_e,zz）形式未定义。"
+            )
+        if plastic is not None and mesh.geometry.dim != 2:
+            raise NotImplementedError("带塑性时只支持二维平面应变（PlasticLaw 为 2D 嵌入）。")
         self.plastic = plastic
         self.dim = mesh.geometry.dim
         self.comm = mesh.comm
@@ -659,17 +703,20 @@ class PhaseFieldSolver:
         return ufl.derivative(residual, self.u, u_trial)
 
     def _residual_u_form(self, v):
-        """精确（非线性）残差 F_u(u; v)。"""
+        """精确（非线性）残差 F_u(u; v)。
+
+        无塑性：F = dE/du（与标准残差等价，ε_e = ε）。
+        有塑性：F = ∫ σ_deg : sym∇v，标准应力残差（D-65）。不取 dE/du：E 不含硬化能，
+        dE/du 比标准残差多出 ∫σ:δε_p，且屈服载荷步 Newton 不收敛。
+        """
         model = self.model
-        psi = elastic_energy_density(
-            self.elastic_strain_expr(),
-            self.d,
-            model.material,
-            model.split,
-            self.dim,
-            model.k_res,
-        )
-        F = ufl.derivative(psi * self.dx, self.u, v)
+        if self.plastic is None:
+            psi = elastic_energy_density(
+                strain(self.u), self.d, model.material, model.split, self.dim, model.k_res,
+            )
+            F = ufl.derivative(psi * self.dx, self.u, v)
+        else:
+            F = ufl.inner(self._sigma_deg_2d(), ufl.sym(ufl.grad(v))) * self.dx
         if self.external_work is not None:
             F = F - self.external_work
         return F
@@ -677,9 +724,7 @@ class PhaseFieldSolver:
     def _build_d_problem(self) -> None:
         cfg, model = self.config, self.model
         w = ufl.TestFunction(self.V_d)
-        psi_plus, _ = energy_split(
-            self.elastic_strain_expr(), model.material, model.split, self.dim
-        )
+        psi_plus = self.psi_plus_expr()
         energy = (
             degradation(self.d, model.k_res) * psi_plus
             + dissipation_density(
@@ -708,9 +753,7 @@ class PhaseFieldSolver:
 
     def _build_energy_forms(self) -> None:
         model = self.model
-        psi_plus, psi_minus = energy_split(
-            self.elastic_strain_expr(), model.material, model.split, self.dim
-        )
+        psi_plus, psi_minus = self._energy_pair()
         self._form_elastic = fem.form(
             (degradation(self.d, model.k_res) * psi_plus + psi_minus) * self.dx
         )
@@ -904,15 +947,30 @@ class PhaseFieldSolver:
         """损伤退化因子 g(d) = (1−d)² + k_res（UFL 表达式，随 d 变化）。"""
         return degradation(self.d, self.model.k_res)
 
-    def elastic_strain_expr(self):
-        """能量与驱动力用的应变：无塑性时为 ε(u)，有塑性时为 ε_e = ε − ε_p(u; g(d))（D-62/D-63）。
-
-        α̅ 的累积（FatigueState）与 cycle-jump 的 ψ⁺ 诊断必须用同一个应变，否则 Δᾱ 与求解器的
-        驱动力口径不一致（D-65）。
-        """
+    def _energy_pair(self):
+        """(ψ⁺, ψ⁻) 的 UFL 表达式：无塑性时用 ε(u)（2D），有塑性时用三维 ε_e（D-65）。"""
+        model = self.model
         if self.plastic is None:
-            return strain(self.u)
-        return self.plastic.elastic_strain(self.u, g=self._g())
+            return energy_split(strain(self.u), model.material, model.split, self.dim)
+        eps_e = self.plastic.elastic_strain(self.u, g=self._g())
+        return energy_split_3d(eps_e, model.material, model.split)
+
+    def psi_plus_expr(self):
+        """未退化的弹性能正部 ψ⁺ 的 UFL 表达式。
+
+        驱动力（d 方程）与 α̅ 累积（FatigueState、cycle-jump 的诊断）必须共用这一个表达式，
+        否则 Δᾱ 与求解器的驱动力口径会不一致（D-65）。
+        """
+        return self._energy_pair()[0]
+
+    def _sigma_deg_2d(self):
+        """塑性路径的退化应力 σ_deg 的面内 2×2 分量（D-65）。"""
+        model = self.model
+        s3 = stress_split_3d(
+            self.plastic.elastic_strain(self.u, g=self._g()),
+            model.material, model.split, self.d, model.k_res,
+        )
+        return ufl.as_tensor([[s3[0, 0], s3[0, 1]], [s3[1, 0], s3[1, 1]]])
 
     # ---------------- 诊断量 ----------------
     def _assemble(self, form) -> float:
@@ -937,15 +995,14 @@ class PhaseFieldSolver:
         比直接积分边界面力稳妥：不需要显式写出 sigma，避免对分解求导写错。
         """
         model = self.model
-        psi = elastic_energy_density(
-            self.elastic_strain_expr(),
-            self.d,
-            model.material,
-            model.split,
-            self.dim,
-            model.k_res,
-        )
-        form = fem.form(ufl.derivative(psi * self.dx, self.u, probe))
+        if self.plastic is None:
+            psi = elastic_energy_density(
+                strain(self.u), self.d, model.material, model.split, self.dim, model.k_res,
+            )
+            form = fem.form(ufl.derivative(psi * self.dx, self.u, probe))
+        else:
+            # 与残差同式：∫ σ_deg : sym∇probe（D-65）
+            form = fem.form(ufl.inner(self._sigma_deg_2d(), ufl.sym(ufl.grad(probe))) * self.dx)
         return self.comm.allreduce(fem.assemble_scalar(form), op=MPI.SUM)
 
     def make_probe(self, bcs_probe) -> fem.Function:

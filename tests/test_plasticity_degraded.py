@@ -155,3 +155,39 @@ def test_ufl_update_with_degradation_matches_numpy_pointwise():
         assert abs(ep_new[i, 2] - r.eps_p[0, 1]) < 1e-12
         assert abs(p_new[i] - r.p) < 1e-12
     assert 0 < n_plastic < n_dof
+
+
+def test_elastic_strain_is_strain_minus_returned_plastic_strain():
+    """D-65：屈服点上 elastic_strain = ε − ε_p,new（返回映射后），不是试探应变 ε − ε_p,n。
+
+    若误用试探应变，能量与驱动力在屈服步里等价于线弹性（见 D-65 的发现）。
+    """
+    msh = dmesh.create_unit_square(MPI.COMM_WORLD, 2, 2, dmesh.CellType.triangle)
+    law = PlasticLaw(msh, PRM)
+    rng = np.random.default_rng(13)
+    V = fem.functionspace(msh, ("Lagrange", 2, (2,)))
+    u = fem.Function(V)
+    u.x.array[:] = rng.normal(size=u.x.array.size) * 4e-3
+    law.ep_n.x.array[:] = rng.normal(size=law.ep_n.x.array.size) * 1e-4
+    law.p_n.x.array[:] = np.abs(rng.normal(size=law.p_n.x.array.size)) * 1e-4
+    g = fem.Function(law.V_p)
+    g.x.array[:] = rng.uniform(0.3, 1.0, size=g.x.array.size)
+
+    el = law.elastic_strain(u, g=g)
+    eps2 = law.strain(u)
+    n_dof = law.p_n.x.array.size
+    ee = _eval_at_dg2_nodes(msh, ufl.as_vector([el[0, 0], el[1, 1], el[0, 1]]), 3, 2)
+    eps = _eval_at_dg2_nodes(msh, ufl.as_vector([eps2[0, 0], eps2[1, 1], eps2[0, 1]]), 3, 2)
+    epo = law.ep_n.x.array.reshape(n_dof, 3)
+    n_plastic = 0
+    for i in range(n_dof):
+        e = np.array([[eps[i, 0], eps[i, 2], 0], [eps[i, 2], eps[i, 1], 0], [0, 0, 0.0]])
+        ep = np.array([[epo[i, 0], epo[i, 2], 0], [epo[i, 2], epo[i, 1], 0],
+                       [0, 0, -(epo[i, 0] + epo[i, 1])]])
+        r = return_map(e, ep, law.p_n.x.array[i], PRM, g=g.x.array[i])
+        n_plastic += r.plastic
+        expected = e - r.eps_p
+        assert abs(ee[i, 0] - expected[0, 0]) < 1e-12
+        assert abs(ee[i, 1] - expected[1, 1]) < 1e-12
+        assert abs(ee[i, 2] - expected[0, 1]) < 1e-12
+    assert n_plastic > 0, "测试状态应当含屈服点，否则不能区分试探应变与返回后应变"
