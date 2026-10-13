@@ -2686,3 +2686,34 @@ Ren, Rabczuk & Zhuang, [arXiv:2302.13783](https://arxiv.org/abs/2302.13783)（�
 ### 与 D-62 的关系
 - 本记录的数学与 D-62 的闭式一致。D-62 中关于「损伤区更易屈服」的说法已更正（见 D-62 的更正条）。
 - 未做：`PhaseFieldSolver` 的 u、d 耦合（仍按 D-61 的待办）。
+
+## D-64 PhaseFieldSolver 接入塑性：u、d 方程取 ε_e，屈服按 B 口径（2026-10-13）
+
+### 实现
+- `PhaseFieldSolver(..., plastic=None)`：给了 `PlasticLaw` 时，
+  - 能量与残差用 ε_e = ε − ε_p(u; g(d))（`_eps_e()`，g = `_g()` = (1−d)² + k_res）；
+  - u 方程：残差取 dE/du，E = ∫ g ψ⁺(ε_e) + ψ⁻(ε_e)（`elastic_energy_density`，与无塑性同式，仅 ε 换成 ε_e）；
+  - d 方程：驱动力 ψ⁺(ε_e(u,d))，ε_e 对 d 的依赖由 AD 给出（不冻结 g）；
+  - `commit_step()`：收敛后调用 `plastic.commit(u, g=g(d))`，未收敛的步不调用；
+  - `reaction()` 与 `energies()` 同样用 ε_e。
+- `u_solver='linear'` 与塑性互斥（ValueError）：返回映射不是冻结形式。
+- `CycleJumpDriver` 拒绝带塑性的求解器（NotImplementedError）：外推只作用于 α̅，ε_p 不能按 ΔN 外推，需先过 6.4。
+
+### 一处修正：g 的范围
+- `_check_degradation` 原要求 g ∈ [0, 1]，但 `phasefield.degradation` = (1−d)² + k_res，在 d = 0 时为 **1 + k_res**。
+  已放宽为 g ≥ 0（D-63 的范围限制是我加的，不符合现有约定）。测试 `test_g_slightly_above_one_is_accepted` 锁定。
+
+### 测试 `tests/test_phasefield_plastic.py`（5 项，全部通过）
+1. 弹性极限：屈服应力 1e15 时，带塑性的 u 与无塑性 u 一致（rtol 1e-10）；
+2. 均匀仿射场（全边界 Dirichlet，应力处处相同）：`commit_step` 后 ε_p、p 与 `return_map(g=(1−d)²+k_res)` 一致，
+   d = 0 与 d = 0.5 两种情形（后者 g ≈ 0.25，取的应变使其确实屈服）；
+3. 收敛但未提交：ε_p 仍为零；
+4. 塑性 + linear 报错；
+5. cycle-jump 拒绝带塑性的求解器。
+
+全量 pytest：436 项通过，退出码 0（日志 `data/_pytest_coupl.log`）。
+
+### 尚未做 / 注意
+- 只检验了**均匀**场。非均匀场（裂尖附近、接触边缘）下的收敛性与裂纹路径尚未检验，这是 6.5 的内容。
+- d 方程对 ε_p 的依赖是通过返回映射的 AD，返回映射含 `ufl.conditional`，在屈服边界附近 Newton 可能振荡，需在非均匀算例里监控交错迭代次数。
+- 6.3.3（塑性不改变标定）现在可以实测：标定工况加上 PlasticLaw 后，σ_a = 90 MPa 下 ε_p 应为零、N 不变。尚未做。

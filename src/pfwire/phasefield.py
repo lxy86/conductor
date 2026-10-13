@@ -549,7 +549,13 @@ class PhaseFieldSolver:
         external_work=None,
         f_alpha: fem.Function | fem.Constant | None = None,
         config: SolverConfig | None = None,
+        plastic=None,
     ) -> None:
+        """``plastic``：可选 :class:`pfwire.plasticity.PlasticLaw`（D-61/D-62）。
+
+        给了则 u、d 两个方程的弹性应变取 ε_e = ε − ε_p(u; g(d))，屈服按退化应力判断（B），
+        且 u 只能用 ``u_solver='newton'``（返回映射在残差里，不是冻结形式）。
+        """
         self.mesh = mesh
         self.model = model
         self.config = config or SolverConfig()
@@ -558,6 +564,11 @@ class PhaseFieldSolver:
                 "u_solver='linear' 只支持 split='amor'（spectral 的冻结形式未实现）；"
                 "请改用 u_solver='newton'。"
             )
+        if plastic is not None and self.config.u_solver == "linear":
+            raise ValueError(
+                "带塑性（plastic）时 u_solver 必须是 'newton'：返回映射不是冻结形式。"
+            )
+        self.plastic = plastic
         self.dim = mesh.geometry.dim
         self.comm = mesh.comm
         # 先建函数空间，再解析边界条件（BC 必须建在这两个空间上，见 _resolve_bcs）
@@ -651,7 +662,7 @@ class PhaseFieldSolver:
         """精确（非线性）残差 F_u(u; v)。"""
         model = self.model
         psi = elastic_energy_density(
-            strain(self.u),
+            self._eps_e(),
             self.d,
             model.material,
             model.split,
@@ -667,7 +678,7 @@ class PhaseFieldSolver:
         cfg, model = self.config, self.model
         w = ufl.TestFunction(self.V_d)
         psi_plus, _ = energy_split(
-            strain(self.u), model.material, model.split, self.dim
+            self._eps_e(), model.material, model.split, self.dim
         )
         energy = (
             degradation(self.d, model.k_res) * psi_plus
@@ -698,7 +709,7 @@ class PhaseFieldSolver:
     def _build_energy_forms(self) -> None:
         model = self.model
         psi_plus, psi_minus = energy_split(
-            strain(self.u), model.material, model.split, self.dim
+            self._eps_e(), model.material, model.split, self.dim
         )
         self._form_elastic = fem.form(
             (degradation(self.d, model.k_res) * psi_plus + psi_minus) * self.dx
@@ -880,9 +891,24 @@ class PhaseFieldSolver:
         )
 
     def commit_step(self) -> None:
-        """把当前 d 冻结为不可逆下界（载荷步推进时调用）。"""
+        """把当前 d 冻结为不可逆下界（载荷步推进时调用）；有塑性时同步提交 (ε_p, p)。
+
+        只能在交错迭代**收敛**之后调用：未收敛的步不得提交塑性历史（D-61）。
+        """
         self.d_old.x.array[:] = self.d.x.array
         self.d_old.x.scatter_forward()
+        if self.plastic is not None:
+            self.plastic.commit(self.u, g=self._g())
+
+    def _g(self):
+        """损伤退化因子 g(d) = (1−d)² + k_res（UFL 表达式，随 d 变化）。"""
+        return degradation(self.d, self.model.k_res)
+
+    def _eps_e(self):
+        """求解器里能量用的应变：无塑性时为 ε(u)，有塑性时为 ε_e = ε − ε_p(u; g(d))（D-62/D-63）。"""
+        if self.plastic is None:
+            return strain(self.u)
+        return self.plastic.elastic_strain(self.u, g=self._g())
 
     # ---------------- 诊断量 ----------------
     def _assemble(self, form) -> float:
@@ -908,7 +934,7 @@ class PhaseFieldSolver:
         """
         model = self.model
         psi = elastic_energy_density(
-            strain(self.u),
+            self._eps_e(),
             self.d,
             model.material,
             model.split,

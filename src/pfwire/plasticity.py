@@ -104,8 +104,9 @@ def _trial(eps, eps_p_n, prm: J2Params):
 
 
 def _check_degradation(g: float) -> float:
-    if not 0.0 <= g <= 1.0:
-        raise ValueError("损伤退化因子 g 须在 [0, 1] 内，得到 %r" % (g,))
+    """g = (1−d)² + k_res（phasefield.degradation）在 d = 0 时为 1 + k_res，故只要求 g ≥ 0。"""
+    if not g >= 0.0:
+        raise ValueError("损伤退化因子 g 须 >= 0，得到 %r" % (g,))
     return float(g)
 
 

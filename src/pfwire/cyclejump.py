@@ -373,6 +373,11 @@ class CycleJumpDriver:
         set_phase: Callable[[float], None],
         config: CycleJumpConfig | None = None,
     ) -> None:
+        if getattr(solver, "plastic", None) is not None:
+            # 外推只作用于 alpha_bar；塑性历史 (ε_p, p) 不能按 ΔN 外推，须先过 6.4 的安定性检查
+            raise NotImplementedError(
+                "cycle-jump 暂不支持带塑性的求解器（需先完成 6.4 循环稳定性检查）"
+            )
         self.solver = solver
         self.state = state
         self.set_phase = set_phase

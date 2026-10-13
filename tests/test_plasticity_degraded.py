@@ -82,12 +82,18 @@ def test_fully_degraded_never_yields():
     assert np.allclose(r.eps_p, 0.0)
 
 
-@pytest.mark.parametrize("g", [-0.1, 1.5])
-def test_degradation_out_of_range_is_rejected(g):
+def test_negative_degradation_is_rejected():
     with pytest.raises(ValueError):
-        return_map(_eps_for_eq(2.0 * PRM.sigma_y0), ZERO, 0.0, PRM, g=g)
+        return_map(_eps_for_eq(2.0 * PRM.sigma_y0), ZERO, 0.0, PRM, g=-0.1)
     with pytest.raises(ValueError):
-        consistent_tangent(_eps_for_eq(2.0 * PRM.sigma_y0), ZERO, 0.0, PRM, g=g)
+        consistent_tangent(_eps_for_eq(2.0 * PRM.sigma_y0), ZERO, 0.0, PRM, g=-0.1)
+
+
+def test_g_slightly_above_one_is_accepted():
+    """g = (1−d)² + k_res 在 d = 0 时为 1 + k_res，必须合法（D-63 更正：范围放宽为 g >= 0）。"""
+    k_res = 1.0e-6
+    r = return_map(_eps_for_eq(2.0 * PRM.sigma_y0), ZERO, 0.0, PRM, g=1.0 + k_res)
+    assert r.plastic
 
 
 @pytest.mark.parametrize("g", [0.5, 0.2])
