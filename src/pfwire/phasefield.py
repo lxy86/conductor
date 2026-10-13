@@ -662,7 +662,7 @@ class PhaseFieldSolver:
         """精确（非线性）残差 F_u(u; v)。"""
         model = self.model
         psi = elastic_energy_density(
-            self._eps_e(),
+            self.elastic_strain_expr(),
             self.d,
             model.material,
             model.split,
@@ -678,7 +678,7 @@ class PhaseFieldSolver:
         cfg, model = self.config, self.model
         w = ufl.TestFunction(self.V_d)
         psi_plus, _ = energy_split(
-            self._eps_e(), model.material, model.split, self.dim
+            self.elastic_strain_expr(), model.material, model.split, self.dim
         )
         energy = (
             degradation(self.d, model.k_res) * psi_plus
@@ -709,7 +709,7 @@ class PhaseFieldSolver:
     def _build_energy_forms(self) -> None:
         model = self.model
         psi_plus, psi_minus = energy_split(
-            self._eps_e(), model.material, model.split, self.dim
+            self.elastic_strain_expr(), model.material, model.split, self.dim
         )
         self._form_elastic = fem.form(
             (degradation(self.d, model.k_res) * psi_plus + psi_minus) * self.dx
@@ -904,8 +904,12 @@ class PhaseFieldSolver:
         """损伤退化因子 g(d) = (1−d)² + k_res（UFL 表达式，随 d 变化）。"""
         return degradation(self.d, self.model.k_res)
 
-    def _eps_e(self):
-        """求解器里能量用的应变：无塑性时为 ε(u)，有塑性时为 ε_e = ε − ε_p(u; g(d))（D-62/D-63）。"""
+    def elastic_strain_expr(self):
+        """能量与驱动力用的应变：无塑性时为 ε(u)，有塑性时为 ε_e = ε − ε_p(u; g(d))（D-62/D-63）。
+
+        α̅ 的累积（FatigueState）与 cycle-jump 的 ψ⁺ 诊断必须用同一个应变，否则 Δᾱ 与求解器的
+        驱动力口径不一致（D-65）。
+        """
         if self.plastic is None:
             return strain(self.u)
         return self.plastic.elastic_strain(self.u, g=self._g())
@@ -934,7 +938,7 @@ class PhaseFieldSolver:
         """
         model = self.model
         psi = elastic_energy_density(
-            self._eps_e(),
+            self.elastic_strain_expr(),
             self.d,
             model.material,
             model.split,

@@ -148,10 +148,14 @@ class FatigueState:
         self._psi_expression: fem.Expression | None = None
 
     # ---------------- 绑定与采样 ----------------
-    def bind_displacement(self, u: fem.Function, d: fem.Function | None = None) -> None:
-        """绑定位移场（与 alpha_source="degraded" 时所需的 d），之后才能采样 psi+。"""
+    def bind_displacement(self, u: fem.Function, d: fem.Function | None = None, eps=None) -> None:
+        """绑定位移场（与 alpha_source="degraded" 时所需的 d），之后才能采样 psi+。
+
+        eps 给出 ψ⁺ 所用的应变表达式，缺省为 ε(u)；有塑性时须传求解器的 ``elastic_strain_expr()``（D-65）。
+        """
+        eps = strain(u) if eps is None else eps
         psi_plus, _ = energy_split(
-            strain(u), self.model.material, self.model.split, self.mesh.geometry.dim
+            eps, self.model.material, self.model.split, self.mesh.geometry.dim
         )
         if self.alpha_source == "degraded":
             if d is None:
@@ -166,7 +170,7 @@ class FatigueState:
 
     def bind_solver(self, solver: PhaseFieldSolver) -> None:
         """便捷绑定：从求解器取 u 与 d。"""
-        self.bind_displacement(solver.u, solver.d)
+        self.bind_displacement(solver.u, solver.d, eps=solver.elastic_strain_expr())
 
     def _require_bound(self) -> fem.Expression:
         if self._psi_expression is None:
@@ -387,7 +391,7 @@ class CycleJumpDriver:
         self.reports: list[JumpReport] = []
 
         psi_plus, _ = energy_split(
-            strain(solver.u),
+            solver.elastic_strain_expr(),
             solver.model.material,
             solver.model.split,
             solver.dim,

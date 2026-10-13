@@ -56,8 +56,8 @@ from pfwire.phasefield import (  # noqa: E402
     PhaseFieldSolver,
     SolverConfig,
     energy_split,
-    strain,
 )
+from pfwire.plasticity import J2Params, PlasticLaw  # noqa: E402
 
 
 def uniaxial_ratios(nu: float, split: str) -> dict[str, float]:
@@ -85,11 +85,16 @@ def uniaxial_ratios(nu: float, split: str) -> dict[str, float]:
     raise ValueError("split 只能取 'amor' 或 'spectral'，收到 %r" % (split,))
 
 
-def build_case(cfg: dict, material, sigma_a: float, alpha_T: float, kappa: float):
+def build_case(
+    cfg: dict, material, sigma_a: float, alpha_T: float, kappa: float,
+    plastic_prm: J2Params | None = None,
+):
     """建均匀试样：左边 u_x = 0、下边 u_y = 0，右边施加 σ(t)。
 
     这样 σ_yy = 0（上边自由），得到**平面应变下的单轴拉伸**应力状态 ——
     与生产工况里本体应力 σ_b 的加法一致。
+
+    plastic_prm 非空时挂上 J2 塑性（Phase 6.3.3）：求解器与 α̅ 累积都用 ε_e。
     """
     comm = MPI.COMM_WORLD
     mcfg = cfg["mesh"]
@@ -164,9 +169,10 @@ def build_case(cfg: dict, material, sigma_a: float, alpha_T: float, kappa: float
     # （初值取自 S-N 参考卡的 *_initial_guess）。
     form = material.fatigue_form
     state = FatigueState(msh, model, alpha_T=alpha_T, form=form, kappa=kappa)
+    law = PlasticLaw(msh, plastic_prm) if plastic_prm is not None else None
     solver = PhaseFieldSolver(
         msh, model, bcs_u=make_bcs, external_work=make_work,
-        f_alpha=state.f_alpha, config=solver_cfg,
+        f_alpha=state.f_alpha, config=solver_cfg, plastic=law,
     )
     state.bind_solver(solver)
 
@@ -176,7 +182,7 @@ def build_case(cfg: dict, material, sigma_a: float, alpha_T: float, kappa: float
         # R = -1：σ(t) = σ_a sin(2π t/T)，一个整周期覆盖拉与压
         traction.value = sigma_a * math.sin(2.0 * math.pi * float(phase))
 
-    psi_plus, _ = energy_split(strain(solver.u), material, model.split, 2)
+    psi_plus, _ = energy_split(solver.elastic_strain_expr(), material, model.split, 2)
     psi_form = fem.form(psi_plus * ufl.dx)
     area = msh.comm.allreduce(
         fem.assemble_scalar(fem.form(fem.Constant(msh, 1.0) * ufl.dx)), op=MPI.SUM
@@ -184,7 +190,7 @@ def build_case(cfg: dict, material, sigma_a: float, alpha_T: float, kappa: float
     return dict(
         mesh=msh, solver=solver, state=state, set_phase=set_phase,
         psi_form=psi_form, area=area, comm=comm, R=R, traction=traction,
-        sigma_a=sigma_a,
+        sigma_a=sigma_a, plastic=law,
     )
 
 
@@ -235,6 +241,55 @@ def measure_accumulation(case, cfg) -> dict:
         "analytic_cycle_over_1d": ana["cycle"],
         "r": d_alpha / psi_peak if psi_peak > 0 else float("nan"),
     }
+
+
+def run_cycles(case, cfg, n_cycles: int) -> list[dict]:
+    """第 6.3.3 步：逐周期推进（不做 cycle jump），记录每周期的驱动量。
+
+    每周期：相位 0→1 显式扫完（d 冻结，与 CycleJumpDriver.explicit_cycle 同序）→ 峰值相位
+    解 d（交错迭代）→ commit_step（有塑性时同步提交 (ε_p, p)）。cycle jump 对带塑性的求解器
+    仍被拒绝（D-64），所以塑性检验只能逐周期走。
+    返回每周期的 delta_alpha_cycle、psi_peak、max_d、max_eps_p。
+    """
+    comm, solver, state, law = case["comm"], case["solver"], case["state"], case["plastic"]
+    n_sub = int(cfg["loading"]["cycle"]["n_sub"])
+    records = []
+    for cycle in range(1, n_cycles + 1):
+        case["set_phase"](0.0)
+        solver.solve_displacement()
+        state.prime()
+        before = state.alpha_bar.x.array.copy()
+        for k in range(1, n_sub + 1):
+            case["set_phase"](k / n_sub)
+            solver.solve_displacement()
+            state.accumulate()
+        n_owned = state.n_owned
+        d_alpha = comm.allreduce(
+            float(np.max((state.alpha_bar.x.array - before)[:n_owned], initial=0.0)),
+            op=MPI.MAX,
+        )
+        case["set_phase"](0.25)
+        solver.solve_displacement()
+        psi_peak = comm.allreduce(
+            fem.assemble_scalar(case["psi_form"]), op=MPI.SUM
+        ) / case["area"]
+        result = solver.solve_step()
+        if not result.converged:
+            raise RuntimeError("第 %d 周期交错迭代未收敛：%s" % (cycle, result.failure_mode))
+        solver.commit_step()
+        max_eps_p = 0.0
+        if law is not None:
+            max_eps_p = comm.allreduce(
+                float(np.max(np.abs(law.ep_n.x.array), initial=0.0)), op=MPI.MAX
+            )
+        records.append({
+            "cycle": cycle,
+            "delta_alpha_cycle": d_alpha,
+            "psi_peak": psi_peak,
+            "max_d": solver.max_damage(),
+            "max_eps_p": max_eps_p,
+        })
+    return records
 
 
 def fit_parameters(targets, sigma_c, E, coeff, gamma) -> tuple[float, float, dict]:
