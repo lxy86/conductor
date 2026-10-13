@@ -103,38 +103,54 @@ def _trial(eps, eps_p_n, prm: J2Params):
     return ee, s_tr, sigma_eq_tr
 
 
-def return_map(eps, eps_p_n, p_n: float, prm: J2Params) -> ReturnMap:
-    """弹性试探 -> 判屈服 -> 径向返回（Simo & Hughes 1998, ch. 3）。"""
+def _check_degradation(g: float) -> float:
+    if not 0.0 <= g <= 1.0:
+        raise ValueError("损伤退化因子 g 须在 [0, 1] 内，得到 %r" % (g,))
+    return float(g)
+
+
+def return_map(eps, eps_p_n, p_n: float, prm: J2Params, g: float = 1.0) -> ReturnMap:
+    """弹性试探 -> 判屈服 -> 径向返回（Simo & Hughes 1998, ch. 3）。
+
+    ``g`` 为损伤退化因子 g(d)（D-62，B 口径）：屈服按**实际（退化后）**应力判断，
+        F = g · sigma_eq(s_tr) − (sigma_y0 + H p_n) ≤ 0，Δγ = (g σ_eq,tr − σ_y − H p_n)/(3G g + H)。
+    g = 1 时即无损伤的经典式。注意：返回的 ``sigma`` 是**未退化**的弹塑性应力；
+    退化后用于平衡的应力由能量 ∂E/∂ε_e 给出（见 PLAN §1.5），不是 ``sigma`` 乘 g。
+    """
+    g = _check_degradation(g)
     ee, s_tr, sig_eq_tr = _trial(eps, eps_p_n, prm)
-    f_tr = sig_eq_tr - (prm.sigma_y0 + prm.H * p_n)
+    f_tr = g * sig_eq_tr - (prm.sigma_y0 + prm.H * p_n)
     pressure_part = prm.K * np.trace(ee) * _I
     if f_tr <= 0.0:
         return ReturnMap(pressure_part + s_tr, np.array(eps_p_n, float), float(p_n), 0.0, False)
-    dgamma = f_tr / (3.0 * prm.G + prm.H)
+    dgamma = f_tr / (3.0 * prm.G * g + prm.H)
     n = s_tr / np.linalg.norm(s_tr)
     s = s_tr - 2.0 * prm.G * dgamma * np.sqrt(1.5) * n
     eps_p = np.asarray(eps_p_n, float) + dgamma * np.sqrt(1.5) * n
     return ReturnMap(pressure_part + s, eps_p, float(p_n + dgamma), float(dgamma), True)
 
 
-def consistent_tangent(eps, eps_p_n, p_n: float, prm: J2Params) -> np.ndarray:
+def consistent_tangent(eps, eps_p_n, p_n: float, prm: J2Params, g: float = 1.0) -> np.ndarray:
     """一致弹塑性切线 C_ep = d sigma / d eps，(3,3,3,3)（Simo & Hughes 1998, ch. 3）。
 
         弹性步：C = K 1⊗1 + 2G (I_sym − 1⊗1/3)
         塑性步：C = K 1⊗1 + 2G θ (I_sym − 1⊗1/3) − 2G θ̄ n⊗n
-        θ = 1 − 3G dgamma / sigma_eq_tr，  θ̄ = 3G/(3G+H) − (1 − θ)
+        θ = 1 − 3G dgamma / sigma_eq_tr，  θ̄ = 3Gg/(3Gg+H) − (1 − θ)
+
+    退化屈服（g < 1）只改 dgamma 对 sigma_eq_tr 的导数：g/(3Gg+H)，故 θ̄ 的第一项带 g。
     """
+    g = _check_degradation(g)
     ee, s_tr, sig_eq_tr = _trial(eps, eps_p_n, prm)
-    f_tr = sig_eq_tr - (prm.sigma_y0 + prm.H * p_n)
+    f_tr = g * sig_eq_tr - (prm.sigma_y0 + prm.H * p_n)
     I_sym = 0.5 * (np.einsum("ik,jl->ijkl", _I, _I) + np.einsum("il,jk->ijkl", _I, _I))
     vol = np.einsum("ij,kl->ijkl", _I, _I)
     dev_proj = I_sym - vol / 3.0
     G = prm.G
     if f_tr <= 0.0:
         return prm.K * vol + 2.0 * G * dev_proj
-    dgamma = f_tr / (3.0 * G + prm.H)
+    dgamma = f_tr / (3.0 * G * g + prm.H)
     theta = 1.0 - 3.0 * G * dgamma / sig_eq_tr
-    theta_bar = 3.0 * G / (3.0 * G + prm.H) - (1.0 - theta)
+    theta_bar = 3.0 * G * g / (3.0 * G * g + prm.H) - (1.0 - theta)
     n = s_tr / np.linalg.norm(s_tr)
     return (prm.K * vol + 2.0 * G * theta * dev_proj
             - 2.0 * G * theta_bar * np.einsum("ij,kl->ijkl", n, n))
@@ -164,10 +180,11 @@ def _embed_sym(a_xx, a_yy, a_xy, a_zz):
     return ufl.as_tensor([[a_xx, a_xy, 0.0], [a_xy, a_yy, 0.0], [0.0, 0.0, a_zz]])
 
 
-def stress_update_ufl(eps2, ep_n, p_n, prm: J2Params) -> UFLUpdate:
+def stress_update_ufl(eps2, ep_n, p_n, prm: J2Params, g=1.0) -> UFLUpdate:
     """平面应变返回映射的 UFL 表达式。
 
-    eps2：2x2 总应变（UFL）；ep_n：3 分量 (xx, yy, xy) 的历史塑性应变；p_n：历史 p。
+    eps2：2x2 总应变（UFL）；ep_n：3 分量 (xx, yy, xy) 的历史塑性应变；p_n：历史 p；
+    g：损伤退化因子 g(d)，可为常数或 UFL 表达式（D-62，见 ``return_map``）。
     ε_zz = 0、塑性不可压 ⇒ ε_p,zz = −(ε_p,xx + ε_p,yy)，ε_e,zz = −ε_p,zz。
     判屈服用 ufl.conditional；对它求导（derivative）即得一致切线，不需要手推进求解器。
     """
@@ -182,8 +199,8 @@ def stress_update_ufl(eps2, ep_n, p_n, prm: J2Params) -> UFLUpdate:
     s_tr = 2.0 * G * (ee3 - tr / 3.0 * I3)
     delta = _NORM_SOFTENING * prm.sigma_y0
     norm = ufl.sqrt(ufl.inner(s_tr, s_tr) + delta**2)
-    f_tr = 1.5**0.5 * norm - (prm.sigma_y0 + prm.H * p_n)
-    dgamma = ufl.conditional(ufl.gt(f_tr, 0.0), f_tr / (3.0 * G + prm.H), 0.0)
+    f_tr = 1.5**0.5 * norm * g - (prm.sigma_y0 + prm.H * p_n)
+    dgamma = ufl.conditional(ufl.gt(f_tr, 0.0), f_tr / (3.0 * G * g + prm.H), 0.0)
     n = s_tr / norm
     s = s_tr - 2.0 * G * 1.5**0.5 * dgamma * n
     sigma3 = K * tr * I3 + s
@@ -217,25 +234,26 @@ class PlasticLaw:
         import ufl
         return ufl.sym(ufl.grad(u))
 
-    def update(self, u) -> UFLUpdate:
-        return stress_update_ufl(self.strain(u), self.ep_n, self.p_n, self.prm)
+    def update(self, u, g=1.0) -> UFLUpdate:
+        return stress_update_ufl(self.strain(u), self.ep_n, self.p_n, self.prm, g=g)
 
-    def sigma(self, u):
-        return self.update(u).sigma
+    def sigma(self, u, g=1.0):
+        return self.update(u, g).sigma
 
-    def elastic_strain(self, u):
-        """ε_e = ε − ε_p（2x2 平面内分量），给 Phase 6 的 ψ⁺ 用。"""
+    def elastic_strain(self, u, g=1.0):
+        """ε_e = ε − ε_p（2x2 平面内分量），给 Phase 6 的 ψ⁺ 用。g 同 ``update``。"""
         import ufl
-        e = self.update(u).ee3
+        e = self.update(u, g).ee3
         return ufl.as_tensor([[e[0, 0], e[0, 1]], [e[1, 0], e[1, 1]]])
 
-    def commit(self, u, cells=None) -> None:
+    def commit(self, u, cells=None, g=1.0) -> None:
         """收敛后把本步 (ε_p, p) 写回历史（在 DG 节点处对表达式插值）。
 
         cells 给定时只更新这些单元（多体问题里只更新塑性体，别的体的历史保持为 0）。
+        g 为本步的损伤退化因子（UFL 或常数），须与求解时用的一致。
         """
         from dolfinx import fem
-        upd = self.update(u)
+        upd = self.update(u, g)
         ep_tmp, p_tmp = fem.Function(self.V_ep), fem.Function(self.V_p)
         kw = {} if cells is None else {"cells0": cells}
         ep_tmp.interpolate(fem.Expression(upd.ep_new, self.V_ep.element.interpolation_points), **kw)
