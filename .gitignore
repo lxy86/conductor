@@ -37,3 +37,14 @@ data/_probe_snap/
 
 # 外部源码依赖（asimov-contact），由 scripts/setup_env.sh 按固定 commit 拉取
 .ext/
+
+# 一次性诊断脚本（data/_*.py）与输出（data/_*.out）：同上，结论进 DECISIONS.md、检查进 tests/。
+data/_*.py
+data/_*.out
+data/_study_done.txt
+# 从 Lévesque 2011 全文提取的文本（data/_triboint2011.txt）：参考文献版权材料，同 *.pdf 不入库。
+# 材料卡 sources.* 中的引用行号仍可据此对照原文。
+data/_triboint2011.txt
+
+# 测试产生的 ADIOS 缓存（test_phasefield 的 linear/newton 对比写入），不入库。
+results/
