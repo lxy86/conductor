@@ -87,7 +87,16 @@ class ClampLoads:
     """
 
     def __init__(self, mesh, facet_tags, *, H: float, sigma_a: float, T: float,
-                 side: str = "right") -> None:
+                 side: str = "right", self_equilibrated: bool = False) -> None:
+        """``self_equilibrated=True`` 时弯矩与轴力在**两端反向**施加（自平衡）。
+
+        为什么要这个选项：单端加载 +「左端 u_x = 0」的约束下，块体近似自由，
+        罚接触力把块推走、压力建立不起来（实测 W 只有 6.1 底面固定时的 1/23）。
+        而弯矩若靠「两端钉死」来提供反力矩，端部转动被约束掉，又测不到 σ_a。
+        自平衡的两端加载让**载荷自身**合力与合力矩为零，于是底面可以全固定
+        （与 6.1 的 ObstacleContact 一致，接触压力能正常建立），同时端部转动
+        不受约束（弯曲照常）。左端面力取反号：n = (−1, 0)。
+        """
         self.mesh = mesh
         self.facet_tags = facet_tags
         self.H = _positive(H, "H")
@@ -96,7 +105,9 @@ class ClampLoads:
         if side not in ("right", "left"):
             raise ValueError("side 只能取 'right' 或 'left'，收到 %r" % (side,))
         self.side = side
+        self.self_equilibrated = bool(self_equilibrated)
         self.tag = BLOCK_RIGHT if side == "right" else BLOCK_LEFT
+        self.tag_opposite = BLOCK_LEFT if side == "right" else BLOCK_RIGHT
         self.M_a = bending_moment_amplitude(self.sigma_a, self.H)
         # 相位做成 Constant：切换相位只改 .value，不重编译（D-67 §3，D-16）
         self.phase = fem.Constant(mesh, default_scalar_type(0.0))
@@ -138,6 +149,12 @@ class ClampLoads:
 
         def make(V):
             v = ufl.TestFunction(V)
-            return ufl.dot(ufl.as_vector([self.traction_x(y_grid), 0.0]), v) * self.ds(self.tag)
+            tx = self.traction_x(y_grid)
+            form = ufl.dot(ufl.as_vector([tx, 0.0]), v) * self.ds(self.tag)
+            if self.self_equilibrated:
+                # 对面施加**反向**的同一分布：合力与合力矩都抵消，整体自平衡
+                form = form + ufl.dot(ufl.as_vector([-tx, 0.0]), v) * self.ds(
+                    self.tag_opposite)
+            return form
 
         return make

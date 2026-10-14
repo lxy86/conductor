@@ -424,9 +424,11 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
                          R_clamp=float(cc["R_clamp"]), kappa=float(cc["kappa"]),
                          h_contact=h_contact)
     ld = raw["loading"]
+    self_eq = bool(ld.get("self_equilibrated", False))
     loads = ClampLoads(msh, facet_tags, H=float(ld["H"]),
                        sigma_a=float(ld["sigma_a"]), T=float(ld["T_prime"]),
-                       side=str(ld.get("side", "right")))
+                       side=str(ld.get("side", "right")),
+                       self_equilibrated=self_eq)
 
     # --- 求解器：plastic + contact，必须 newton ---
     model = PhaseFieldModel(material=material, split="spectral", k_res=1.0e-6)
@@ -440,7 +442,12 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
                        snes_max_it=int(sv.get("snes_max_it", 200)))
 
     def bcs_u(V):
-        return end_bcs(V, msh, facet_tags)
+        # 构型由 loading.support 选：simply_supported（两端简支）/ bottom（竖向支撑）
+        # / free（D-67 §3 原文）。见 end_bcs 的实测对比。
+        support = str(raw["loading"].get("support", "free"))
+        return end_bcs(V, msh, facet_tags,
+                       simply_supported=(support == "simply_supported"),
+                       bottom_fixed=(support == "bottom"))
 
     alpha_T, form, kappa_f = material.require_fatigue_params()
     state = FatigueState(msh, model, alpha_T=alpha_T, form=form, kappa=kappa_f)
@@ -500,25 +507,51 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
     return case
 
 
-def end_bcs(V, msh, facet_tags):
-    """基准工况的位移约束：左端 u_x = 0、底边中点 u_y = 0（D-67 §3）。
+def end_bcs(V, msh, facet_tags, *, bottom_fixed: bool = False,
+            simply_supported: bool = False):
+    """基准工况的位移约束。三种构型（互斥）：
 
-    左端**只压 x 分量**：完全钉住端面会把弯曲挡在外面（端部无法转动/错动），
-    远场就测不到 σ_a（T3c 校验的就是这一点）。只压 x 恰好消掉轴向刚体平移；
-    竖直平移与刚体转动由底边中点那个单点 u_y = 0 约束掉。
+    ``simply_supported=True``：**两端简支**。左端 u_x = u_y = 0，右端 u_y = 0
+    （u_x 自由，让轴力 T' 能传）。接触反力由远端支座承担，而支座离接触区
+    20 mm（5.3 H），圣维南衰减后不干扰接触区与弯曲——这是局部压入 + 弯曲的
+    标准构型，也是唯一一个同时满足「接触顶得住」与「弯曲不被约束」的构型。
 
-    写法照 fretting.py 的既有约定：值给标量、空间给 ``V.sub(i)``、dofs 用
-    ``locate_dofs_topological(V.sub(i), ...)``（不 collapse）。子空间不能
-    ``tabulate_dof_coordinates``，故坐标从父空间 V 取。
+    ``bottom_fixed=True``：底面竖向支撑（u_y = 0、u_x 自由）。接触能顶住
+    （W 正常），但实测这种支撑下 σ_a 只剩目标的 15%——底边全长不能变形，
+    弯曲被支座约束掉了。
+
+    两者都 False（D-67 §3 原文）：左端 u_x = 0、底边中点 u_y = 0。块体近似
+    自由，接触力把它推走、压力建立不起来（实测 W 只有 1/23）。
     """
     import math
 
     import numpy as np
     from dolfinx import default_scalar_type, fem
 
-    from pfwire.mesh import BLOCK_BOTTOM, BLOCK_LEFT
+    from pfwire.mesh import BLOCK_BOTTOM, BLOCK_LEFT, BLOCK_RIGHT
 
     fdim = msh.topology.dim - 1
+    if simply_supported:
+        # 两端简支：左端全固定，右端只压 y（u_x 自由，轴力可传）
+        return [
+            fem.dirichletbc(
+                np.zeros(msh.geometry.dim, dtype=default_scalar_type),
+                fem.locate_dofs_topological(V, fdim, facet_tags.find(BLOCK_LEFT)), V),
+            fem.dirichletbc(default_scalar_type(0.0),
+                            fem.locate_dofs_topological(
+                                V.sub(1), fdim, facet_tags.find(BLOCK_RIGHT)),
+                            V.sub(1)),
+        ]
+    if bottom_fixed:
+        # **只压 u_y，u_x 自由**（简支梁式竖向支撑）：
+        #   - 竖向约束给接触提供了"顶住"的反力（否则接触压力建立不起来，实测 W
+        #     只有 1/23）；
+        #   - 轴向必须自由，否则底边不能伸长/缩短，弯曲被约束掉——底面全约束
+        #     （u_x=u_y=0）实测让 σ_a 只剩目标的 15%。
+        return [fem.dirichletbc(default_scalar_type(0.0),
+                                fem.locate_dofs_topological(
+                                    V.sub(1), fdim, facet_tags.find(BLOCK_BOTTOM)),
+                                V.sub(1))]
     Vx, Vy = V.sub(0), V.sub(1)
     bcs = [fem.dirichletbc(default_scalar_type(0.0),
                            fem.locate_dofs_topological(Vx, fdim, facet_tags.find(BLOCK_LEFT)),
@@ -658,7 +691,9 @@ def kappa_sensitivity(case: ClampCase, kappa_alt: float) -> dict:
         F = (ufl.inner(sig, ufl.sym(ufl.grad(v))) * ufl.dx
              - clamp.residual(u, v))
         problem = NonlinearProblem(
-            F, u, bcs=end_bcs(V, msh, ft), petsc_options_prefix="clamp_kappa_",
+            F, u, bcs=end_bcs(V, msh, ft, bottom_fixed=bool(
+                case.config["loading"].get("self_equilibrated", False))),
+            petsc_options_prefix="clamp_kappa_",
             petsc_options={"snes_type": "newtonls", "snes_linesearch_type": "bt",
                            "snes_rtol": 1.0e-10, "snes_atol": 1.0e-10,
                            "snes_max_it": 60, "ksp_type": "preonly", "pc_type": "lu",

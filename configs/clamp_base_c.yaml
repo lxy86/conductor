@@ -40,6 +40,8 @@ loading:
     zero_tol: 1.0e-10
     decay_ratio: 0.5
     n_check: 5
+  self_equilibrated: true
+  support: simply_supported
 nucleation:
   threshold: 0.95
   nucleation_depth: 6.0e-06
