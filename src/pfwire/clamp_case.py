@@ -395,8 +395,16 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
             boxes = [(-0.5e-3, 0.5e-3, -0.3e-3, 0.0)]
             h_fine, h_coarse, transition = 50.0e-6, 750.0e-6, 0.3e-3
         else:
-            h_fine, h_coarse = float(el["h_fine"]), float(el["h_coarse"])
-            transition = float(el["transition"])
+            # ``mesh.edge_target`` 可覆盖 clamp_mesh.yaml 的单元边长（降规模用）。
+            # gmsh 的设定值 h 与实际边长之比是 edge_ratio（实测 0.45，D-58）。
+            edge = float(raw["mesh"].get("edge_target", el["edge_target"]))
+            h_fine = edge / float(el["edge_ratio"])
+            h_coarse, transition = float(el["h_coarse"]), float(el["transition"])
+            # ``mesh.refine_boxes`` 可覆盖布局 C 的两条裂纹带（6.1 尺度下用一整个
+            # 覆盖接触区的盒子即可，单元数从 145 万降到 7 千）。
+            if raw["mesh"].get("refine_boxes"):
+                boxes = [tuple(float(v) for v in b)
+                         for b in raw["mesh"]["refine_boxes"]]
         msh, _ct, facet_tags = block_mesh(
             workdir, width=float(geo["width"]), depth=H, refine_boxes=boxes,
             h_fine=h_fine, h_coarse=h_coarse, transition=transition, comm=comm)
@@ -406,8 +414,12 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
     cc = raw["contact"]
     # h_contact 是**接触面的实际单元边长**，罚刚度 ε = κE/h 必须与它匹配：
     # 按 0.5 µm 算而网格实际是 50 µm 时，ε 大了 100 倍，首个延拓步的罚压力就到
-    # 1e12 Pa 量级、Newton 直接出 NaN（实测 SNES -9）。tiny 网格下跟随 h_fine。
-    h_contact = float(cc["h_contact"]) if not raw["mesh"].get("tiny") else h_fine_eff
+    # 1e12 Pa 量级、Newton 直接出 NaN（实测 SNES -9）。故 tiny 与降规模网格都跟随
+    # 实际的加密带尺寸（h_fine_eff × edge_ratio = 实际单元边长）。
+    edge_eff = float(raw["mesh"].get("edge_target", el["edge_target"]))
+    h_contact = (float(cc["h_contact"]) if not raw["mesh"].get("tiny")
+                 and edge_eff == float(el["edge_target"])
+                 else h_fine_eff * float(el["edge_ratio"]))
     clamp = ClampContact(msh, facet_tags, E=material.elastic.E,
                          R_clamp=float(cc["R_clamp"]), kappa=float(cc["kappa"]),
                          h_contact=h_contact)
@@ -543,8 +555,44 @@ def find_working_delta(case: ClampCase, W_target: float, *, delta0: float = 17.0
 DELTA_STEPS = 12
 
 
+#: δ 延拓的**第一步**的罚压力目标（Pa）。
+#:
+#: 必须延拓，且**首步必须极小**：初值 u = 0 时线夹已压到 δ，穿透就是 δ 本身，
+#: 罚压力 p = ε·δ = (κE/h)·δ。h = 0.5 µm（布局 C）时 ε ≈ 1.4e18，δ = 1 µm 就给出
+#: 1.4e12 Pa —— 比 σ_y 高 4 个数量级，Newton 从这样的初值起步必然发散
+#: （实测 SNES -6/-9）。6.1 的 h_contact = 50 µm 时 ε 小 10 万倍，故它用 12 步
+#: 等间距延拓就够了；细网格上必须让首步的罚压力落在材料承载量级。
+RAMP_P0 = 1.0e7
+#: 延拓步长的几何增长因子（δ_{k+1} = factor · δ_k）。
+RAMP_FACTOR = 1.6
+#: 延拓步数上限（兜底，防 δ₀ 极大时步数失控）。
+RAMP_MAX_STEPS = 80
+
+
+def _ramp_plan(delta: float, eps: float, p0: float = RAMP_P0,
+               factor: float = RAMP_FACTOR, max_steps: int = RAMP_MAX_STEPS
+               ) -> list[float]:
+    """生成 δ 延拓序列：首步使罚压力 ≈ p0，之后按 ``factor`` 几何增长到 ``delta``。
+
+    末步严格等于 ``delta``（不因几何取整而偏）。
+    """
+    if delta <= 0.0:
+        return []
+    d1 = min(delta, p0 / eps)                 # 首步：ε·d1 = p0
+    if d1 >= delta:
+        return [delta]
+    n = int(math.ceil(math.log(delta / d1) / math.log(factor)))
+    n = max(1, min(n, int(max_steps)))
+    seq = list(d1 * factor ** np.arange(n))
+    if seq[-1] < delta * (1.0 - 1.0e-12):
+        seq.append(delta)
+    else:
+        seq[-1] = delta
+    return [float(x) for x in seq]
+
+
 def _ramp_to(case: ClampCase, delta: float, steps: int = DELTA_STEPS) -> None:
-    """把 δ 从当前位置分 ``steps`` 步推到 ``delta``（延拓），每步解一次平衡。
+    """把 δ 从当前位置沿延拓序列推到 ``delta``，每步解一次平衡。
 
     只在目标比当前**更深**时推进；变浅（割线法回退）时直接设值——接触是
     单调加载下才需要延拓，卸载不发散。
@@ -556,7 +604,10 @@ def _ramp_to(case: ClampCase, delta: float, steps: int = DELTA_STEPS) -> None:
         case.set_delta(delta)
         case.solver.solve_displacement()
         return
-    for d in np.linspace(current, delta, steps + 1)[1:]:
+    eps = case.clamp.eps
+    for d in _ramp_plan(delta, eps):
+        if d <= current:
+            continue
         case.set_delta(float(d))
         case.solver.solve_displacement()
 
@@ -612,8 +663,9 @@ def kappa_sensitivity(case: ClampCase, kappa_alt: float) -> dict:
                            "snes_rtol": 1.0e-10, "snes_atol": 1.0e-10,
                            "snes_max_it": 60, "ksp_type": "preonly", "pc_type": "lu",
                            "pc_factor_mat_solver_type": "mumps"})
-        # δ 延拓：一次性压到 δ 会让初始罚压力 ~1e13 Pa，Newton 从 u=0 起步发散
-        for d in np.linspace(0.0, case.delta, DELTA_STEPS + 1)[1:]:
+        # δ 延拓：一次性压到 δ 会让初始罚压力远超 σ_y，Newton 从 u=0 起步发散。
+        # 首步按「罚压力 ≈ RAMP_P0」定，之后几何增长（见 _ramp_plan）。
+        for d in _ramp_plan(case.delta, clamp.eps):
             clamp.set_delta(float(d))
             problem.solve()
             if problem.solver.getConvergedReason() <= 0:
