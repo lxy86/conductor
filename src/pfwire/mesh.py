@@ -642,6 +642,9 @@ def fretting_mesh(
 # 加密区由若干轴对齐矩形盒给出，盒内尺寸 h_fine，盒外 h_coarse，过渡厚度 transition。
 # --------------------------------------------------------------------------
 BLOCK_TOP, BLOCK_BOTTOM = 2, 3
+#: 左右两个端面（6.5 加）。端面 tag 用于端部载荷 t_x(y) 与 u_x = 0 的约束
+#: （D-67 §3）。此前只有上下两个面，端面无从定位。
+BLOCK_LEFT, BLOCK_RIGHT = 4, 5
 
 
 def block_mesh(workdir, *, width: float, depth: float, refine_boxes, h_fine: float,
@@ -674,6 +677,10 @@ def block_mesh(workdir, *, width: float, depth: float, refine_boxes, h_fine: flo
                 gmsh.model.addPhysicalGroup(1, [e], tag=BLOCK_TOP)
             elif abs(bb[1] + depth) < tol and abs(bb[4] + depth) < tol:
                 gmsh.model.addPhysicalGroup(1, [e], tag=BLOCK_BOTTOM)
+            elif abs(bb[0] + 0.5 * width) < tol and abs(bb[3] + 0.5 * width) < tol:
+                gmsh.model.addPhysicalGroup(1, [e], tag=BLOCK_LEFT)
+            elif abs(bb[0] - 0.5 * width) < tol and abs(bb[3] - 0.5 * width) < tol:
+                gmsh.model.addPhysicalGroup(1, [e], tag=BLOCK_RIGHT)
         boxes = []
         for i, (x0, x1, y0, y1) in enumerate(refine_boxes):
             fid = 1 + i
