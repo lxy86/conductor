@@ -462,7 +462,8 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
     solver = PhaseFieldSolver(
         msh, model, bcs_u=bcs_u, external_work=loads.traction(),
         f_alpha=state.f_alpha, config=cfg,
-        plastic=PlasticLaw(msh, load_j2_params(root / raw["material"])),
+        plastic=(None if raw.get("no_plastic")
+                 else PlasticLaw(msh, load_j2_params(root / raw["material"]))),
         contact=clamp)
     state.bind_solver(solver)
 
@@ -619,15 +620,30 @@ RAMP_MAX_STEPS = 80
 
 
 def _ramp_plan(delta: float, eps: float, p0: float = RAMP_P0,
-               factor: float = RAMP_FACTOR, max_steps: int = RAMP_MAX_STEPS
+               factor: float = RAMP_FACTOR, max_steps: int = RAMP_MAX_STEPS,
+               h_contact: float | None = None, R_clamp: float | None = None
                ) -> list[float]:
-    """生成 δ 延拓序列：首步使罚压力 ≈ p0，之后按 ``factor`` 几何增长到 ``delta``。
+    """生成 δ 延拓序列：首步取两个下限里的大者，之后按 ``factor`` 几何增长。
 
-    末步严格等于 ``delta``（不因几何取整而偏）。
+    首步的两个下限：
+      1. **罚压力**：ε·d₁ ≈ p0（避免 Newton 从超 σ_y 的初值起步）；
+      2. **接触区可分辨**：a = √(R·d₁) ≥ 5·h_contact，即 d₁ ≥ 25 h²/R。
+
+    为什么要第二个下限：只按罚压力定首步时，d₁ 会小到接触区不足一个单元
+    ——积分点上 g 的符号剧烈跳变，残差不连续，Newton 报 -6（实测：δ 到
+    1.2e-8 时 W ≡ 0 完全没接触，下一步 δ=1.9e-8 首次接触即 -6）。
+
+    ⚠ 两个下限必须**相容**，否则无解：
+        25h²/R ≤ 2σ_y h/(κE)   ⟺   h ≤ 2σ_y R/(25κE)
+    σ_y = 1.67e8、R = 0.33 m、E = 69e9 时，κ = 10 要求 h ≤ 6.4 µm——
+    **6.1 的 h = 50 µm 在 κ = 10 下无解**（这就是单侧线夹跑不通的根因）；
+    κ = 1 时要求 h ≤ 64 µm，50 µm 才落进去。κ 的取值因此不是自由的。
     """
     if delta <= 0.0:
         return []
-    d1 = min(delta, p0 / eps)                 # 首步：ε·d1 = p0
+    d1 = p0 / eps
+    if h_contact is not None and R_clamp is not None and R_clamp > 0.0:
+        d1 = max(d1, 25.0 * h_contact**2 / R_clamp)
     if d1 >= delta:
         return [delta]
     n = int(math.ceil(math.log(delta / d1) / math.log(factor)))
@@ -654,7 +670,8 @@ def _ramp_to(case: ClampCase, delta: float, steps: int = DELTA_STEPS) -> None:
         case.solver.solve_displacement()
         return
     eps = case.clamp.eps
-    for d in _ramp_plan(delta, eps):
+    for d in _ramp_plan(delta, eps, h_contact=getattr(case, "h_contact", None),
+                        R_clamp=case.clamp.R_clamp):
         if d <= current:
             continue
         case.set_delta(float(d))
@@ -716,7 +733,9 @@ def kappa_sensitivity(case: ClampCase, kappa_alt: float) -> dict:
                            "pc_factor_mat_solver_type": "mumps"})
         # δ 延拓：一次性压到 δ 会让初始罚压力远超 σ_y，Newton 从 u=0 起步发散。
         # 首步按「罚压力 ≈ RAMP_P0」定，之后几何增长（见 _ramp_plan）。
-        for d in _ramp_plan(case.delta, clamp.eps):
+        for d in _ramp_plan(case.delta, clamp.eps,
+                            h_contact=clamp.h_contact if hasattr(clamp, "h_contact") else None,
+                            R_clamp=clamp.R_clamp):
             clamp.set_delta(float(d))
             problem.solve()
             if problem.solver.getConvergedReason() <= 0:

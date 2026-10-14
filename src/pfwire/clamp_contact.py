@@ -82,13 +82,14 @@ class ClampContact:
     def set_delta(self, delta: float) -> None:
         """线夹下压位置（绝对值，m）。由求解器的外层（W' 搜索或延拓）调用。
 
-        对称模式下**上下各走 δ/2**，故相对压缩量仍是 δ（与单侧模式的 W(δ)
-        可比）：δ 是「总相对压缩」，不是单个线夹的行程。
+        delta 是**每个线夹的行程**（对称模式下上下各走 δ，总相对接近量 2δ）。
+        这样单侧穿透量 = δ，与单侧模式的 W(δ)、以及 6.1 的结果可比。
+        语义来自 Lévesque 2011："a displacement is applied to the middle of the
+        wire"——夹持位移就是两个线夹的相对接近量，对称时每侧各分担一半。
         """
         self.delta.value = float(delta)
         if self.symmetric:
-            self.delta.value = 0.5 * float(delta)
-            self.delta_low.value = 0.5 * float(delta)
+            self.delta_low.value = float(delta)   # 上下同行程，相对接近量 2δ
 
     def _pressure_and_normal(self, u):
         x = ufl.SpatialCoordinate(self.mesh) + u

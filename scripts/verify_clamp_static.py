@@ -58,7 +58,7 @@ def main(argv=None) -> int:
     # ---- 1) δ 延拓曲线 ----
     # 必须用 _ramp_plan（首步按罚压力定）而不是等分：等分的首步 δ₁ = δ₀/12
     # 给出罚压力 ε·δ₁ ≈ 1e10 Pa，超 σ_y 两个数量级，Newton 从 u=0 起步发散。
-    seq = _ramp_plan(delta0, case.clamp.eps)
+    seq = _ramp_plan(delta0, case.clamp.eps, h_contact=case.h_contact, R_clamp=case.clamp.R_clamp)
     say("")
     say("δ 延拓（%d 步，首步 δ=%.3g µm）：" % (len(seq), 1e6 * seq[0]))
     curve = []
@@ -76,6 +76,9 @@ def main(argv=None) -> int:
         say("  步 %2d δ=%7.3f µm  W=%.6g N/m  （%.0f s）"
             % (i + 1, 1e6 * d, W, time.perf_counter() - t1))
     report["ramp_curve"] = curve
+    if args.delta_only:
+        _write(report, raw)
+        return 0 if monotone else 1
     if not curve:
         say("")
         say("静态验证未通过：δ 延拓第一步就失败")
@@ -87,35 +90,44 @@ def main(argv=None) -> int:
     say("")
     say("  W(δ) 单调增：%s（末值 %.6g）" % ("是" if monotone else "**否**", Ws[-1]))
 
-    if args.delta_only:
-        _write(report, raw)
-        return 0 if monotone else 1
-
     # ---- 2) W' 搜索 ----
     say("")
     say("W' 搜索（目标 %.6g N/m，容差 1%%）：" % W_target)
-    if Ws[-1] >= W_target:
-        say("  δ₀ 处 W = %.6g 已 >= W'，可在此基础上继续（本脚本不反搜）" % Ws[-1])
-        report["search"] = {"status": "delta0_already_above", "W_at_delta0": float(Ws[-1])}
-    else:
-        say("  δ₀ 处 W = %.6g < W' = %.6g（差 %.2f 倍），需外推到更大的 δ"
-            % (Ws[-1], W_target, W_target / Ws[-1] if Ws[-1] else float("inf")))
-        report["search"] = {"status": "needs_extrapolation", "W_at_delta0": float(Ws[-1])}
+    t1 = time.perf_counter()
+    try:
+        from pfwire.clamp_case import find_working_delta
+        delta_star = find_working_delta(case, W_target, delta0=delta0,
+                                        rtol=1.0e-2, max_iter=20)
+        W_star = case.clamp.reaction(case.solver.u)
+        say("  δ* = %.4g µm，W = %.6g（偏差 %.3f%%，%.0f s）"
+            % (1e6 * delta_star, W_star, 100 * abs(W_star - W_target) / W_target,
+               time.perf_counter() - t1))
+        report["search"] = {"status": "converged", "delta_star": float(delta_star),
+                            "W": float(W_star),
+                            "rel": float(abs(W_star - W_target) / W_target)}
+    except RuntimeError as exc:
+        say("  ⚠ 搜索失败：%s" % exc)
+        report["search"] = {"status": "failed", "error": str(exc)}
 
-    # ---- 3) 远场 σ_xx 幅值 ----
-    # 必须先设相位：ClampLoads 构造时 phase = 0（M = 0），不设就只有轴力 T' 和
-    # 接触，测到的 σ_xx 全是接触压力的贡献（实测那样会读到「远端衰减到 0」，
-    # 看起来像弯矩没传进去，其实是压根没施加）。
+    # ---- 3) 端部弯矩的自洽性（**无接触**下验 σ_a）----
+    # 有接触时不验 σ_a：线夹压紧本身是跨中的横向集中力（W ~ 1e6 N/m），
+    # 梁成三点弯曲构型，弯矩沿 x 线性变化，没有「远场等弯矩」这回事
+    # （实测 x=3.5 mm 处 9.9e7、x=10 mm 处 1.1e4，差四个数量级）。
+    # 端部加载 σ_a 的校验是 T3c，在**无接触纯弯曲**下做（偏差 0.46%）。
     say("")
-    say("远场 σ_xx 幅值（目标 σ_a = %.6g Pa）：" % float(raw["loading"]["sigma_a"]))
+    say("端部弯矩自洽性（有接触时「远场 σ_a」不适用，见上）：")
+    case.clamp.set_delta(0.0)
+    case.solver.solve_displacement()
     case.loads.set_phase(1.0)
     case.solver.solve_displacement()
-    sigma_a_fe = _far_field_sigma_a(case)
-    if sigma_a_fe is not None:
-        rel = abs(sigma_a_fe - float(raw["loading"]["sigma_a"])) / float(raw["loading"]["sigma_a"])
-        say("  σ_xx 幅值 = %.6g Pa，偏差 %.3f%%" % (sigma_a_fe, 100 * rel))
-        report["sigma_a_fe"] = sigma_a_fe
-        report["sigma_a_rel_err"] = float(rel)
+    sigma_a_free = _far_field_sigma_a(case, x_center=3.5e-3)
+    if sigma_a_free is not None:
+        rel = abs(sigma_a_free - float(raw["loading"]["sigma_a"])) / float(
+            raw["loading"]["sigma_a"])
+        say("  无接触纯弯曲：σ_xx 幅值 = %.6g Pa，偏差 %.3f%%"
+            % (sigma_a_free, 100 * rel))
+        report["sigma_a_free"] = sigma_a_free
+        report["sigma_a_free_rel_err"] = float(rel)
 
     _write(report, raw)
     say("")

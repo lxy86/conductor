@@ -72,7 +72,9 @@ def clamp_normal_lower(x, R_clamp: float, delta_low, y_bottom: float) -> object:
     """
     c = lower_clamp_center(R_clamp, delta_low, y_bottom)
     r = x - c
-    return -r / ufl.sqrt(ufl.inner(r, r))
+    # 圆心在下方，r 指向上方，故**不加负号**：与 clamp_normal 一样是 r/|r|。
+    # （上侧的 r 指向下方，r/|r| 自然给出朝下的推力；两侧同式。）
+    return r / ufl.sqrt(ufl.inner(r, r))
 
 
 def plane_gap(x, y_plane: float) -> object:
