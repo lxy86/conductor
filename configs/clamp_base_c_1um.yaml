@@ -1,0 +1,79 @@
+case: clamp_base_c_1um
+case_type: clamp
+material: configs/material_al1350.yaml
+mesh:
+  from_config: configs/clamp_mesh.yaml
+  layout: C
+  workdir: data/clamp_mesh_C_1um
+  edge_target: 5.0e-05
+  refine_boxes:
+  - - -0.0035
+    - 0.0035
+    - -0.0003
+    - 0.0
+    - 5.0e-05
+  - - 0.002717
+    - 0.003117
+    - -0.00012
+    - 0.0
+    - 1.0e-06
+  - - -0.003117
+    - -0.002717
+    - -0.00012
+    - 0.0
+    - 1.0e-06
+contact:
+  R_clamp: 0.33
+  kappa: 10.0
+  kappa_sens: 1.0
+  h_contact: 5.0e-05
+  symmetric: true
+loading:
+  W_target: 1750000.0
+  delta0: 1.7e-05
+  search:
+    rtol: 0.01
+    max_iter: 20
+  sigma_a: 45.0e6
+  T_prime: 1.0e4
+  H: 0.00375
+  side: right
+  cycle:
+    n_sub: 20
+    dN_init: 1.0
+    dN_min: 1.0
+    dN_max: 1.0e4
+    dd_max: 0.02
+    grow_below: 0.01
+    factor: 1.5
+    N_max: 2.0e7
+    peak_phase: 0.25
+  shakedown:
+    zero_tol: 1.0e-10
+    decay_ratio: 0.5
+    n_check: 5
+  self_equilibrated: true
+  support: free
+nucleation:
+  threshold: 0.95
+  nucleation_depth: 6.0e-06
+  turn_depth: 0.0001
+  incline_deg: 10.0
+  turn_deg: 20.0
+  x_init_tol: 0.002389
+sampling:
+  halfwidth: 0.003517
+  depth_max: 0.00015
+  spacing: 1.0e-06
+solver:
+  u_solver: newton
+  tol_d: 0.0001
+  max_iter: 50
+  u_linesearch: bt
+  snes_rtol: 1.0e-10
+  snes_atol: 1.0e-06
+  snes_max_it: 60
+output:
+  dir: data/clamp_base_c_1um
+  save_every: 10
+  dump_every: 10

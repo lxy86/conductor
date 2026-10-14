@@ -1,0 +1,90 @@
+case: clamp_base_c_A
+case_type: clamp
+material: configs/material_al1350.yaml
+
+# A 方案网格：接触盒 130 µm（D-1 的 2a/h ≈ 47 个单元）+ 裂纹带 5 µm。
+# ℓ = 2 µm（D-28 批选，不改材料参数），故裂纹带 h = 2.5ℓ —— **偏粗**，
+# 是「降精度换可跑」的近似（D-68）。ℓ/4 = 0.5 µm 的带要 ≥ 18.8 万单元，
+# 6 核机器上跑不完。
+mesh:
+  from_config: configs/clamp_mesh.yaml
+  layout: C
+  workdir: data/clamp_mesh_C_A
+  edge_target: 130.0e-6
+  refine_boxes:
+  - - -0.0035        # 接触区盒：±3.5 mm（a ≈ 3 mm），h = 130 µm
+    - 0.0035
+    - -0.0003
+    - 0.0
+    - 130.0e-6
+  - - 0.002617       # 裂纹带 1：接触边缘 +a_contact ± 0.3 mm，深 0.15 mm
+    - 0.003217
+    - -0.00015
+    - 0.0
+    - 5.0e-6
+  - - -0.003217      # 裂纹带 2：−a_contact ± 0.3 mm
+    - -0.002617
+    - -0.00015
+    - 0.0
+    - 5.0e-6
+
+contact:
+  R_clamp: 0.33
+  kappa: 10.0
+  kappa_sens: 1.0
+  h_contact: 130.0e-6      # 接触面在 130 µm 区，罚刚度须与实际单元尺寸匹配
+  symmetric: true          # Lévesque 2011：对称双夹持
+
+loading:
+  W_target: 1750000.0
+  delta0: 1.7e-05
+  search:
+    rtol: 0.01
+    max_iter: 20
+  sigma_a: 45.0e6
+  T_prime: 1.0e4
+  H: 0.00375
+  side: right
+  cycle:
+    n_sub: 20
+    dN_init: 1.0
+    dN_min: 1.0
+    dN_max: 1.0e4
+    dd_max: 0.02
+    grow_below: 0.01
+    factor: 1.5
+    N_max: 2.0e7
+    peak_phase: 0.25
+  shakedown:
+    zero_tol: 1.0e-10
+    decay_ratio: 0.5
+    n_check: 5
+  self_equilibrated: true
+  support: free
+
+nucleation:
+  threshold: 0.95
+  nucleation_depth: 6.0e-06   # 3ℓ（ℓ=2 µm）；h=5 µm 时只 1.2 个单元，判据精度受限
+  turn_depth: 0.0001
+  incline_deg: 10.0
+  turn_deg: 20.0
+  x_init_tol: 0.002389
+
+sampling:
+  halfwidth: 0.003517
+  depth_max: 0.00015
+  spacing: 5.0e-6            # ≤ 裂纹带 h
+
+solver:
+  u_solver: newton
+  tol_d: 0.0001
+  max_iter: 50
+  u_linesearch: bt
+  snes_rtol: 1.0e-10
+  snes_atol: 1.0e-06
+  snes_max_it: 60
+
+output:
+  dir: data/clamp_base_c_A
+  save_every: 25
+  dump_every: 10
