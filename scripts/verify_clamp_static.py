@@ -25,7 +25,7 @@ import time
 import numpy as np
 from mpi4py import MPI
 
-from pfwire.clamp_case import build_clamp_case, solve_contact_at
+from pfwire.clamp_case import _ramp_plan, build_clamp_case, solve_contact_at
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 
@@ -56,10 +56,13 @@ def main(argv=None) -> int:
               "h_contact": case.h_contact, "delta0": delta0, "W_target": W_target}
 
     # ---- 1) δ 延拓曲线 ----
+    # 必须用 _ramp_plan（首步按罚压力定）而不是等分：等分的首步 δ₁ = δ₀/12
+    # 给出罚压力 ε·δ₁ ≈ 1e10 Pa，超 σ_y 两个数量级，Newton 从 u=0 起步发散。
+    seq = _ramp_plan(delta0, case.clamp.eps)
     say("")
-    say("δ 延拓（%d 步）：" % 12)
+    say("δ 延拓（%d 步，首步 δ=%.3g µm）：" % (len(seq), 1e6 * seq[0]))
     curve = []
-    for i, d in enumerate(np.linspace(0.0, delta0, 13)[1:]):
+    for i, d in enumerate(seq):
         t1 = time.perf_counter()
         case.set_delta(float(d))
         try:

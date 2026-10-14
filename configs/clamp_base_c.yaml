@@ -16,7 +16,7 @@ contact:
   kappa: 10.0
   kappa_sens: 1.0
   h_contact: 5.0e-05
-  bottom_support: auto
+  symmetric: true
 loading:
   W_target: 1750000.0
   delta0: 1.7e-05
@@ -42,7 +42,7 @@ loading:
     decay_ratio: 0.5
     n_check: 5
   self_equilibrated: true
-  support: free
+  support: axial
 nucleation:
   threshold: 0.95
   nucleation_depth: 6.0e-06

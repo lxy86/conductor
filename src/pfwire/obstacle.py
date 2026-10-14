@@ -47,6 +47,34 @@ def clamp_normal(x, R_clamp, delta):
     return r / ufl.sqrt(ufl.inner(r, r))
 
 
+def lower_clamp_center(R_clamp: float, delta_low, y_bottom: float) -> object:
+    """下侧（对称）线夹的圆心：c = (0, y_bottom − R_clamp + δ_low)。
+
+    与上侧 :func:`clamp_gap` 的圆心 c = (0, R_clamp − δ) 关于单丝中面对称。
+    单丝下表面在 y = y_bottom（= −H）。δ_low = 0 时圆心在 y_bottom − R，
+    线夹顶点恰在 y_bottom（相切，g = 0）。
+    """
+    return ufl.as_vector([0.0, y_bottom - R_clamp + delta_low])
+
+
+def clamp_gap_lower(x, R_clamp: float, delta_low, y_bottom: float) -> object:
+    """下侧线夹的有符号间隙 g = |x − c_low| − R_clamp（负值 = 穿透）。"""
+    c = lower_clamp_center(R_clamp, delta_low, y_bottom)
+    r = x - c
+    return ufl.sqrt(ufl.inner(r, r)) - R_clamp
+
+
+def clamp_normal_lower(x, R_clamp: float, delta_low, y_bottom: float) -> object:
+    """下侧线夹对单丝的推力方向：从圆心指向单丝，即**向上**（+y 分量）。
+
+    与 :func:`clamp_normal` 同口径（都返回「障碍对单丝的推力方向」）：
+    上侧线夹圆心在上方，推力朝下；下侧圆心在下方，推力朝上。
+    """
+    c = lower_clamp_center(R_clamp, delta_low, y_bottom)
+    r = x - c
+    return -r / ufl.sqrt(ufl.inner(r, r))
+
+
 def plane_gap(x, y_plane: float) -> object:
     """水平平面障碍的有符号间隙 g = y_plane − y（负值 = 点在平面上方，即穿透）。
 

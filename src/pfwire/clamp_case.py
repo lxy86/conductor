@@ -424,10 +424,12 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
     bs = cc.get("bottom_support")
     if bs is not None and str(bs) in ("auto", "bottom"):
         bs = -H                       # 单丝底面
+    sym = bool(cc.get("symmetric", False))
     clamp = ClampContact(msh, facet_tags, E=material.elastic.E,
                          R_clamp=float(cc["R_clamp"]), kappa=float(cc["kappa"]),
                          h_contact=h_contact,
-                         bottom_support=None if bs is None else float(bs))
+                         bottom_support=None if bs is None else float(bs),
+                         symmetric=sym, depth=H)
     ld = raw["loading"]
     self_eq = bool(ld.get("self_equilibrated", False))
     loads = ClampLoads(msh, facet_tags, H=float(ld["H"]),
@@ -452,7 +454,8 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
         support = str(raw["loading"].get("support", "free"))
         return end_bcs(V, msh, facet_tags,
                        simply_supported=(support == "simply_supported"),
-                       bottom_fixed=(support == "bottom"))
+                       bottom_fixed=(support == "bottom"),
+                       axial_anchor=(support == "axial"))
 
     alpha_T, form, kappa_f = material.require_fatigue_params()
     state = FatigueState(msh, model, alpha_T=alpha_T, form=form, kappa=kappa_f)
@@ -513,7 +516,7 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
 
 
 def end_bcs(V, msh, facet_tags, *, bottom_fixed: bool = False,
-            simply_supported: bool = False):
+            simply_supported: bool = False, axial_anchor: bool = False):
     """基准工况的位移约束。三种构型（互斥）：
 
     ``simply_supported=True``：**两端简支**。左端 u_x = u_y = 0，右端 u_y = 0
@@ -547,6 +550,14 @@ def end_bcs(V, msh, facet_tags, *, bottom_fixed: bool = False,
                                 V.sub(1), fdim, facet_tags.find(BLOCK_RIGHT)),
                             V.sub(1)),
         ]
+    if axial_anchor:
+        # **只**锚定轴向（Lévesque 2011 的 yz 对称面：u_x = 0）。法向不设任何
+        # 约束，由对称双夹持自平衡。这是唯一一个既不干扰弯曲、又让接触压力
+        # 能建立的构型——见 end_bcs 的 docstring 里的实测对比。
+        return [fem.dirichletbc(default_scalar_type(0.0),
+                                fem.locate_dofs_topological(
+                                    V.sub(0), fdim, facet_tags.find(BLOCK_LEFT)),
+                                V.sub(0))]
     if bottom_fixed:
         # **只压 u_y，u_x 自由**（简支梁式竖向支撑）：
         #   - 竖向约束给接触提供了"顶住"的反力（否则接触压力建立不起来，实测 W

@@ -16,7 +16,9 @@ from mpi4py import MPI
 from pfwire.mesh import BLOCK_BOTTOM, BLOCK_TOP
 from pfwire.obstacle import (
     clamp_gap,
+    clamp_gap_lower,
     clamp_normal,
+    clamp_normal_lower,
     penalty_pressure,
     penalty_stiffness,
     plane_gap,
@@ -39,21 +41,37 @@ class ClampContact:
     """
 
     def __init__(self, mesh, facet_tags, *, E: float, R_clamp: float, kappa: float,
-                 h_contact: float, bottom_support: float | None = None) -> None:
-        """``bottom_support``：下侧平面支撑的 y 坐标（m），None 表示没有。
+                 h_contact: float, bottom_support: float | None = None,
+                 symmetric: bool = False, depth: float | None = None) -> None:
+        """``symmetric=True``：单丝被**两个相同线夹对称挤压**（Lévesque 2011）。
 
-        D-67 §6 实测：单侧线夹压紧时，压紧力的反作用力必须由某个约束承担，
-        而这个约束（底面固定 / 简支）会同时把弯曲约束掉（σ_a 只剩 15%）。
-        真实的线夹是**上下两个颚**，法向力由夹持自身平衡。故这里加一个下侧
-        平面刚体障碍（对称支撑），压紧力自平衡，单丝不需要额外的位移约束。
-        平面默认放在单丝底面处（y = −H）。
+        出处：F. Lévesque et al., *Tribology International* 44 (2011) 1014–1023,
+        §2："We consider the wire as being squeezed between two similar clamps."
+        原模型的边界条件是三个对称面（u_x=0、u_y=0、u_z=0）+ 自由端拉伸 +
+        夹持载荷。二维平面应变下只剩轴向锚定的对称面（u_x = 0）。
+
+        为什么必须对称：单侧压紧时，压紧力的反作用力只能由位移约束承担，而
+        那个约束（底面固定 / 简支）会同时把弯曲约束掉——实测 σ_a 只剩目标的
+        15%，或者 W 只剩 1/7。对称夹持让压紧力**自平衡**，于是只需要一个
+        轴向锚定（对称面 u_x = 0），弯曲不被干扰。
+
+        ``bottom_support``（平面支撑）与 ``symmetric``（对称圆弧线夹）二选一：
+        前者实测会让接触一发生就发散（支撑面与单丝底面初始重合，罚压力超
+        σ_y 八倍），故对称挤压应走 ``symmetric``。
         """
         self.mesh = mesh
         self.facet_tags = facet_tags
         self.R_clamp = float(R_clamp)
+        if symmetric and depth is None:
+            raise ValueError("symmetric=True 时必须给 depth（单丝厚度），下侧线夹要用它定位")
+        self.depth = None if depth is None else float(depth)
         self.eps = penalty_stiffness(kappa, E, h_contact)
         self.delta = fem.Constant(mesh, 0.0)
         self.bottom_support = bottom_support
+        self.symmetric = bool(symmetric)
+        if symmetric and bottom_support is not None:
+            raise ValueError("symmetric 与 bottom_support 二选一（对称挤压用 symmetric）")
+        self.delta_low = fem.Constant(mesh, 0.0)   # 下侧线夹的位移（对称时 = δ/2）
         # 接触项核含 sqrt/max_value（法向、罚压力）。UFL 对残差 F 与对其 u 的导数 J
         # 估计出的多项式阶不同，默认的「按表达式估计求积阶」会让两者落到不同规则，
         # 离散上 F 与 dF/du 不一致（切线校验差到 1.6e-4）。显式固定求积阶 2，
@@ -62,8 +80,15 @@ class ClampContact:
                               metadata={"quadrature_degree": 2})
 
     def set_delta(self, delta: float) -> None:
-        """线夹下压位置（绝对值，m）。由求解器的外层（W' 搜索或延拓）调用。"""
+        """线夹下压位置（绝对值，m）。由求解器的外层（W' 搜索或延拓）调用。
+
+        对称模式下**上下各走 δ/2**，故相对压缩量仍是 δ（与单侧模式的 W(δ)
+        可比）：δ 是「总相对压缩」，不是单个线夹的行程。
+        """
         self.delta.value = float(delta)
+        if self.symmetric:
+            self.delta.value = 0.5 * float(delta)
+            self.delta_low.value = 0.5 * float(delta)
 
     def _pressure_and_normal(self, u):
         x = ufl.SpatialCoordinate(self.mesh) + u
@@ -71,20 +96,31 @@ class ClampContact:
         return penalty_pressure(g, self.eps), clamp_normal(x, self.R_clamp, self.delta)
 
     def _bottom_pressure(self, u):
-        """下侧平面支撑的压力（无支撑时为 0）。"""
-        if self.bottom_support is None:
-            return None
-        x = ufl.SpatialCoordinate(self.mesh) + u
-        return penalty_pressure(plane_gap(x, self.bottom_support), self.eps)
+        """下侧障碍的压力（无下侧障碍时为 0）。"""
+        if self.bottom_support is not None:
+            x = ufl.SpatialCoordinate(self.mesh) + u
+            return penalty_pressure(plane_gap(x, self.bottom_support), self.eps)
+        if self.symmetric:
+            x = ufl.SpatialCoordinate(self.mesh) + u
+            g = clamp_gap_lower(x, self.R_clamp, self.delta_low, -self.depth)
+            return penalty_pressure(g, self.eps)
+        return None
+
+    def _bottom_normal(self, u):
+        if self.bottom_support is not None:
+            return ufl.as_vector(plane_normal())
+        if self.symmetric:
+            x = ufl.SpatialCoordinate(self.mesh) + u
+            return clamp_normal_lower(x, self.R_clamp, self.delta_low, -self.depth)
+        return None
 
     def residual(self, u, v) -> ufl.Form:
-        """接触力的虚功 ∫ p n·v ds（BLOCK_TOP + 下侧支撑）。求解器在 u 方程里取负号。"""
+        """接触力的虚功 ∫ p n·v ds（上侧 + 下侧）。求解器在 u 方程里取负号。"""
         p, n = self._pressure_and_normal(u)
         form = p * ufl.dot(n, v) * self.ds(BLOCK_TOP)
         pb = self._bottom_pressure(u)
         if pb is not None:
-            nb = ufl.as_vector(plane_normal())
-            form = form + pb * ufl.dot(nb, v) * self.ds(BLOCK_BOTTOM)
+            form = form + pb * ufl.dot(self._bottom_normal(u), v) * self.ds(BLOCK_BOTTOM)
         return form
 
     def reaction(self, u) -> float:
