@@ -14,9 +14,12 @@ T5：
 """
 
 import math
+import pathlib
 
 import numpy as np
 import pytest
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 from pfwire.clamp_case import crack_metrics, secant_delta
 
@@ -200,3 +203,170 @@ def test_shape_mismatch_is_rejected():
     xs, depths = _grid()
     with pytest.raises(ValueError, match="d_field 形状"):
         crack_metrics(np.zeros((3, 3)), xs, depths)
+
+
+# --------------------------------------------------------------------------
+# T6：验收判据（纯函数，不依赖 FEM）
+# --------------------------------------------------------------------------
+def _metrics(x_init, theta_init, theta_later, reached=True, depth_max=120.0e-6):
+    """构造一个 CrackMetrics（只填判据用到的字段）。"""
+    from pfwire.clamp_case import CrackMetrics
+    return CrackMetrics(x_init=x_init, centroid_6=(x_init, 6.0e-6),
+                        centroid_100=(x_init, 100.0e-6),
+                        theta_init_deg=theta_init, theta_later_deg=theta_later,
+                        reached_nuc=reached, dmax=1.0, depth_max=depth_max)
+
+
+def test_acceptance_passes_for_inclined_turning_crack_at_edge():
+    """T6a：起裂在接触边缘、倾斜 15°、转向 25° -> 三条判据全通过。"""
+    from pfwire.clamp_case import judge_acceptance
+    a_contact, a_pl = 2.917e-3, 2.389e-3
+    m = _metrics(x_init=a_contact, theta_init=15.0, theta_later=40.0)
+    r = judge_acceptance(m, N_nuc=1.0e5, a_contact=a_contact, a_pl=a_pl)
+    assert r.passed, r.details
+    assert r.checks == {"nucleated": True, "x_init_in_window": True,
+                        "inclined": True, "turned": True}
+    assert r.N_nuc == pytest.approx(1.0e5)
+
+
+def test_acceptance_checks_each_criterion_separately():
+    """T6b：逐条判据独立（位置、倾斜、转向各测一次失败）。"""
+    from pfwire.clamp_case import judge_acceptance
+    a_contact, a_pl = 2.917e-3, 2.389e-3
+
+    # 1) 起裂位置太靠内（远离两个接触边缘）
+    r = judge_acceptance(_metrics(x_init=0.0, theta_init=15.0, theta_later=40.0),
+                         N_nuc=1.0e5, a_contact=a_contact, a_pl=a_pl)
+    assert not r.passed and not r.checks["x_init_in_window"]
+    assert r.checks["inclined"] and r.checks["turned"]
+
+    # 2) 不倾斜（|θ_init| < 10°）
+    r = judge_acceptance(_metrics(x_init=a_contact, theta_init=5.0, theta_later=40.0),
+                         N_nuc=1.0e5, a_contact=a_contact, a_pl=a_pl)
+    assert not r.passed and not r.checks["inclined"]
+    assert r.checks["x_init_in_window"] and r.checks["turned"]
+
+    # 3) 不转向（|θ_later − θ_init| < 20°）
+    r = judge_acceptance(_metrics(x_init=a_contact, theta_init=15.0, theta_later=25.0),
+                         N_nuc=1.0e5, a_contact=a_contact, a_pl=a_pl)
+    assert not r.passed and not r.checks["turned"]
+    assert r.checks["x_init_in_window"] and r.checks["inclined"]
+
+
+def test_acceptance_fails_when_not_nucleated():
+    """T6c：未起裂时三条都不成立，passed=False（不静默当成通过）。"""
+    from pfwire.clamp_case import judge_acceptance
+    r = judge_acceptance(None, N_nuc=None, a_contact=2.917e-3, a_pl=2.389e-3)
+    assert not r.passed
+    assert not any(r.checks.values())
+    assert r.N_nuc is None
+    assert "未起裂" in r.details
+
+
+def test_acceptance_accepts_either_contact_edge():
+    """T6d：裂纹可出现在任一侧接触边缘（±a_contact 都算）。"""
+    from pfwire.clamp_case import judge_acceptance
+    a_contact, a_pl = 2.917e-3, 2.389e-3
+    for x in (a_contact, -a_contact, a_contact - 0.5 * a_pl, -a_contact + 0.5 * a_pl):
+        r = judge_acceptance(_metrics(x_init=x, theta_init=15.0, theta_later=40.0),
+                             N_nuc=1.0e5, a_contact=a_contact, a_pl=a_pl)
+        assert r.checks["x_init_in_window"], "x_init=%g 应落在 ±a_pl 窗口内" % x
+
+
+# --------------------------------------------------------------------------
+# T6 装配：用小网格走通 build_clamp_case（布局 C 的 145 万单元留给验收运行）
+# --------------------------------------------------------------------------
+def _tiny_config(tmp_path, kappa_sens=None):
+    """把 clamp_base.yaml 的网格换成小盒，其余原样。"""
+    import yaml
+    raw = yaml.safe_load((ROOT / "configs/clamp_base.yaml").read_text(encoding="utf-8"))
+    # 小网格：直接给 mesh 段（不走 from_config 的布局 C）
+    raw["mesh"] = {"from_config": "configs/clamp_mesh.yaml", "layout": "C",
+                   "workdir": str(tmp_path / "mesh"),
+                   "tiny": True}
+    raw["output"]["dir"] = str(tmp_path / "out")
+    if kappa_sens is None:
+        raw["contact"].pop("kappa_sens", None)
+    p = tmp_path / "cfg.yaml"
+    p.write_text(yaml.safe_dump(raw, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    return p
+
+
+def test_build_clamp_case_assembles_all_parts(tmp_path):
+    """T6e：build_clamp_case 能装出全部部件（网格、接触、载荷、求解器、采样网格）。"""
+    from pfwire.clamp_case import build_clamp_case
+    case = build_clamp_case(_tiny_config(tmp_path))
+    assert case.clamp is not None and case.loads is not None
+    assert case.solver is not None and case.state is not None
+    assert case.driver is not None and case.grid is not None
+    # 塑性 + 接触都挂上了
+    assert case.solver.plastic is not None
+    assert case.solver.contact is case.clamp
+    # cycle-jump 带了 shakedown（带塑性时必填，否则构造即报错）
+    assert case.driver.config.shakedown is not None
+    # 采样间距必须 <= h_fine（DamageGrid 的校验）
+    assert case.config["sampling"]["spacing"] <= 0.5e-6
+
+
+def test_working_delta_search_reaches_W_target(tmp_path):
+    """T6f：割线法在真实接触求解器上搜到目标反力（1% 容差内）。
+
+    ⚠ 目标反力取**本网格在 δ₀ 处实测值的一半**，不用 clamp_base.yaml 的
+    W' = 1.75e6：那个值对应布局 C（145 万单元、接触区分辨到 0.5 µm），
+    tiny 网格（2059 单元、h = 50 µm）上根本给不出这么大的反力，割线法会
+    一路外推出界——那是网格不匹配，不是搜索算法错。布局 C 上的真实验证
+    留给 T6 的验收运行。
+    """
+    from pfwire.clamp_case import build_clamp_case, find_working_delta, solve_contact_at
+    case = build_clamp_case(_tiny_config(tmp_path))
+    # 先测 δ₀ 处的反力，取它的一半当目标（保证在 W(δ) 的值域内）
+    W_at_delta0 = solve_contact_at(case, float(case.config["loading"]["delta0"]))
+    W_target = 0.5 * W_at_delta0
+    delta = find_working_delta(case, W_target, delta0=17.0e-6, rtol=1.0e-2, max_iter=20)
+    W = case.clamp.reaction(case.solver.u)
+    assert abs(W - W_target) <= 1.0e-2 * W_target, \
+        "W = %.6g 未在 1%% 内达到 W' = %.6g（δ = %.4g）" % (W, W_target, delta)
+    assert case.delta == delta
+
+
+def test_kappa_sensitivity_reports_reaction_change(tmp_path):
+    """T6g：κ 敏感性给出接触反力的相对变化（有限值，且两个 κ 的 W 不同）。"""
+    from pfwire.clamp_case import (build_clamp_case, find_working_delta,
+                                   kappa_sensitivity, solve_contact_at)
+    case = build_clamp_case(_tiny_config(tmp_path))
+    # 同 T6f：目标反力取本网格实测值的一半（W' = 1.75e6 在 tiny 网格上不可达）
+    W0 = solve_contact_at(case, float(case.config["loading"]["delta0"]))
+    find_working_delta(case, 0.5 * W0, delta0=17.0e-6, rtol=1.0e-2, max_iter=20)
+    s = kappa_sensitivity(case, 1.0)
+    assert s["kappa"] == 10.0 and s["kappa_sens"] == 1.0
+    assert np.isfinite(s["rel"]) and s["rel"] >= 0.0
+    # 换 κ 后反力必须真的变了（否则说明敏感性根本没换接触对象）
+    assert s["W"] != s["W_sens"], "换 κ 后接触反力逐位相同，敏感性没有真正重解"
+
+
+def test_run_clamp_case_produces_result_with_acceptance(tmp_path):
+    """T6h：run_clamp_case 能推进并写出含验收判据的 result.json。"""
+    import json
+    from pfwire.clamp_case import (build_clamp_case, find_working_delta,
+                                   run_clamp_case, solve_contact_at)
+    case = build_clamp_case(_tiny_config(tmp_path))
+    # 小网格上跑不动完整疲劳：把 N_max 压到很小，走几步就停
+    case.config["loading"]["cycle"]["N_max"] = 5.0
+    case.config["loading"]["cycle"]["dN_max"] = 2.0
+    case.driver.config = _replace(case.driver.config, N_max=5.0, dN_max=2.0)
+    # 同 T6f：目标反力取本网格实测值的一半
+    W0 = solve_contact_at(case, float(case.config["loading"]["delta0"]))
+    find_working_delta(case, 0.5 * W0, delta0=17.0e-6, rtol=1.0e-2, max_iter=20)
+    result = run_clamp_case(case)
+    assert result["status"] in ("completed", "runout", "not_converged", "ratcheting")
+    assert "acceptance" in result and "shakedown_tags" in result
+    assert result["acceptance"]["checks"]  # 判据齐全
+    out = __import__("pathlib").Path(case.config["_outdir"]) / "result.json"
+    assert out.is_file()
+    assert json.loads(out.read_text(encoding="utf-8"))["case_type"] == "clamp"
+
+
+def _replace(cfg, **kw):
+    """dataclass.replace 的薄封装（frozen dataclass）。"""
+    import dataclasses
+    return dataclasses.replace(cfg, **kw)

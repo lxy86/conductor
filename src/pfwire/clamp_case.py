@@ -264,29 +264,526 @@ class ClampCase:
     """基准工况的全部部件。"""
     mesh: object
     facet_tags: object
-    clamp: object                  # ClampContact
-    loads: object                  # ClampLoads
-    solver: object                 # PhaseFieldSolver（plastic + contact）
+    clamp: object = None            # ClampContact
+    loads: object = None            # ClampLoads
+    solver: object = None           # PhaseFieldSolver（plastic + contact）
+    state: object = None            # FatigueState
+    driver: object = None           # CycleJumpDriver
+    grid: object = None             # DamageGrid
     config: dict = field(default_factory=dict)
+    delta: float = float("nan")     # 工作点 δ（W' 搜索的结果）
 
     def set_delta(self, delta: float) -> None:
+        self.delta = float(delta)
         self.clamp.set_delta(delta)
 
 
-def build_clamp_case(config) -> ClampCase:
-    """由配置装配基准工况。
+# --------------------------------------------------------------------------
+# T6：判据（纯函数，可单测）+ 装配 + 推进
+# --------------------------------------------------------------------------
+@dataclass(frozen=True)
+class AcceptanceReport:
+    """D-67 §5 的验收判据结果。``passed`` 为 False 时**停下报告，不调参**。"""
+    passed: bool
+    N_nuc: float | None
+    """起裂寿命（d ≥ threshold 首次达到 nucleation_depth 的 N）。"""
+    x_init: float
+    theta_init_deg: float
+    theta_later_deg: float
+    contact_edges: tuple[float, float]
+    """接触边缘的 x（±a_contact），起裂位置要与它比。"""
+    a_pl: float
+    checks: dict
+    """逐条判据 -> bool。"""
+    details: str
 
-    **尚未实现**（T6 前完成）：要读 configs/clamp_base.yaml 建 mesh（布局 C）、
-    ClampContact、ClampLoads、PhaseFieldSolver（plastic + contact）。
+
+def judge_acceptance(metrics: "CrackMetrics | None", *, N_nuc, a_contact: float,
+                     a_pl: float, incline_deg: float = 10.0,
+                     turn_deg: float = 20.0) -> AcceptanceReport:
+    """D-67 §5 的验收判据（纯函数，不依赖 FEM）。
+
+    判据：
+      1. 起裂位置落在接触边缘 ±a_pl 内（a_pl 由 6.1 实测给出，≈ 2.389 mm）；
+      2. |θ_init| ≥ incline_deg（10°）——裂纹是倾斜的，不是沿法向直裂；
+      3. |θ_later − θ_init| ≥ turn_deg（20°）——之后发生转向。
+
+    ``metrics`` 为 None（还没起裂）时三条都不成立，passed=False。
     """
-    raise NotImplementedError("build_clamp_case 在 T6 实现")
+    edges = (-abs(a_contact), abs(a_contact))
+    if metrics is None or not metrics.reached_nuc:
+        return AcceptanceReport(
+            passed=False, N_nuc=None, x_init=float("nan"), theta_init_deg=float("nan"),
+            theta_later_deg=float("nan"), contact_edges=edges, a_pl=a_pl,
+            checks={"nucleated": False, "x_init_in_window": False,
+                    "inclined": False, "turned": False},
+            details="未起裂：d ≥ threshold 未达到 nucleation_depth")
+    # 起裂位置与**两个**接触边缘比（裂纹可出现在任一侧）
+    near_edge = min(abs(metrics.x_init - e) for e in edges)
+    checks = {
+        "nucleated": True,
+        "x_init_in_window": bool(near_edge <= a_pl),
+        "inclined": bool(abs(metrics.theta_init_deg) >= incline_deg),
+        "turned": bool(abs(metrics.theta_later_deg - metrics.theta_init_deg) >= turn_deg),
+    }
+    passed = all(checks.values())
+    return AcceptanceReport(
+        passed=passed, N_nuc=float(N_nuc) if N_nuc is not None else None,
+        x_init=metrics.x_init, theta_init_deg=metrics.theta_init_deg,
+        theta_later_deg=metrics.theta_later_deg, contact_edges=edges, a_pl=a_pl,
+        checks=checks,
+        details=("起裂 N=%.6g，x_init=%.4g mm（距最近接触边缘 %.4g mm，窗口 ±%.4g mm）；"
+                 "θ_init=%.2f°，θ_later=%.2f°，转向 %.2f°"
+                 % (float(N_nuc) if N_nuc is not None else float("nan"),
+                    1e3 * metrics.x_init, 1e3 * near_edge, 1e3 * a_pl,
+                    metrics.theta_init_deg, metrics.theta_later_deg,
+                    metrics.theta_later_deg - metrics.theta_init_deg)))
+
+
+def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCase:
+    """由配置装配基准工况（网格、接触、载荷、求解器、cycle-jump、采样网格）。
+
+    ``resume=True`` 时从 ``output.dir`` 的断点恢复（硬约束 5）：断点里存的是
+    **网格本身**而非重新生成——adios4dolfinx 按 input 编号存值，重建的网格
+    顺序不同会静默读出乱序的值（见 pfwire/checkpoint.py）。
+    """
+    import pathlib
+
+    import yaml
+    from dolfinx import fem
+    from mpi4py import MPI
+
+    from pfwire import checkpoint
+    from pfwire.clamp_contact import ClampContact
+    from pfwire.clamp_loads import ClampLoads
+    from pfwire.cyclejump import CycleJumpConfig, CycleJumpDriver, FatigueState, ShakedownConfig
+    from pfwire.failure import DamageGrid, GridSpec
+    from pfwire.material import load_material
+    from pfwire.mesh import block_mesh
+    from pfwire.phasefield import PhaseFieldModel, PhaseFieldSolver, SolverConfig
+    from pfwire.plasticity import PlasticLaw, load_j2_params
+
+    comm = comm or MPI.COMM_WORLD
+    path = pathlib.Path(config_path)
+    # 配置里的 material / mesh.from_config 都是**仓库相对**路径，故 root 取本文件的
+    # 上两级（src/pfwire -> 仓库根），而不是配置自身的父目录——测试把配置写到
+    # tmp_path 下时后者会算出越界的路径。
+    root = pathlib.Path(__file__).resolve().parents[2]
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    material = load_material(root / raw["material"])
+
+    # --- 网格：布局 C 的参数从 clamp_mesh.yaml 读（不在这里重复写死）---
+    mraw = yaml.safe_load((root / raw["mesh"]["from_config"]).read_text(encoding="utf-8"))
+    geo, el = mraw["geometry"], mraw["element"]
+    lay = mraw["layouts"][raw["mesh"]["layout"]]
+    a_contact = float(mraw["inputs"]["a_contact"])
+    H = float(geo["depth"])
+    w, d = float(lay["crack_band_halfwidth"]), float(lay["crack_band_depth"])
+    boxes = [(a_contact - w, a_contact + w, -d, 0.0),
+             (-a_contact - w, -a_contact + w, -d, 0.0)]
+    workdir = root / raw["mesh"]["workdir"]
+
+    resumed = None
+    if resume:
+        outdir = root / raw["output"]["dir"]
+        resumed = checkpoint.resume(outdir, comm)
+        msh, facet_tags = resumed.mesh, resumed.read_facet_tags()
+    else:
+        # ``mesh.tiny`` 只给单测用：把布局 C 的两条 0.5 µm 加密带换成中心一个小盒，
+        # 单元数从 145 万降到几千，好让装配/搜索/推进在秒级走通。
+        if raw["mesh"].get("tiny"):
+            boxes = [(-0.5e-3, 0.5e-3, -0.3e-3, 0.0)]
+            h_fine, h_coarse, transition = 50.0e-6, 750.0e-6, 0.3e-3
+        else:
+            h_fine, h_coarse = float(el["h_fine"]), float(el["h_coarse"])
+            transition = float(el["transition"])
+        msh, _ct, facet_tags = block_mesh(
+            workdir, width=float(geo["width"]), depth=H, refine_boxes=boxes,
+            h_fine=h_fine, h_coarse=h_coarse, transition=transition, comm=comm)
+    h_fine_eff = h_fine
+
+    # --- 接触与载荷 ---
+    cc = raw["contact"]
+    # h_contact 是**接触面的实际单元边长**，罚刚度 ε = κE/h 必须与它匹配：
+    # 按 0.5 µm 算而网格实际是 50 µm 时，ε 大了 100 倍，首个延拓步的罚压力就到
+    # 1e12 Pa 量级、Newton 直接出 NaN（实测 SNES -9）。tiny 网格下跟随 h_fine。
+    h_contact = float(cc["h_contact"]) if not raw["mesh"].get("tiny") else h_fine_eff
+    clamp = ClampContact(msh, facet_tags, E=material.elastic.E,
+                         R_clamp=float(cc["R_clamp"]), kappa=float(cc["kappa"]),
+                         h_contact=h_contact)
+    ld = raw["loading"]
+    loads = ClampLoads(msh, facet_tags, H=float(ld["H"]),
+                       sigma_a=float(ld["sigma_a"]), T=float(ld["T_prime"]),
+                       side=str(ld.get("side", "right")))
+
+    # --- 求解器：plastic + contact，必须 newton ---
+    model = PhaseFieldModel(material=material, split="spectral", k_res=1.0e-6)
+    sv = raw.get("solver", {})
+    cfg = SolverConfig(u_solver=str(sv.get("u_solver", "newton")),
+                       tol_d=float(sv.get("tol_d", 1.0e-4)),
+                       max_iter=int(sv.get("max_iter", 50)),
+                       u_linesearch=str(sv.get("u_linesearch", "bt")),
+                       snes_rtol=float(sv.get("snes_rtol", 1.0e-6)),
+                       snes_atol=float(sv.get("snes_atol", 1.0e-8)),
+                       snes_max_it=int(sv.get("snes_max_it", 200)))
+
+    def bcs_u(V):
+        return end_bcs(V, msh, facet_tags)
+
+    alpha_T, form, kappa_f = material.require_fatigue_params()
+    state = FatigueState(msh, model, alpha_T=alpha_T, form=form, kappa=kappa_f)
+    solver = PhaseFieldSolver(
+        msh, model, bcs_u=bcs_u, external_work=loads.traction(),
+        f_alpha=state.f_alpha, config=cfg,
+        plastic=PlasticLaw(msh, load_j2_params(root / raw["material"])),
+        contact=clamp)
+    state.bind_solver(solver)
+
+    # --- cycle-jump ---
+    c = raw["loading"]["cycle"]
+    sd = raw["loading"]["shakedown"]
+    jump_cfg = CycleJumpConfig(
+        n_sub=int(c["n_sub"]), dN_init=float(c["dN_init"]), dN_min=float(c["dN_min"]),
+        dN_max=float(c["dN_max"]), dd_max=float(c["dd_max"]),
+        grow_below=float(c["grow_below"]), factor=float(c["factor"]),
+        N_max=float(c["N_max"]),
+        peak_phase=None if c.get("peak_phase") is None else float(c["peak_phase"]),
+        shakedown=ShakedownConfig(zero_tol=float(sd["zero_tol"]),
+                                  decay_ratio=float(sd["decay_ratio"]),
+                                  n_check=int(sd["n_check"])))
+    import math
+    phase = [0.0]
+
+    def set_phase(t_over_T: float) -> None:
+        value = math.sin(2.0 * math.pi * float(t_over_T))
+        loads.set_phase(value)
+
+    driver = CycleJumpDriver(solver, state, set_phase, jump_cfg)
+
+    # --- 采样网格 ---
+    # spacing 必须 <= h_fine（DamageGrid 的校验：粗于网格会低估裂纹深度）。
+    # tiny 模式下 h_fine 是 50 µm，故 spacing 也要跟着放宽，否则会在 40 mm 宽、
+    # 150 µm 深的窗口上铺出上亿个采样点。
+    sp = raw["sampling"]
+    spacing = float(sp["spacing"]) if not raw["mesh"].get("tiny") else 10.0e-6
+    grid = DamageGrid(msh, GridSpec(x_min=-float(sp["halfwidth"]),
+                                    x_max=float(sp["halfwidth"]),
+                                    depth_max=float(sp["depth_max"]),
+                                    spacing=spacing,
+                                    y_surface=0.0),
+                      h_fine=h_fine_eff)
+
+    case = ClampCase(mesh=msh, facet_tags=facet_tags, clamp=clamp, loads=loads,
+                     solver=solver, state=state, driver=driver, grid=grid,
+                     config=raw)
+    # root 与输出目录存进 config：run_clamp_case 要用，别在各处再拼一遍
+    case.config["_root"] = root
+    case.config["_outdir"] = root / raw["output"]["dir"]
+    case.a_contact = a_contact
+    case.h_contact = h_contact
+    if resumed is not None:
+        resumed.read_fields(solver, state)
+        driver.N = float(resumed.meta["N"])
+        driver.delta_N = float(resumed.meta["delta_N"])
+    return case
+
+
+def end_bcs(V, msh, facet_tags):
+    """基准工况的位移约束：左端 u_x = 0、底边中点 u_y = 0（D-67 §3）。
+
+    左端**只压 x 分量**：完全钉住端面会把弯曲挡在外面（端部无法转动/错动），
+    远场就测不到 σ_a（T3c 校验的就是这一点）。只压 x 恰好消掉轴向刚体平移；
+    竖直平移与刚体转动由底边中点那个单点 u_y = 0 约束掉。
+
+    写法照 fretting.py 的既有约定：值给标量、空间给 ``V.sub(i)``、dofs 用
+    ``locate_dofs_topological(V.sub(i), ...)``（不 collapse）。子空间不能
+    ``tabulate_dof_coordinates``，故坐标从父空间 V 取。
+    """
+    import math
+
+    import numpy as np
+    from dolfinx import default_scalar_type, fem
+
+    from pfwire.mesh import BLOCK_BOTTOM, BLOCK_LEFT
+
+    fdim = msh.topology.dim - 1
+    Vx, Vy = V.sub(0), V.sub(1)
+    bcs = [fem.dirichletbc(default_scalar_type(0.0),
+                           fem.locate_dofs_topological(Vx, fdim, facet_tags.find(BLOCK_LEFT)),
+                           Vx)]
+    # 底边中点：并行下先各进程找 |x| 最小的底边节点，再取全局最优
+    dofs_y = fem.locate_dofs_topological(Vy, fdim, facet_tags.find(BLOCK_BOTTOM))
+    coords = V.tabulate_dof_coordinates()
+    cand = dofs_y[dofs_y < Vy.dofmap.index_map.size_local]
+    if cand.size:
+        i = int(np.argmin(np.abs(coords[cand, 0])))
+        x_best, dof_best = float(abs(coords[cand[i], 0])), int(cand[i])
+    else:
+        x_best, dof_best = math.inf, -1
+    owner = min(msh.comm.allgather((x_best, dof_best, msh.comm.rank)))
+    if owner[2] == msh.comm.rank and owner[1] >= 0:
+        bcs.append(fem.dirichletbc(default_scalar_type(0.0),
+                                   np.array([owner[1]], dtype=np.int32), Vy))
+    return bcs
+
+
+def find_working_delta(case: ClampCase, W_target: float, *, delta0: float = 17.0e-6,
+                       rtol: float = 1.0e-2, max_iter: int = 20) -> float:
+    """T4 的 FEM 侧：割线法搜 δ 使接触反力 = W'，并把结果留在 case 上。"""
+    delta = secant_delta(lambda d: solve_contact_at(case, d), W_target,
+                         delta0=delta0, rtol=rtol, max_iter=max_iter)
+    case.set_delta(delta)
+    return delta
+
+
+#: δ 延拓的步数。必须延拓：一次性把线夹压到 δ 会让初始（u = 0）的罚压力达到
+#: p = ε·δ ≈ (κE/h)·δ ≈ 1.4e18 × 17e-6 ≈ 2e13 Pa —— Newton 从这样的初值起步
+#: 直接发散（实测 SNES -5，残差停在 1e11 不降）。6.1 的 indent_plastic_obstacle
+#: 同样用 δ 序列（1→15 µm）而非一步到位。延拓不改变解，只改抵达路径。
+DELTA_STEPS = 12
+
+
+def _ramp_to(case: ClampCase, delta: float, steps: int = DELTA_STEPS) -> None:
+    """把 δ 从当前位置分 ``steps`` 步推到 ``delta``（延拓），每步解一次平衡。
+
+    只在目标比当前**更深**时推进；变浅（割线法回退）时直接设值——接触是
+    单调加载下才需要延拓，卸载不发散。
+    """
+    current = case.delta
+    if not (current == current):          # NaN：还没设过
+        current = 0.0
+    if delta <= current:
+        case.set_delta(delta)
+        case.solver.solve_displacement()
+        return
+    for d in np.linspace(current, delta, steps + 1)[1:]:
+        case.set_delta(float(d))
+        case.solver.solve_displacement()
 
 
 def solve_contact_at(case: ClampCase, delta: float) -> float:
     """把线夹下压到 δ 并解一次平衡，返回接触反力 W(δ)（N/m，单位厚度）。
 
     给 :func:`secant_delta` 当 ``W_of_delta`` 用（T4 的 FEM 侧）。
+    δ 是**延拓**着加上去的（见 :data:`DELTA_STEPS`），不是一步到位。
     """
-    case.set_delta(delta)
-    case.solver.solve_displacement()
+    _ramp_to(case, delta)
     return case.clamp.reaction(case.solver.u)
+
+
+def kappa_sensitivity(case: ClampCase, kappa_alt: float) -> dict:
+    """κ 敏感性：换 κ 重算**接触反力**，报告相对变化（D-67 §3，6.1 的口径，阈值 3%）。
+
+    ⚠ 不能「换掉 solver.contact 再让相场求解器重解」：``NonlinearProblem`` 的残差
+    form 在**构造时**就已编译，换属性不会改变已装好的 form，那样重解出的还是
+    原来的 κ（静默给出 rel = 0，看起来「完全不敏感」）。这里另建一个独立的
+    弹性接触求解器：同一网格、同一 δ、同一材料，只装「线弹性 + 接触」两个项。
+
+    只比接触反力，不跑第二遍完整疲劳——那要付与本体相同的算例代价。
+    """
+    import numpy as np
+    import ufl
+    from dolfinx import fem
+    from dolfinx.fem.petsc import NonlinearProblem
+
+    from pfwire.clamp_contact import ClampContact
+
+    cc = case.config["contact"]
+    msh, ft = case.mesh, case.facet_tags
+    E = case.solver.model.material.elastic.E
+    nu = case.solver.model.material.elastic.nu
+
+    def reaction_with(kappa: float) -> float:
+        clamp = ClampContact(msh, ft, E=E, R_clamp=float(cc["R_clamp"]), kappa=kappa,
+                             h_contact=float(getattr(case, "h_contact", cc["h_contact"])))
+        clamp.set_delta(0.0)          # 延拓起点：见 DELTA_STEPS
+        V = fem.functionspace(msh, ("Lagrange", 1, (msh.geometry.dim,)))
+        u = fem.Function(V)
+        v = ufl.TestFunction(V)
+        mu = E / (2.0 * (1.0 + nu))
+        lmbda = E * nu / ((1.0 + nu) * (1.0 - 2.0 * nu))
+        eps = ufl.sym(ufl.grad(u))
+        sig = 2.0 * mu * eps + lmbda * ufl.tr(eps) * ufl.Identity(msh.geometry.dim)
+        F = (ufl.inner(sig, ufl.sym(ufl.grad(v))) * ufl.dx
+             - clamp.residual(u, v))
+        problem = NonlinearProblem(
+            F, u, bcs=end_bcs(V, msh, ft), petsc_options_prefix="clamp_kappa_",
+            petsc_options={"snes_type": "newtonls", "snes_linesearch_type": "bt",
+                           "snes_rtol": 1.0e-10, "snes_atol": 1.0e-10,
+                           "snes_max_it": 60, "ksp_type": "preonly", "pc_type": "lu",
+                           "pc_factor_mat_solver_type": "mumps"})
+        # δ 延拓：一次性压到 δ 会让初始罚压力 ~1e13 Pa，Newton 从 u=0 起步发散
+        for d in np.linspace(0.0, case.delta, DELTA_STEPS + 1)[1:]:
+            clamp.set_delta(float(d))
+            problem.solve()
+            if problem.solver.getConvergedReason() <= 0:
+                raise RuntimeError(
+                    "κ 敏感性的接触求解未收敛（κ=%g，δ=%.4g，SNES reason=%d）"
+                    % (kappa, d, problem.solver.getConvergedReason()))
+        return clamp.reaction(u)
+
+    W1 = reaction_with(float(cc["kappa"]))
+    W2 = reaction_with(float(kappa_alt))
+    return {"kappa": float(cc["kappa"]), "kappa_sens": float(kappa_alt),
+            "W": W1, "W_sens": W2, "delta": case.delta,
+            "rel": abs(W2 - W1) / W1 if W1 else float("nan")}
+
+
+def run_clamp_case(case: ClampCase, *, log=None, resume_meta: dict | None = None) -> dict:
+    """推进 cycle-jump，直到 θ_later 可测（d ≥ threshold 达 turn_depth）或 N_max。
+
+    D-67 §5：验收判据全是**起裂与转向**，转向需要 θ_later（100 µm 深度的质心），
+    故终止条件是「裂纹走到 turn_depth」而不是「起裂（6 µm）就停」。
+
+    T7：每个 jump 的 shakedown 标签记进 history；``RatchetDetected``
+    （not_decaying）**停下报告，不调参**（硬约束 6）。
+    """
+    import json
+    import time
+
+    from mpi4py import MPI
+
+    from pfwire import checkpoint
+    from pfwire.cyclejump import RatchetDetected
+
+    comm = case.mesh.comm
+    is_root = comm.rank == 0
+
+    def say(level, msg, *args):
+        if log is not None:
+            getattr(log, level)(msg, *args)
+        elif is_root:
+            print(msg % args if args else msg, flush=True)
+
+    raw = case.config
+    nc = raw["nucleation"]
+    outdir = raw["_outdir"]
+    a_contact = float(case.a_contact)
+    save_every = int(raw["output"].get("save_every", 25))
+    dump_every = int(raw["output"].get("dump_every", 10))
+    turn_depth = float(nc["turn_depth"])
+
+    history: list[dict] = list((resume_meta or {}).get("history", []))
+    shakedown_tags: list[str] = list((resume_meta or {}).get("shakedown_tags", []))
+    N_nuc = (resume_meta or {}).get("N_nuc")
+    t0 = time.perf_counter()
+    status = "running"
+
+    def measure():
+        return crack_metrics_from_field(case)
+
+    def record(report):
+        m = measure()
+        history.append({
+            "N": report.N, "delta_N": report.delta_N, "max_d": report.max_d,
+            "max_alpha_bar": report.max_alpha_bar,
+            "shakedown": report.shakedown,
+            "depth_max": None if m is None else m.depth_max,
+            "x_init": None if m is None else m.x_init,
+            "theta_init_deg": None if m is None else m.theta_init_deg,
+            "theta_later_deg": None if m is None else m.theta_later_deg,
+        })
+        if report.shakedown is not None:
+            shakedown_tags.append(str(report.shakedown))
+        return m
+
+    def stop(report) -> bool:
+        nonlocal N_nuc, status
+        m = record(report)
+        if N_nuc is None and m is not None and m.reached_nuc:
+            N_nuc = report.N
+            say("info", "起裂：N=%.6g，x_init=%.4g mm，θ_init=%.2f°",
+                report.N, 1e3 * m.x_init, m.theta_init_deg)
+        if len(history) % dump_every == 0:
+            say("info", "N=%.5g ΔN=%.4g max_d=%.4f 深度=%.3g µm 已用 %.0f s",
+                report.N, report.delta_N, report.max_d,
+                float("nan") if m is None else 1e6 * m.depth_max,
+                time.perf_counter() - t0)
+        if save_every > 0 and len(history) % save_every == 0:
+            _save(case, outdir, history, shakedown_tags, N_nuc)
+        # 终止：裂纹走到 turn_depth（θ_later 可测）
+        return bool(m is not None and m.depth_max >= turn_depth)
+
+    try:
+        reports = case.driver.run(stop=stop)
+    except RatchetDetected as exc:
+        # T7：棘轮 -> 停下报告，绝不调参（硬约束 6）
+        status = "ratcheting"
+        say("error", "检测到棘轮（ratcheting），停下报告：%s", exc)
+        reports = list(case.driver.reports)
+    finally:
+        # 退出前一定存一次断点（D-30 的教训：只按倍数存会丢掉失败时刻的状态）
+        if save_every > 0:
+            try:
+                _save(case, outdir, history, shakedown_tags, N_nuc)
+            except Exception as exc:
+                say("error", "退出前存断点失败：%s", exc)
+
+    final = reports[-1] if reports else None
+    if status == "running":
+        if final is not None and not final.accepted:
+            status = "not_converged"
+            say("error", "cycle-jump 在 N=%.5g 未收敛：%s", final.N, final.failure_mode)
+        elif final is not None and final.runout:
+            status = "runout"
+        else:
+            status = "completed"
+
+    metrics = measure()
+    acc = judge_acceptance(
+        metrics, N_nuc=N_nuc, a_contact=a_contact,
+        a_pl=float(nc["x_init_tol"]), incline_deg=float(nc["incline_deg"]),
+        turn_deg=float(nc["turn_deg"]))
+
+    tags: dict[str, int] = {}
+    for t in shakedown_tags:
+        tags[t] = tags.get(t, 0) + 1
+    result = {
+        "case": raw.get("case", "clamp_base"),
+        "case_type": "clamp",
+        "status": status,
+        "delta": case.delta,
+        "W_target": float(raw["loading"]["W_target"]),
+        "N_final": float(history[-1]["N"]) if history else 0.0,
+        "N_nuc": None if N_nuc is None else float(N_nuc),
+        "acceptance": {
+            "passed": bool(acc.passed),
+            "checks": {k: bool(v) for k, v in acc.checks.items()},
+            "x_init": acc.x_init,
+            "theta_init_deg": acc.theta_init_deg,
+            "theta_later_deg": acc.theta_later_deg,
+            "a_pl": acc.a_pl,
+            "contact_edges": list(acc.contact_edges),
+            "details": acc.details,
+        },
+        "shakedown_tags": tags,
+        "n_jumps": len(history),
+        "timing_s": {"solve": time.perf_counter() - t0},
+        "history": history,
+    }
+    if is_root:
+        outdir.mkdir(parents=True, exist_ok=True)
+        tmp = outdir / "result.json.tmp"
+        tmp.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(outdir / "result.json")
+    return result
+
+
+def _save(case, outdir, history, shakedown_tags, N_nuc) -> None:
+    """存断点（adios4dolfinx）。"""
+    from pfwire import checkpoint
+    checkpoint.save(outdir, case.solver, case.state,
+                    {"N": case.driver.N, "delta_N": case.driver.delta_N,
+                     "n_jumps": len(history), "history": history,
+                     "shakedown_tags": shakedown_tags, "N_nuc": N_nuc},
+                    case.mesh.comm, facet_tags=case.facet_tags)
+
+
+def crack_metrics_from_field(case: ClampCase) -> "CrackMetrics | None":
+    """采样当前 d 场并算起裂/转向度量（T5 与 T6 共用同一函数）。"""
+    nc = case.config["nucleation"]
+    values = case.grid.sample(case.solver.d)
+    return crack_metrics(values, case.grid.x_coords, case.grid.depth_coords,
+                         threshold=float(nc["threshold"]),
+                         nucleation_depth=float(nc["nucleation_depth"]),
+                         turn_depth=float(nc["turn_depth"]))

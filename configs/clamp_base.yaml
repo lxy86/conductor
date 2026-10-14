@@ -1,0 +1,96 @@
+# Phase 6.5 基准线夹工况（D-67）：线夹压单丝 + 轴向张力 + 往复弯矩 -> 起裂寿命。
+#
+# 单位一律 SI。⚠ YAML 1.1：指数写法必须带符号（500e6 会被解析成字符串），
+# 见 CLAUDE.md 陷阱 2；载入侧仍会 float() 强转（material.py 的 _coerce）。
+#
+# 用法：mpirun -n 6 python -m pfwire.run_clamp configs/clamp_base.yaml
+
+case: clamp_base
+case_type: clamp
+
+material: configs/material_al1350.yaml
+
+# ---- 网格：复用 6.2 的布局 C（已生成 1,450,499 单元）----
+# 几何与加密参数**从 configs/clamp_mesh.yaml 读**，这里只选布局，避免两处写死同一些数。
+mesh:
+  from_config: configs/clamp_mesh.yaml
+  layout: C
+  workdir: data/clamp_mesh_C
+  # 布局 C 的加密盒：两条以接触边缘 ±a_contact 为中心的带，各宽 2w、深 d
+  # （clamp_mesh.yaml 的 layouts.C）
+
+# ---- 接触（D-67 §1：无摩擦罚函数法向接触）----
+contact:
+  R_clamp: 330.0e-3       # 线夹轴向曲率半径（m）
+  kappa: 10.0             # 罚系数，6.1 S2 标定
+  kappa_sens: 1.0         # 敏感性：换 κ 重算接触反力，报告相对变化（阈值 3%）
+  h_contact: 0.5e-6       # 加密带的单元边长（= ℓ/4，ℓ = 2 µm），罚刚度 ε = κE/h
+
+# ---- 载荷（D-67 §3）----
+loading:
+  # 夹持力 W'：割线法搜 δ 使接触反力 = W'，之后保持 δ 不变
+  W_target: 1.75e+6       # N/m（单位厚度）
+  delta0: 17.0e-6         # 割线法起点（6.1 长加载的工作点）
+  search:
+    rtol: 1.0e-2          # 相对容差 1%
+    max_iter: 20
+
+  # 端部：轴向张力 T' + 往复弯矩 M(t)，t_x(y) = T'/H + 12M(y−H/2)/H³
+  sigma_a: 45.0e6         # 远场弯曲应力幅（Pa）；由 P–S 给出（本配置直接给值）
+  T_prime: 1.0e4          # 轴向张力（N/m，单位厚度）
+  H: 3.75e-3              # 单丝厚度（R_wire = 1.875 mm），与 mesh.depth 一致
+  side: right             # 施加载荷的端面
+
+  # cycle-jump（与 fretting 同构）
+  cycle:
+    n_sub: 20             # 每周期的显式子步数
+    dN_init: 1.0
+    dN_min: 1.0
+    dN_max: 1.0e4
+    dd_max: 0.02          # 每 jump 的 Δd 上限
+    grow_below: 0.01
+    factor: 1.5
+    N_max: 2.0e7
+    peak_phase: 0.25      # sin(2π t/T) 的峰值相位
+
+  # 安定/棘轮判别（D-66）：带塑性时必填
+  shakedown:
+    zero_tol: 1.0e-10
+    decay_ratio: 0.5
+    n_check: 5
+
+# ---- 起裂与转向判据（D-67 §4）----
+# 6 µm 是**判定深度**（3ℓ），不是求解结果：N_nuc 随它变化，敏感性须报告。
+nucleation:
+  threshold: 0.95
+  nucleation_depth: 6.0e-6
+  turn_depth: 100.0e-6
+  incline_deg: 10.0       # |θ_init| >= 10° 才算倾斜
+  turn_deg: 20.0          # |θ_later − θ_init| >= 20° 才算转向
+  x_init_tol: 2.389e-3    # 起裂位置须落在接触边缘 ±a_pl 内（6.1 实测 a_pl）
+
+# ---- 裂纹采样网格 ----
+sampling:
+  halfwidth: 3.517e-3     # a_contact + 0.3 mm：盖住两条边缘带
+  depth_max: 150.0e-6
+  spacing: 0.25e-6        # = h_fine/2；DamageGrid 要求 spacing <= h_fine
+
+# ---- 求解器 ----
+solver:
+  u_solver: newton        # 有塑性与接触，必须 newton（PLAN/CLAUDE.md）
+  tol_d: 1.0e-4
+  max_iter: 50
+  # 线搜索与容差**照 6.1 的 indent_plastic_obstacle.yaml**（实测，非照抄注释）：
+  # 屈服点上 bt（回溯）能过而 basic（整步）跨不过——12/12 延拓步 vs 5/12。
+  # 这与 SolverConfig.u_linesearch 注释里「spectral 下改 basic」的建议相反，
+  # 但那里指的是谱分解的主应变过零折点，这里卡的是塑性屈服点：是两种不同的折点。
+  u_linesearch: bt
+  snes_rtol: 1.0e-10
+  snes_atol: 1.0e-6
+  snes_max_it: 60
+
+# ---- 输出 ----
+output:
+  dir: data/clamp_base
+  save_every: 25          # 每 25 步存一次断点（adios4dolfinx）
+  dump_every: 10          # 每 10 步写一次 result.json 快照
