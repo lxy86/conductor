@@ -420,9 +420,14 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
     h_contact = (float(cc["h_contact"]) if not raw["mesh"].get("tiny")
                  and edge_eff == float(el["edge_target"])
                  else h_fine_eff * float(el["edge_ratio"]))
+    # bottom_support：下侧平面支撑的 y 坐标（对称夹持的下颚）。None = 不加。
+    bs = cc.get("bottom_support")
+    if bs is not None and str(bs) in ("auto", "bottom"):
+        bs = -H                       # 单丝底面
     clamp = ClampContact(msh, facet_tags, E=material.elastic.E,
                          R_clamp=float(cc["R_clamp"]), kappa=float(cc["kappa"]),
-                         h_contact=h_contact)
+                         h_contact=h_contact,
+                         bottom_support=None if bs is None else float(bs))
     ld = raw["loading"]
     self_eq = bool(ld.get("self_equilibrated", False))
     loads = ClampLoads(msh, facet_tags, H=float(ld["H"]),

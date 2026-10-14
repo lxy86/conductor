@@ -47,6 +47,24 @@ def clamp_normal(x, R_clamp, delta):
     return r / ufl.sqrt(ufl.inner(r, r))
 
 
+def plane_gap(x, y_plane: float) -> object:
+    """水平平面障碍的有符号间隙 g = y_plane − y（负值 = 点在平面上方，即穿透）。
+
+    ``x`` 为 X + u（UFL 表达式），``y_plane`` 为平面的 y 坐标（常数或 Constant）。
+    平面在单丝下方，单丝被压下去时 y < y_plane 即穿透。
+    """
+    return y_plane - x[1]
+
+
+def plane_normal() -> tuple:
+    """平面障碍对单丝的推力方向：平面在下方，把单丝往上推，故为 +y。
+
+    与 :func:`clamp_normal` 同口径——都返回「障碍对单丝的推力方向」，
+    残差里一律写成 p·(n·v)。上侧圆弧线夹的推力朝下（−y），下侧平面朝上（+y）。
+    """
+    return (0.0, 1.0)
+
+
 def penalty_pressure(g, eps):
     """罚函数接触压力 p = ε · max(−g, 0)（仅穿透时非零，单位 Pa）。"""
     return eps * ufl.max_value(-g, 0.0)
