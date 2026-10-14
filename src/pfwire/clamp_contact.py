@@ -66,6 +66,7 @@ class ClampContact:
             raise ValueError("symmetric=True 时必须给 depth（单丝厚度），下侧线夹要用它定位")
         self.depth = None if depth is None else float(depth)
         self.eps = penalty_stiffness(kappa, E, h_contact)
+        self.h_contact = float(h_contact)
         self.delta = fem.Constant(mesh, 0.0)
         self.bottom_support = bottom_support
         self.symmetric = bool(symmetric)

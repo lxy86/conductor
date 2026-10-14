@@ -40,7 +40,8 @@ def main(argv=None) -> int:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
     comm = MPI.COMM_WORLD
-    from pfwire.clamp_case import build_clamp_case, find_working_delta, run_clamp_case
+    from pfwire.clamp_case import (build_clamp_case, find_working_delta,
+                                   kappa_sensitivity, run_clamp_case)
 
     case = build_clamp_case(args.config, comm, resume=args.resume)
     raw = case.config

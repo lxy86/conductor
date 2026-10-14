@@ -444,9 +444,15 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
                        tol_d=float(sv.get("tol_d", 1.0e-4)),
                        max_iter=int(sv.get("max_iter", 50)),
                        u_linesearch=str(sv.get("u_linesearch", "bt")),
-                       snes_rtol=float(sv.get("snes_rtol", 1.0e-6)),
-                       snes_atol=float(sv.get("snes_atol", 1.0e-8)),
-                       snes_max_it=int(sv.get("snes_max_it", 200)))
+                       # d 用 snes_atol/rtol（默认 1e-8/1e-6，见 SolverConfig 注释）；
+                       # u 另设（6.1 标定值 atol=1e-6/rtol=1e-10），两者量级差很远。
+                       snes_rtol=float(sv.get("snes_rtol_d", 1.0e-6)),
+                       snes_atol=float(sv.get("snes_atol_d", 1.0e-8)),
+                       snes_rtol_u=float(sv.get("snes_rtol", 1.0e-10)),
+                       snes_atol_u=float(sv.get("snes_atol", 1.0e-6)),
+                       # max_it 也要分开：6.1 的 60 是给 u 的，d 的 SNES 默认 200。
+                       # 实测 d 在 53/60 次时报 -6（还没到 200 就被截断）。
+                       snes_max_it=int(sv.get("snes_max_it_d", 200)))
 
     def bcs_u(V):
         # 构型由 loading.support 选：simply_supported（两端简支）/ bottom（竖向支撑）
@@ -711,8 +717,13 @@ def kappa_sensitivity(case: ClampCase, kappa_alt: float) -> dict:
     nu = case.solver.model.material.elastic.nu
 
     def reaction_with(kappa: float) -> float:
+        # 必须与主 case 同构型（对称双夹持 / 平面支撑），否则单侧接触在只锚
+        # u_x 的约束下"顶不住"，延拓第一步就发散（实测 SNES -6）。
         clamp = ClampContact(msh, ft, E=E, R_clamp=float(cc["R_clamp"]), kappa=kappa,
-                             h_contact=float(getattr(case, "h_contact", cc["h_contact"])))
+                             h_contact=float(getattr(case, "h_contact", cc["h_contact"])),
+                             bottom_support=case.clamp.bottom_support,
+                             symmetric=case.clamp.symmetric,
+                             depth=getattr(case.clamp, "depth", None))
         clamp.set_delta(0.0)          # 延拓起点：见 DELTA_STEPS
         V = fem.functionspace(msh, ("Lagrange", 1, (msh.geometry.dim,)))
         u = fem.Function(V)
@@ -723,10 +734,13 @@ def kappa_sensitivity(case: ClampCase, kappa_alt: float) -> dict:
         sig = 2.0 * mu * eps + lmbda * ufl.tr(eps) * ufl.Identity(msh.geometry.dim)
         F = (ufl.inner(sig, ufl.sym(ufl.grad(v))) * ufl.dx
              - clamp.residual(u, v))
+        support = str(case.config["loading"].get("support", "free"))
+        bcs = end_bcs(V, msh, ft,
+                      simply_supported=(support == "simply_supported"),
+                      bottom_fixed=(support == "bottom"),
+                      axial_anchor=(support == "axial"))
         problem = NonlinearProblem(
-            F, u, bcs=end_bcs(V, msh, ft, bottom_fixed=bool(
-                case.config["loading"].get("self_equilibrated", False))),
-            petsc_options_prefix="clamp_kappa_",
+            F, u, bcs=bcs, petsc_options_prefix="clamp_kappa_",
             petsc_options={"snes_type": "newtonls", "snes_linesearch_type": "bt",
                            "snes_rtol": 1.0e-10, "snes_atol": 1.0e-10,
                            "snes_max_it": 60, "ksp_type": "preonly", "pc_type": "lu",

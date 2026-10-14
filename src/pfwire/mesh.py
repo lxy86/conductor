@@ -652,9 +652,15 @@ def block_mesh(workdir, *, width: float, depth: float, refine_boxes, h_fine: flo
                comm=MPI.COMM_WORLD):
     """矩形网格 [−width/2, width/2] × [−depth, 0]，在 refine_boxes 内加密到 h_fine。
 
-    refine_boxes：(xmin, xmax, ymin, ymax) 列表，单位 m；盒子之间取较小的尺寸场（gmsh Min）。
-    返回 (mesh, cell_tags, facet_tags)；facet_tags 中 BLOCK_TOP / BLOCK_BOTTOM 为两个边界面。
-    gmsh 只在 rank 0 上生成网格，之后由 dolfinx 读入（与 contact.py 的做法一致）。
+    refine_boxes：两种形式都接受——
+      - 四元组 (xmin, xmax, ymin, ymax)：盒内用全局 ``h_fine``；
+      - 五元组 (xmin, xmax, ymin, ymax, h_in)：盒内用各自 ``h_in``（两级加密）。
+
+    盒子之间取较小的尺寸场（gmsh Min）。五元组支持**多级加密**：例如接触区用
+    50 µm（像 6.1，分辨 a=2.4 mm 足够），裂纹带用 1 µm（分辨相场 ℓ=2 µm），
+    两者叠加时 Min 取较细者，既分辨裂纹又不把整片网格细化到几十万单元。
+    返回 (mesh, cell_tags, facet_tags)；facet_tags 中 BLOCK_TOP / BLOCK_BOTTOM
+    为两个边界面。gmsh 只在 rank 0 上生成网格，之后由 dolfinx 读入。
     """
     import gmsh
     import pathlib as _pl
@@ -682,10 +688,19 @@ def block_mesh(workdir, *, width: float, depth: float, refine_boxes, h_fine: flo
             elif abs(bb[0] - 0.5 * width) < tol and abs(bb[3] - 0.5 * width) < tol:
                 gmsh.model.addPhysicalGroup(1, [e], tag=BLOCK_RIGHT)
         boxes = []
-        for i, (x0, x1, y0, y1) in enumerate(refine_boxes):
+        for i, box in enumerate(refine_boxes):
+            box = tuple(box)
+            if len(box) == 5:
+                x0, x1, y0, y1, h_in = box
+            elif len(box) == 4:
+                x0, x1, y0, y1 = box
+                h_in = h_fine
+            else:
+                raise ValueError("refine_boxes 每项须为 (xmin,xmax,ymin,ymax) 或 "
+                                 "(xmin,xmax,ymin,ymax,h_in)，收到 %r" % (box,))
             fid = 1 + i
             gmsh.model.mesh.field.add("Box", fid)
-            gmsh.model.mesh.field.setNumber(fid, "VIn", h_fine)
+            gmsh.model.mesh.field.setNumber(fid, "VIn", float(h_in))
             gmsh.model.mesh.field.setNumber(fid, "VOut", h_coarse)
             gmsh.model.mesh.field.setNumber(fid, "XMin", x0)
             gmsh.model.mesh.field.setNumber(fid, "XMax", x1)

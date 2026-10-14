@@ -452,6 +452,17 @@ class SolverConfig:
     snes_atol: float = 1.0e-8
     snes_rtol: float = 1.0e-6
     snes_max_it: int = 200
+    snes_atol_u: float | None = None
+    """u 的 Newton 容差。**None 时沿用 snes_atol/snes_rtol**（既有行为不变）。
+
+    为什么需要分开：u 与 d 的容差量级差得很远。d 问题是二次的，残差会掉到
+    装配的舍入地板上，故要 atol=1e-8/rtol=1e-6（见 snes_atol 的注释）；
+    而 u 的弹塑性 + 罚接触问题残差量级大得多，6.1 标定的是
+    atol=1e-6/rtol=1e-10（indent_plastic_obstacle.yaml）。共用一组时，
+    取 6.1 的值会让 d 报 SNES -6（残差 8.5e-4 停住而 atol 只有 1e-6，
+    差 850 倍），取 d 的值又会让 u 过不了屈服点。
+    """
+    snes_rtol_u: float | None = None
     """d 的 SNES 容差。**不要再调紧**：d 问题是二次的（残差线性），残差会掉到
     装配的舍入地板上就不动了。实测（h=ell/4、16229 个 d 自由度、AT2、Gc=2700、
     ell=15 um）：某个载荷步的残差历史为 6.27e-4 -> 9.66e-10 -> 6.34e-10 ->
@@ -691,8 +702,8 @@ class PhaseFieldSolver:
                 petsc_options={
                     "snes_type": "newtonls",
                     "snes_linesearch_type": cfg.u_linesearch,
-                    "snes_atol": cfg.snes_atol,
-                    "snes_rtol": cfg.snes_rtol,
+                    "snes_atol": cfg.snes_atol if cfg.snes_atol_u is None else cfg.snes_atol_u,
+                    "snes_rtol": cfg.snes_rtol if cfg.snes_rtol_u is None else cfg.snes_rtol_u,
                     "snes_max_it": cfg.snes_max_it,
                     **self.config.direct_solver_options,
                 },
