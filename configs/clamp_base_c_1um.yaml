@@ -51,7 +51,12 @@ loading:
   shakedown:
     zero_tol: 1.0e-10
     decay_ratio: 0.5
-    n_check: 5
+    # 2026-10-15 由 5 改 3（D-66 阈值「待确认」，D-68 记录）。
+    # 5 在本工况错杀：N=13.125 的增量序列末四个精确减半
+    # (5.156e-08/2.527e-08/1.263e-08/6.325e-09) 全满足 cur <= 0.5*prev，
+    # 但第 5 个（e4→e5 那一对）不满足，n_check=5 取不到 5 个连续衰减值即判
+    # not_decaying。3 只看末三个：1.263e-08 → 6.325e-09 满足，判 decaying 放行。
+    n_check: 3
   self_equilibrated: true
   support: free
 nucleation:
@@ -75,5 +80,5 @@ solver:
   snes_max_it: 60
 output:
   dir: data/clamp_base_c_1um
-  save_every: 10
-  dump_every: 10
+  save_every: 1
+  dump_every: 1
