@@ -383,28 +383,33 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
              (-a_contact - w, -a_contact + w, -d, 0.0)]
     workdir = root / raw["mesh"]["workdir"]
 
+    # ``mesh.tiny`` / ``edge_target`` / ``refine_boxes`` 对网格参数的决议放在
+    # 分支**之前**：h_fine 在 resume 与非 resume 两条路上都要用（下面的
+    # h_contact 跟随加密带边长），而原来只在 else 里赋值，resume 时它未绑定，
+    # 一恢复就 UnboundLocalError —— 断点续跑整个走不通（硬约束 5）。
+    if raw["mesh"].get("tiny"):
+        # ``mesh.tiny`` 只给单测用：把布局 C 的两条 0.5 µm 加密带换成中心一个小盒，
+        # 单元数从 145 万降到几千，好让装配/搜索/推进在秒级走通。
+        boxes = [(-0.5e-3, 0.5e-3, -0.3e-3, 0.0)]
+        h_fine, h_coarse, transition = 50.0e-6, 750.0e-6, 0.3e-3
+    else:
+        # ``mesh.edge_target`` 可覆盖 clamp_mesh.yaml 的单元边长（降规模用）。
+        # gmsh 的设定值 h 与实际边长之比是 edge_ratio（实测 0.45，D-58）。
+        edge = float(raw["mesh"].get("edge_target", el["edge_target"]))
+        h_fine = edge / float(el["edge_ratio"])
+        h_coarse, transition = float(el["h_coarse"]), float(el["transition"])
+        # ``mesh.refine_boxes`` 可覆盖布局 C 的两条裂纹带（6.1 尺度下用一整个
+        # 覆盖接触区的盒子即可，单元数从 145 万降到 7 千）。
+        if raw["mesh"].get("refine_boxes"):
+            boxes = [tuple(float(v) for v in b)
+                     for b in raw["mesh"]["refine_boxes"]]
+
     resumed = None
     if resume:
         outdir = root / raw["output"]["dir"]
         resumed = checkpoint.resume(outdir, comm)
         msh, facet_tags = resumed.mesh, resumed.read_facet_tags()
     else:
-        # ``mesh.tiny`` 只给单测用：把布局 C 的两条 0.5 µm 加密带换成中心一个小盒，
-        # 单元数从 145 万降到几千，好让装配/搜索/推进在秒级走通。
-        if raw["mesh"].get("tiny"):
-            boxes = [(-0.5e-3, 0.5e-3, -0.3e-3, 0.0)]
-            h_fine, h_coarse, transition = 50.0e-6, 750.0e-6, 0.3e-3
-        else:
-            # ``mesh.edge_target`` 可覆盖 clamp_mesh.yaml 的单元边长（降规模用）。
-            # gmsh 的设定值 h 与实际边长之比是 edge_ratio（实测 0.45，D-58）。
-            edge = float(raw["mesh"].get("edge_target", el["edge_target"]))
-            h_fine = edge / float(el["edge_ratio"])
-            h_coarse, transition = float(el["h_coarse"]), float(el["transition"])
-            # ``mesh.refine_boxes`` 可覆盖布局 C 的两条裂纹带（6.1 尺度下用一整个
-            # 覆盖接触区的盒子即可，单元数从 145 万降到 7 千）。
-            if raw["mesh"].get("refine_boxes"):
-                boxes = [tuple(float(v) for v in b)
-                         for b in raw["mesh"]["refine_boxes"]]
         msh, _ct, facet_tags = block_mesh(
             workdir, width=float(geo["width"]), depth=H, refine_boxes=boxes,
             h_fine=h_fine, h_coarse=h_coarse, transition=transition, comm=comm)
