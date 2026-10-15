@@ -55,17 +55,20 @@ def bending_moment_amplitude(sigma_a: float, H: float) -> float:
     return float(sigma_a) * _positive(H, "H") ** 2 / 6.0
 
 
-def end_traction_x(T: float, M: float, H: float, y):
+def end_traction_x(T, M, H: float, y):
     """t_x(y) = T/H + 12 M (y − H/2)/H³（Pa，每单位厚度）。
 
     ``y`` 从**底面**量起（0 ≤ y ≤ H），与 D-67 §3 的记号一致。可为 float、
     numpy 数组或 UFL 表达式（因此可直接写进 Neumann 形式）。
 
-    T 是轴力（N/m，单位厚度），M 是弯矩（N，单位厚度）——注意 M 的量纲：
-    弯矩 = 力 × 力臂，单位厚度下为 N·m/m = N。
+    ⚠ ``T`` 与 ``M`` **不得 float()**：它们可能是 UFL 表达式（M = phase·M_a，
+    phase 是 fem.Constant）。早期版本对它们做了 float()，把 Constant 的**构造时
+    值**烘成字面量，于是 set_phase 改 .value 对已编译的 form 毫无影响——载荷
+    完全冻结，psi+ 不随相位变化、alpha_bar 永不累积（实测相位 0 与 0.25 的
+    |F_ext| 都是 4358.9）。只有 ``H`` 是真正的几何常数，可以对它做校验。
     """
     H = _positive(H, "H")
-    return float(T) / H + 12.0 * float(M) * (y - 0.5 * H) / H**3
+    return T / H + 12.0 * M * (y - 0.5 * H) / H**3
 
 
 class ClampLoads:

@@ -90,6 +90,30 @@ def test_clamp_loads_phase_switches_moment_without_recompiling(tmp_path):
     assert isinstance(form, ufl.Form)
 
 
+def test_phase_changes_an_already_compiled_form(tmp_path):
+    """回归：set_phase 必须改变**已构造好的** form（D-68 的真 bug）。
+
+    症状（修复前）：`end_traction_x` 里 `float(M)` 把 `phase * M_a` 这个 UFL
+    表达式在构造时求值成 Python 字面量，于是 set_phase 改 `.value` 对已编译的
+    form 毫无影响——载荷冻结、ψ⁺ 不随相位变、alpha_bar 永不累积、N 跑到几十万
+    也不起裂。这条测试用**同一个 form** 在两个相位下装配，两者必须不同。
+    """
+    msh, _ct, ft = _small_mesh(tmp_path)
+    loads = ClampLoads(msh, ft, H=H, sigma_a=SIGMA_A, T=0.0)   # 纯弯曲，只看相位
+    V = fem.functionspace(msh, ("Lagrange", 1, (2,)))
+    form = fem.form(loads.traction()(V))          # 只构造一次
+    from dolfinx.fem.petsc import assemble_vector
+
+    loads.set_phase(0.0)
+    n0 = float(np.linalg.norm(assemble_vector(form).array))
+    loads.set_phase(1.0)
+    n1 = float(np.linalg.norm(assemble_vector(form).array))
+    assert n0 == pytest.approx(0.0, abs=1e-6), "phase=0 时载荷应为零，实得 %g" % n0
+    assert n1 > 0.0, "phase=1 时载荷不应为零"
+    assert n1 != pytest.approx(n0), \
+        "set_phase 没有改变已编译的 form（载荷被冻结，D-68 的 bug 复现）"
+
+
 def test_phase_antisymmetry_of_displacement(tmp_path):
     """T3d：纯弯曲（T=0）时 phase=+1 与 −1 的位移逐点相反。
 
