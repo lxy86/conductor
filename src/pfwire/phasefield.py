@@ -253,12 +253,24 @@ def psi_plus(eps_elastic, split: str, lam: float, mu: float):
     )
 
 
-def elastic_energy_density(eps, d, material: Material, split, dim, k_res, *, freeze_from=None):
-    """g(d) psi+ + psi-。"""
+def elastic_energy_density(eps, d, material: Material, split, dim, k_res, *,
+                           freeze_from=None, degrade_stiffness: bool = True):
+    """ψ⁻ + g(d)·ψ⁺（默认）或 ψ⁻ + ψ⁺（``degrade_stiffness=False``，b-1 口径）。
+
+    ``degrade_stiffness=False`` 只改**刚度**这一项：材料不再因损伤软化，于是
+    u 的解与 d 的取值无关，交错迭代里 d↑→刚度↓→u↑ 的反馈环被切断
+    （D-68 问题 5）。d 方程自身的驱动力与屈服面**仍**保留 g(d)
+    （见 PhaseFieldModel.degrade_stiffness 的说明），故不可逆与 B 口径不受影响。
+
+    注意 ``k_res`` 不复用时仍要校验：调用方只有在 degrade_stiffness=True 时
+    才会取用 g(d)，但签名保持不变以免各调用点分叉。
+    """
     psi_plus, psi_minus = energy_split(
         eps, material, split, dim, freeze_from=freeze_from
     )
-    return degradation(d, k_res) * psi_plus + psi_minus
+    if degrade_stiffness:
+        return degradation(d, k_res) * psi_plus + psi_minus
+    return psi_plus + psi_minus
 
 
 def _check_fatigue_args(alpha_bar, alpha_T, form, kappa):
@@ -416,6 +428,29 @@ class PhaseFieldModel:
     split: Split = "amor"
     k_res: float = 1.0e-6
     dissipation: str = "AT1"
+    degrade_stiffness: bool = True
+    """g(d) 是否同时退化**弹性刚度**（默认 True，即 PLAN §2 / D-2 的原口径）。
+
+    三个位置原本都乘同一个 g(d) = (1−d)² + k_res：
+      1. u 方程的弹性能 g(d)ψ⁺ + ψ⁻（本项 = 刚度）；
+      2. d 方程的驱动力 g(d)ψ⁺；
+      3. 屈服面 σ_deg = g(d)∂ψ⁺/∂ε + ∂ψ⁻/∂ε（D-62/D-63 的 B 口径）。
+
+    ``degrade_stiffness=False``（b-1 口径，D-68 问题 5）只把第 1 项换成未退化的
+    ψ⁺，第 2、3 项的 g(d) **保留**。
+
+    **为什么需要这个开关**：u 与 d 交错时第 1 项构成正反馈环
+
+        d ↑ → g(d) ↓ → 刚度 ↓ → u ↑ → ψ⁺ ↑ → d ↑
+
+    D-68 实测（N=94.2773、峰值相位）：max_d 五轮从 0.084 冲到 1.0，
+    ψ⁺ 同时涨 63%（1.63e5 → 2.65e5 Pa），而 max|ε_p| ≡ 0
+    —— 即塑性未激活，ψ⁺ 增长纯由 u 增大而来。均匀区驻定分析给出的内部解
+    只有 d* ≈ +0.24，是耦合反馈把它推成发散。断开第 1 项即可打断该环。
+
+    ⚠ 这是**新口径**，PLAN §2 未列（PLAN 的公式含 g(d)ψ⁺）。启用时必须在论文中
+    说明这一偏离及其依据；默认 False 之外的一切既有算例都仍按原口径。
+    """
 
     def __post_init__(self) -> None:
         if self.split not in SPLITS:
@@ -726,6 +761,7 @@ class PhaseFieldSolver:
             self.dim,
             model.k_res,
             freeze_from=strain(self.u_prev),
+            degrade_stiffness=model.degrade_stiffness,
         ) * self.dx
         residual = ufl.derivative(energy, self.u, v)
         return ufl.derivative(residual, self.u, u_trial)
@@ -740,7 +776,8 @@ class PhaseFieldSolver:
         model = self.model
         if self.plastic is None:
             psi = elastic_energy_density(
-                strain(self.u), self.d, model.material, model.split, self.dim, model.k_res,
+                strain(self.u), self.d, model.material, model.split, self.dim,
+                model.k_res, degrade_stiffness=model.degrade_stiffness,
             )
             F = ufl.derivative(psi * self.dx, self.u, v)
         else:
@@ -755,6 +792,10 @@ class PhaseFieldSolver:
         cfg, model = self.config, self.model
         w = ufl.TestFunction(self.V_d)
         psi_plus = self.psi_plus_expr()
+        # ⚠ 这里的 g(d) **不随 degrade_stiffness 变**（b-1 口径，D-68 问题 5）：
+        # degrade_stiffness=False 只摘掉 u 方程弹性能里的 g(d)（= 材料软化），
+        # d 方程的驱动力与屈服面仍保留它 —— 否则不可逆性与 B 口径会被一起改掉。
+        # 于是 u 与 d 的 g(d) 用法**故意不对称**：一个管软化、一个管驱动力。
         energy = (
             degradation(self.d, model.k_res) * psi_plus
             + dissipation_density(
@@ -784,9 +825,14 @@ class PhaseFieldSolver:
     def _build_energy_forms(self) -> None:
         model = self.model
         psi_plus, psi_minus = self._energy_pair()
-        self._form_elastic = fem.form(
-            (degradation(self.d, model.k_res) * psi_plus + psi_minus) * self.dx
-        )
+        # 与 u 方程保持同一口径：degrade_stiffness=False 时 u 最小化的是
+        # ψ⁺ + ψ⁻（不含 g(d)），这里也必须照算，否则 energies() 报的不是
+        # 求解器真正处置的那个能量（D-68 问题 5 的 b-1）。
+        if model.degrade_stiffness:
+            elastic_pair = degradation(self.d, model.k_res) * psi_plus + psi_minus
+        else:
+            elastic_pair = psi_plus + psi_minus
+        self._form_elastic = fem.form(elastic_pair * self.dx)
         self._form_dissipated = fem.form(
             dissipation_density(
                 self.d, model.material, self.f_alpha, model.dissipation
@@ -1027,7 +1073,8 @@ class PhaseFieldSolver:
         model = self.model
         if self.plastic is None:
             psi = elastic_energy_density(
-                strain(self.u), self.d, model.material, model.split, self.dim, model.k_res,
+                strain(self.u), self.d, model.material, model.split, self.dim,
+                model.k_res, degrade_stiffness=model.degrade_stiffness,
             )
             form = fem.form(ufl.derivative(psi * self.dx, self.u, probe))
         else:

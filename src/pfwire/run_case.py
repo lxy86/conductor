@@ -257,6 +257,8 @@ def load_case(path: str | Path) -> CaseConfig:
         split=str(model_cfg.get("split", "amor")),
         k_res=float(model_cfg.get("k_res", 1.0e-6)),
         dissipation=str(model_cfg.get("dissipation", material.fracture.dissipation)),
+        # b-1 口径开关（D-68 问题 5）。默认 True 即 PLAN §2 原口径不变。
+        degrade_stiffness=bool(model_cfg.get("degrade_stiffness", True)),
     )
 
     solver_cfg = dict(raw.get("solver", {}))

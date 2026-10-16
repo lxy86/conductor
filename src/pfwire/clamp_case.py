@@ -443,7 +443,13 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
                        self_equilibrated=self_eq)
 
     # --- 求解器：plastic + contact，必须 newton ---
-    model = PhaseFieldModel(material=material, split="spectral", k_res=1.0e-6)
+    # degrade_stiffness（b-1 口径，D-68 问题 5）：从 model: 段读，默认 True
+    # （PLAN §2 原口径）。False 时 u 方程的弹性能不再乘 g(d)，打断
+    # d↑→g↓→刚度↓→u↑→ψ⁺↑→d↑ 的正反馈环；d 方程驱动力与屈服面的 g(d) 保留。
+    mcfg = raw.get("model", {})
+    model = PhaseFieldModel(material=material, split="spectral", k_res=1.0e-6,
+                            degrade_stiffness=bool(
+                                mcfg.get("degrade_stiffness", True)))
     sv = raw.get("solver", {})
     cfg = SolverConfig(u_solver=str(sv.get("u_solver", "newton")),
                        tol_d=float(sv.get("tol_d", 1.0e-4)),

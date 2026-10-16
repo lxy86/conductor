@@ -3389,6 +3389,64 @@ Lévesque 的饱和压力 2.15σ_y = 359 MPa 两个量级里的合理范围（�
 **(a) 最正确**，代价是重写 Jacobian。按 CLAUDE.md 约定，
 这两条都要先给签名/方案再实现，不擅自开工。
 
+#### 问题 6（2026-10-16）：方案 b-1 实现后**无效** —— 与用户要求存在术语冲突
+
+用户选 b-1（弹性刚度不退化、屈服面 g 保留、做成可切换选项）。实现完成、
+新增 `tests/test_stiffness_degradation.py` 13 项全绿、既有 331 + 26 项全绿，
+但**在真实 case 上没有任何效果**（探针 16，从 N=94.2773 断点、峰值相位）：
+
+    轮   max_d      ‖Δd‖_inf   ψ⁺_max
+     1  0.08359  8.359e-02  1.6285e+05
+     2  0.22716  1.436e-01  1.5977e+05
+     3  0.45146  2.243e-01  1.7332e+05
+     4  0.74836  2.969e-01  2.0758e+05
+     5  1.00000  2.516e-01  2.6536e+05
+
+与探针 13（开关=False 之前的原口径）**逐位相同**。即开关没接到真正的代码路径上。
+
+**根因（实现层面的疏漏，不是方案本身无效）**：`degrade_stiffness` 只传进了
+`elastic_energy_density`，而这个函数在**塑性路径里根本不被调用**——
+`_residual_u_form` 走的是 `else` 分支：
+
+    if self.plastic is None:
+        psi = elastic_energy_density(...)     # <- 只有这里接到开关
+        F = d/du(psi dx)
+    else:
+        F = ∫ σ_deg : sym∇v                  # <- 线夹走这条，开关够不到
+
+塑性路径的刚度退化来自 `_sigma_deg_2d()` → `stress_split_3d(...)` 里的
+`degradation(d, k_res) * ∂ψ⁺/∂ε`。所以在线夹 case 上，u 方程里共有**两个**
+g(d)，各司其职：
+
+  1. `stress_split_3d(..., model.d, ...)`（`_sigma_deg_2d`）—— **应力**的退化，
+     决定着 u 方程的刚度（即正反馈环里「刚度 ↓」那一环）；
+  2. `elastic_strain(u, g=self._g())`（返回映射）—— **屈服面**的退化（D-62/D-63）。
+
+**而用户要求的「弹性刚度不退化、屈服面 g 保留」恰好对应 1 和 2。**
+我上一轮把「弹性刚度」理解成了 `elastic_energy_density` 里的那一项，
+只在非塑性分支上做了开关，故此在线夹 case 上完全没生效。
+
+**当前状态**：开关与 13 个新测试都在（`degrade_stiffness` 默认 True，
+全部既有算例逐位不变），但它在塑性路径上不起作用 —— 是个**半成品**，
+不能算实现完成。
+
+**下一步的两种走法（需你确认，涉及对「屈服面」的准确定义）**：
+
+  - **b-1'（补完开关）**：`_sigma_deg_2d` 在 `degrade_stiffness=False` 时给
+    `stress_split_3d` 传 `d=None`（即不乘 g(d)），但返回映射的
+    `elastic_strain(u, g=self._g())` 仍传 `_g()`。**这正好精确对应
+    「弹性刚度不退化 + 屈服面退化」**，是实现漏掉的那一环。
+    改动集中在 `_sigma_deg_2d` 一个函数 + `stress_split_3d` 支持 d=None。
+  - **b-1''（只摘返回映射的 g）**：反过来只让屈服面不退化、应力仍退化。
+    这与用户表述相反，不作为默认。
+
+另外要提醒：`stress_split_3d` 的 g(d) 一旦摘掉，`_sigma_deg_2d` 的应力就不含
+退化，则 u 方程的切线也随之改变（那是想要的），但 `test_coupled_tangent_matches_
+finite_difference_of_residual` 与 `test_homogeneous_state_commits_return_map_with_
+degradation` 两条在 `degrade_stiffness=False` 下会预期性失败 —— 它们是按
+「应力含 g(d)」写死的。新开关下要各自成组，不能改默认口径的断言。
+
+
 
 
 ### 待决（需用户）
