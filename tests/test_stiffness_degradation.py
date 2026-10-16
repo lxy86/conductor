@@ -33,6 +33,7 @@ from pfwire.phasefield import (
     SolverConfig,
     degradation,
     elastic_energy_density,
+    stress_split_3d,
 )
 from pfwire.plasticity import PlasticLaw, load_j2_params
 
@@ -253,3 +254,103 @@ def test_d_equation_drive_still_contains_degradation():
         outs[flag] = fem.assemble_scalar(fem.form(d_energy_form(s)))
     assert outs[True] == pytest.approx(outs[False], rel=1e-14, abs=0.0), \
         "d 方程能量不应随 degrade_stiffness 变化（开关只管 u 的刚度）"
+
+
+# ------------------------------------------------------------------ T5
+def _build_plastic_traction(degrade):
+    """带塑性的单轴拉伸工况（线夹的真实路径：u 残差走 sigma_deg 分支）。
+
+    ⚠ 这是 b-1 第一次实现漏掉的那条路径 —— 开关只接进 elastic_energy_density，
+    而塑性路径根本不调它。这条测试就是专门守住 _sigma_deg_2d 那一环。
+    """
+    material = load_material(MATERIAL)
+    msh = dmesh.create_unit_square(MPI.COMM_WORLD, 4, 4, dmesh.CellType.triangle)
+    model = PhaseFieldModel(material=material, split="spectral", k_res=K_RES,
+                            dissipation="AT1", degrade_stiffness=degrade)
+    solver = PhaseFieldSolver(
+        msh, model, bcs_u=_uniaxial_bcs(msh),
+        config=SolverConfig(u_solver="newton", snes_rtol=1.0e-10,
+                            snes_atol=1.0e-14),
+        plastic=PlasticLaw(msh, load_j2_params(MATERIAL)),
+        external_work=_traction)
+    return solver
+
+
+@pytest.mark.parametrize("d_val", [0.0, 0.5, 0.8])
+def test_plastic_path_displacement_is_independent_of_d_when_undeformed(d_val):
+    """T5（b-1′ 的核心回归）：**塑性路径**下 u 的解与 d 无关。
+
+    D-68 问题 6：第一版开关只传进 elastic_energy_density，而塑性路径的 u 残差走
+    ``else`` 分支（∫σ_deg:sym∇v），于是开关在线夹 case 上完全无效
+    （探针 16 的 max_d 曲线与开关之前逐位相同）。这条测试正是为守住那一环而写：
+    它只在 _sigma_deg_2d 也接到开关时才会通过。
+    """
+    s0 = _build_plastic_traction(degrade=False)
+    _set_d(s0, 0.0)
+    s0.solve_displacement()
+    u_ref = s0.u.x.array.copy()
+
+    s1 = _build_plastic_traction(degrade=False)
+    _set_d(s1, d_val)
+    s1.solve_displacement()
+    assert np.max(np.abs(s1.u.x.array - u_ref)) == pytest.approx(
+        0.0, abs=1e-12), (
+        "degrade_stiffness=False 在塑性路径下 u 仍随 d 变：开关未接到 "
+        "_sigma_deg_2d（D-68 问题 6 的 bug 复现）")
+
+
+def test_plastic_path_displacement_does_depend_on_d_by_default():
+    """T5 对照：默认口径（degrade_stiffness=True）下塑性路径的 u 必须随 d 变。"""
+    s = _build_plastic_traction(degrade=True)
+    _set_d(s, 0.0)
+    s.solve_displacement()
+    u0 = s.u.x.array.copy()
+    _set_d(s, 0.6)
+    s.solve_displacement()
+    scale = np.max(np.abs(u0))
+    assert np.max(np.abs(s.u.x.array - u0)) / scale > 1.0e-3, \
+        "默认口径下塑性路径的 u 应随 d 退化（g(0.6)=0.16）"
+
+
+def test_stress_degradation_toggles_exactly_g_factor():
+    """T5 数量级：σ_deg 两个口径之差恰为 (g(d)−1)·∂ψ⁺/∂ε。
+
+    与 T1 同一手法（装配标量做差），针对应力而非能量：证明 degrade_stress
+    只摘 g(d) 一个因子，没有顺手改动 ∂ψ⁺/∂ε 或 ∂ψ⁻/∂ε。
+
+    ⚠ 两点实现细节（都踩过）：
+      - ``stress_split_3d`` 的输入必须是**真 3×3**（含 ε_zz）：它读 ``eps3[2,2]``，
+        传 2×2 的 sym(grad u) 会触发 UFL 的「Index out of bounds」。
+      - 比较用 Frobenius 范数平方（inner(σ,σ)），不取逐分量 ——
+        谱分解含特征值，符号化简与逐分量索引都不稳。
+    """
+    material = load_material(MATERIAL)
+    msh = dmesh.create_unit_square(MPI.COMM_SELF, 4, 4, dmesh.CellType.triangle)
+    V = fem.functionspace(msh, ("Lagrange", 1, (2,)))
+    w = fem.Function(V)
+    w.interpolate(lambda x: np.vstack([0.3 * x[0], -0.2 * x[1]]))
+    e2 = ufl.sym(ufl.grad(w))
+    eps3 = ufl.as_tensor([[e2[0, 0], e2[0, 1], 0.0],
+                          [e2[1, 0], e2[1, 1], 0.0],
+                          [0.0, 0.0, 0.0]])
+
+    def norm2(expr):
+        return fem.assemble_scalar(fem.form(ufl.inner(expr, expr) * ufl.dx(domain=msh)))
+
+    for d_val in (0.0, 0.5, 0.9):
+        deg = stress_split_3d(eps3, material, "spectral", d_val, K_RES,
+                              degrade_stress=True)
+        undeg = stress_split_3d(eps3, material, "spectral", d_val, K_RES,
+                                degrade_stress=False)
+        from pfwire.phasefield import energy_split_3d
+        var = ufl.variable(eps3)
+        pp, _pm = energy_split_3d(var, material, "spectral")
+        expected = (degradation(d_val, K_RES) - 1.0) * ufl.diff(pp, var)
+        diff = deg - undeg
+        # 容差按**范数**的相对精度取，不是范数平方：norm 的相对误差 1e-6 对应
+        # norm² 的相对误差 2e-6。取 1e-6 宽松到不会因求积阶假阳性，
+        # 又远小于 g(0.5)=0.25 与 g(0)=1+k_res 之间的真实差（O(1)）。
+        assert norm2(diff) == pytest.approx(norm2(expected), rel=1e-6, abs=1e-9), (
+            "d=%g: sigma_deg 两口径之差不等于 (g-1).dpsi+/deps" % d_val)
+        # d=0 时 g(0)=1+k_res ≠ 1，差不应为零（否则测试恒真）
+        assert norm2(diff) > 0.0, "d=%g: 差为零说明测试状态无区分力" % d_val

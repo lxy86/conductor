@@ -218,14 +218,29 @@ def energy_split_3d(eps3, material: Material, split: str):
     return psi_plus, psi_minus
 
 
-def stress_split_3d(eps3, material: Material, split: str, d, k_res: float):
+def stress_split_3d(eps3, material: Material, split: str, d, k_res: float,
+                    *, degrade_stress: bool = True):
     """σ_deg = g(d) ∂ψ⁺/∂ε + ∂ψ⁻/∂ε，ε 为三维 ε_e，返回 3×3 UFL 张量（D-65）。
 
     对 ε_e 求导，不对 u 求导：返回映射 ε_p(u) 对 u 的依赖由 u 方程的 AD 另外计入。
+
+    ``degrade_stress=False``（b-1′ 口径，D-68 问题 5/6）时**不乘** g(d)，
+    即 σ_deg = ∂ψ⁺/∂ε + ∂ψ⁻/∂ε —— 弹性刚度不因损伤退化。
+    注意这与**屈服面**的退化是两件事：屈服面的 g 由 ``PlasticLaw.update(u, g=...)``
+    的 ``g`` 实参决定（见 ``PhaseFieldSolver._sigma_deg_2d``），不受本开关影响。
+
+    ``d`` 为 None 且 ``degrade_stress=True`` 时等价于退化因子取 1（无历史场时用）。
     """
     var = ufl.variable(eps3)
     psi_plus, psi_minus = energy_split_3d(var, material, split)
-    return degradation(d, k_res) * ufl.diff(psi_plus, var) + ufl.diff(psi_minus, var)
+    if degrade_stress:
+        if d is None:
+            raise ValueError(
+                "degrade_stress=True 需要 d（D-65 的 σ_deg = g(d)σ⁺ + σ⁻）。"
+                "若要不退化，请传 degrade_stress=False。"
+            )
+        return degradation(d, k_res) * ufl.diff(psi_plus, var) + ufl.diff(psi_minus, var)
+    return ufl.diff(psi_plus, var) + ufl.diff(psi_minus, var)
 
 
 def psi_plus(eps_elastic, split: str, lam: float, mu: float):
@@ -1040,11 +1055,23 @@ class PhaseFieldSolver:
         return self._energy_pair()[0]
 
     def _sigma_deg_2d(self):
-        """塑性路径的退化应力 σ_deg 的面内 2×2 分量（D-65）。"""
+        """塑性路径的退化应力 σ_deg 的面内 2×2 分量（D-65）。
+        这里同时出现**两个** g(d)，各司其职，别混为一谈：
+
+        1. ``elastic_strain(u, g=self._g())`` 的 ``g`` —— **屈服面**的退化
+           （返回映射按退化应力判断屈服，D-62/D-63 的 B 口径）；
+        2. ``stress_split_3d`` 的 ``degrade_stress`` —— **应力/刚度**的退化，
+           即 u 方程里 σ = g(d)∂ψ⁺/∂ε + ∂ψ⁻/∂ε。
+
+        b-1′（D-68 问题 6）把第 2 项摘掉、保留第 1 项，于是材料刚度不再随损伤软化，
+        d↑→g↓→刚度↓→u↑→ψ⁺↑→d↑ 的正反馈环被切断（D-68 实测：max_d 五轮从 0.084
+        冲到 1.0，而 ε_p ≡ 0 —— 反馈纯由 u 一侧造成）；屈服面退化不受影响。
+        """
         model = self.model
         s3 = stress_split_3d(
             self.plastic.elastic_strain(self.u, g=self._g()),
             model.material, model.split, self.d, model.k_res,
+            degrade_stress=model.degrade_stiffness,
         )
         return ufl.as_tensor([[s3[0, 0], s3[0, 1]], [s3[1, 0], s3[1, 1]]])
 
