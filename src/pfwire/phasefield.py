@@ -114,7 +114,6 @@ FATIGUE_FORMS: tuple[str, ...] = ("asymptotic", "logarithmic")
 #: 故 1e-30 远低于任何物理量，只用来避免 sqrt(0) 处导数发散。
 EIGENVALUE_REGULARIZATION = 1.0e-30
 
-
 # --------------------------------------------------------------------------
 # UFL 层：应变、退化、能量分解、耗散
 # --------------------------------------------------------------------------
@@ -122,11 +121,9 @@ def strain(u):
     """小应变 eps = sym(grad u)。"""
     return ufl.sym(ufl.grad(u))
 
-
 def degradation(d, k_res: float):
     """g(d) = (1-d)^2 + k_res。PLAN.md 第 2 节。"""
     return (1.0 - d) ** 2 + k_res
-
 
 def _principal_strains_2d(eps):
     """2x2 对称张量的两个特征值（闭式）。
@@ -137,7 +134,6 @@ def _principal_strains_2d(eps):
     half_diff = 0.5 * (eps[0, 0] - eps[1, 1])
     r = ufl.sqrt(half_diff**2 + eps[0, 1] ** 2 + EIGENVALUE_REGULARIZATION)
     return c + r, c - r
-
 
 def energy_split(eps, material: Material, split: str, dim: int, *, freeze_from=None):
     """返回 (psi_plus, psi_minus)。
@@ -189,7 +185,6 @@ def energy_split(eps, material: Material, split: str, dim: int, *, freeze_from=N
     )
     return psi_plus, psi_minus
 
-
 def energy_split_3d(eps3, material: Material, split: str):
     """三维嵌入的 (psi_plus, psi_minus)，ε 为 3×3 的 ε_e（含 ε_e,zz，D-65）。
 
@@ -217,7 +212,6 @@ def energy_split_3d(eps3, material: Material, split: str):
     )
     return psi_plus, psi_minus
 
-
 def stress_split_3d(eps3, material: Material, split: str, d, k_res: float,
                     *, degrade_stress: bool = True):
     """σ_deg = g(d) ∂ψ⁺/∂ε + ∂ψ⁻/∂ε，ε 为三维 ε_e，返回 3×3 UFL 张量（D-65）。
@@ -241,7 +235,6 @@ def stress_split_3d(eps3, material: Material, split: str, d, k_res: float,
             )
         return degradation(d, k_res) * ufl.diff(psi_plus, var) + ufl.diff(psi_minus, var)
     return ufl.diff(psi_plus, var) + ufl.diff(psi_minus, var)
-
 
 def psi_plus(eps_elastic, split: str, lam: float, mu: float):
     """弹性应变能的拉伸部分 ψ⁺(ε_e)（PLAN §1.5，D-60）。
@@ -267,7 +260,6 @@ def psi_plus(eps_elastic, split: str, lam: float, mu: float):
         ufl.max_value(e1, 0.0) ** 2 + ufl.max_value(e2, 0.0) ** 2
     )
 
-
 def elastic_energy_density(eps, d, material: Material, split, dim, k_res, *,
                            freeze_from=None, degrade_stiffness: bool = True):
     """ψ⁻ + g(d)·ψ⁺（默认）或 ψ⁻ + ψ⁺（``degrade_stiffness=False``，b-1 口径）。
@@ -286,7 +278,6 @@ def elastic_energy_density(eps, d, material: Material, split, dim, k_res, *,
     if degrade_stiffness:
         return degradation(d, k_res) * psi_plus + psi_minus
     return psi_plus + psi_minus
-
 
 def _check_fatigue_args(alpha_bar, alpha_T, form, kappa):
     if form not in FATIGUE_FORMS:
@@ -309,7 +300,6 @@ def _check_fatigue_args(alpha_bar, alpha_T, form, kappa):
         raise ValueError("alpha_bar 不能为负，收到 %r" % (alpha_bar,))
     return alpha_T, (None if kappa is None else float(kappa))
 
-
 def _scalar_value(x):
     """取标量值：float 原样返回，``fem.Constant`` 取 ``.value``，None 保持 None。
 
@@ -323,7 +313,6 @@ def _scalar_value(x):
             "alpha_T/kappa 只能是 float 或带 .value 的 fem.Constant，收到 %r" % (type(x),)
         )
     return float(value)
-
 
 def fatigue_degradation(
     alpha_bar, alpha_T: float, form: str = "asymptotic", kappa: float | None = None
@@ -389,7 +378,6 @@ def fatigue_degradation(
     value = (1.0 - kappa * ufl.ln(ratio) / math.log(10.0)) ** 2
     return ufl.conditional(ufl.ge(alpha_bar, cutoff), 0.0, value)
 
-
 def inverse_fatigue_degradation(
     f_target: float,
     alpha_T: float,
@@ -411,7 +399,6 @@ def inverse_fatigue_degradation(
         return alpha_T * (2.0 / root - 1.0)
     return alpha_T * 10.0 ** ((1.0 - root) / kappa)
 
-
 def dissipation_density(d, material: Material, f_alpha, model: str = "AT1"):
     """f(alpha_bar) (G_c/c_w) [w(d)/ell + ell |grad d|^2]。
 
@@ -430,7 +417,6 @@ def dissipation_density(d, material: Material, f_alpha, model: str = "AT1"):
     return f_alpha * prefactor * (
         w / ell + ell * ufl.inner(ufl.grad(d), ufl.grad(d))
     )
-
 
 # --------------------------------------------------------------------------
 # 配置与结果
@@ -466,6 +452,27 @@ class PhaseFieldModel:
     ⚠ 这是**新口径**，PLAN §2 未列（PLAN 的公式含 g(d)ψ⁺）。启用时必须在论文中
     说明这一偏离及其依据；默认 False 之外的一切既有算例都仍按原口径。
     """
+    damage_region: object = None
+    """可选：损伤计算的可信区掩码（D-68 路线 A，A-1 + A-b）。
+
+    ``None``（默认）= 全域参与，既有行为逐位不变。给定时须是一个 DG0 的
+    :class:`dolfinx.fem.Function`，逐单元取 0/1：为 0 的单元里 d 方程的驱动力
+    ψ⁺ 被置 0，于是那里的 d 恒为 0。
+
+    **为什么需要它（D-68 问题 12/13）**：相场只有在 h ≲ ℓ 处才分辨得出裂纹带。
+    本工况 h/ℓ = 42~945 的粗网格区里，ψ⁺ 反推出的等效应力达 451 MPa，
+    是 σ_y0 = 167 MPa 的 2.7 倍 —— 超出 J2 屈服面上界 σ_y²/(6E) **7.3 倍**，
+    在 J2 模型里根本不可能存在，是离散误差。用它当起裂判据会把
+    「一个不该起裂的状态」推进成 d 的棘轮发散（N=94.2773 的失败）。
+
+    **A-1 口径（只屏蔽驱动力，不冻结 ᾱ）**：区外 d 恒为 0，但 ᾱ 照旧累积。
+    语义是「这里分辨不了，不判起裂」，而不是「这里没有疲劳」——
+    后者会丢掉可能真实的远场疲劳，故不作默认。ᾱ 保留下来也便于日后检验。
+
+    **A-b 掩码标法**：按**实测单元尺寸**判定（h_local ≤ 阈值），而不是按
+    refine_boxes 的矩形盒 —— 掩码口径与上面「h/ℓ」的依据一致，
+    也避免盒边界与实际尺寸分布不符。见 :func:`pfwire.mesh_h.damage_region_mask`。
+    """
 
     def __post_init__(self) -> None:
         if self.split not in SPLITS:
@@ -477,6 +484,30 @@ class PhaseFieldModel:
                 "dissipation 只能取 %r，收到 %r"
                 % (DISSIPATION_MODELS, self.dissipation)
             )
+        if self.damage_region is not None:
+            # DG0 的 0/1：逐单元掩码，乘进 form 时不需要改求积规则。
+            # 用别的空间会静默地插值错（DG2 的 dof 顺序与坐标表不对齐，
+            # D-68 探针 29 实测过），故在构造时就拒绝。
+            from dolfinx.fem import Function as _Fn
+            if not isinstance(self.damage_region, _Fn):
+                raise TypeError(
+                    "damage_region 必须是 DG0 的 fem.Function（逐单元 0/1 掩码），"
+                    "收到 %r。可用 pfwire.mesh_h.damage_region_mask(msh, h_max) 生成。"
+                    % (type(self.damage_region).__name__,)
+                )
+            # dolfinx 0.11 的 basix_element 才有 family/degree/discontinuous；
+            # FiniteElement 本身没有 family_name（实测 AttributeError）。
+            # 且 DG 与 Lagrange 的 basix family 都是 P，故**必须**看
+            # discontinuous 才能区分 DG0 与 P1。
+            el = self.damage_region.function_space.element
+            bx = el.basix_element
+            deg = int(bx.degree)
+            disc = bool(bx.discontinuous)
+            if deg != 0 or not disc:
+                raise TypeError(
+                    "damage_region 必须是 DG0（degree=0 且不连续），"
+                    "收到 degree=%d discontinuous=%s。" % (deg, disc)
+                )
         # 材料卡里的 sigma_c 是按某个耗散模型换算的，与模型不一致就是参数错配，
         # 必须拒绝：AT1 的 sigma_c 与 AT2 的 sigma_y 是两回事（差 (9/16)/sqrt(8/9) 之类的因子）。
         if self.material.fracture.dissipation != self.dissipation:
@@ -485,7 +516,6 @@ class PhaseFieldModel:
                 "两者的 sigma_c <-> (G_c, ell) 换算关系不同，不能混用。"
                 % (self.dissipation, self.material.fracture.dissipation)
             )
-
 
 @dataclass(frozen=True)
 class SolverConfig:
@@ -558,7 +588,6 @@ class SolverConfig:
                 % (self.u_linesearch,)
             )
 
-
 @dataclass
 class StaggeredResult:
     """一个载荷步的交错求解结果。``converged`` 为 False 时 ``failure_mode`` 必非空。"""
@@ -572,7 +601,6 @@ class StaggeredResult:
     failure_mode: str | None = None
     history: list[tuple[int, float, int]] = field(default_factory=list)
 
-
 def _space_contains(space: fem.FunctionSpace, other) -> bool:
     """``space`` 是否包含 ``other``（同一空间或其子空间）。
 
@@ -580,7 +608,6 @@ def _space_contains(space: fem.FunctionSpace, other) -> bool:
     直接调 ``FunctionSpace.contains`` 会去找它不存在的 ``_cpp_object``，故在此归一。
     """
     return space._cpp_object.contains(getattr(other, "_cpp_object", other))
-
 
 def _resolve_external_work(spec, space: fem.FunctionSpace):
     """把 ``external_work`` 解析成 UFL 形式；可调用对象用求解器自己的 ``V_u`` 调用。
@@ -606,7 +633,6 @@ def _resolve_external_work(spec, space: fem.FunctionSpace):
         % (type(spec),)
     )
 
-
 def _resolve_bcs(spec, space: fem.FunctionSpace, label: str) -> list[fem.DirichletBC]:
     """把 BCSpec 归一成列表，并校验每个 bc 都属于 ``space``（或其子空间）。"""
     bcs = list(spec(space)) if callable(spec) else list(spec)
@@ -619,7 +645,6 @@ def _resolve_bcs(spec, space: fem.FunctionSpace, label: str) -> list[fem.Dirichl
                 "或改用 solver.%s 构造 BC。" % (label, label, label.upper())
             )
     return bcs
-
 
 # --------------------------------------------------------------------------
 # 交错求解器
@@ -714,6 +739,17 @@ class PhaseFieldSolver:
                 metadata={"quadrature_degree": plastic.quad_degree},
             )
         self.external_work = _resolve_external_work(external_work, self.V_u)
+        # monolithic（D-68 方案 a）需要「给测试函数就给形式」的工厂。
+        # 注意调用方给的是 ``lambda V: Form``（TestFunction 取自 V，见
+        # clamp_loads.ClampLoads.traction 的注释），故这里不能直接拿 v 调用它；
+        # 改成构造一个只含该 v 的单测函数形式：用 V_u 之外的临时空间不行
+        # （会撞到「两个编号相同却不同源的 Argument」），所以对 v 所属空间
+        # 直接调用即可 —— v 来自混合空间的 split，其函数空间正是 W.sub(0)。
+        self.external_work_factory = (
+            None if external_work is None
+            else (external_work if callable(external_work)
+                  else lambda v, _ew=external_work: _ew)
+        )
 
         self._build_u_problem()
         self._build_d_problem()
@@ -806,7 +842,10 @@ class PhaseFieldSolver:
     def _build_d_problem(self) -> None:
         cfg, model = self.config, self.model
         w = ufl.TestFunction(self.V_d)
-        psi_plus = self.psi_plus_expr()
+        # ⚠ 驱动力用 psi_plus_drive()（含可信区掩码），不是 psi_plus_expr()：
+        # 区外 h >> ℓ 处 ψ⁺ 是离散误差，直接当驱动会把不该起裂的状态推成发散
+        # （D-68 问题 12/13）。诊断仍看未屏蔽的 psi_plus_expr()。
+        psi_plus = self.psi_plus_drive()
         # ⚠ 这里的 g(d) **不随 degrade_stiffness 变**（b-1 口径，D-68 问题 5）：
         # degrade_stiffness=False 只摘掉 u 方程弹性能里的 g(d)（= 材料软化），
         # d 方程的驱动力与屈服面仍保留它 —— 否则不可逆性与 B 口径会被一起改掉。
@@ -1054,6 +1093,23 @@ class PhaseFieldSolver:
         """
         return self._energy_pair()[0]
 
+    def psi_plus_drive(self):
+        """d 方程**实际使用**的驱动力（D-68 路线 A）。
+
+        = ``psi_plus_expr()`` × 可信区掩码（DG0 的 0/1）。掩码为 None 时两者相同。
+        区外（h >> ℓ）的 ψ⁺ 是离散误差（问题 13：反推 σ_eq 451 MPa，超出 J2
+        上界 7.3 倍），若喂给 d 方程会把「不该起裂的状态」推进成棘轮发散。
+
+        ⚠ 只有**驱动力**被屏蔽。``psi_plus_expr()`` 本身保持未屏蔽，
+        于是诊断（探针、ᾱ 累积）仍看得到原始值 —— 否则「区外到底有多大」
+        就再也测不到了，也不符合 A-1「不冻结 ᾱ」的口径。
+        """
+        psi = self.psi_plus_expr()
+        mask = self.model.damage_region
+        if mask is None:
+            return psi
+        return mask * psi
+
     def _sigma_deg_2d(self):
         """塑性路径的退化应力 σ_deg 的面内 2×2 分量（D-65）。
         这里同时出现**两个** g(d)，各司其职，别混为一谈：
@@ -1075,6 +1131,87 @@ class PhaseFieldSolver:
         )
         return ufl.as_tensor([[s3[0, 0], s3[0, 1]], [s3[1, 0], s3[1, 1]]])
 
+    def residual_u_form_at(self, u, v, d=None, V_u=None, with_external=True):
+
+        """u 残差写成 ``(u, v)`` 的显式函数（monolithic 用，D-68 方案 a）。
+
+        与 ``_residual_u_form`` 同式，但位移与测试函数都由调用方给出，
+
+        于是可以把同一个式子写进混合空间的单一残差里。
+
+        ``d`` 可选：monolithic 下退化因子应取自同一个混合解变量，
+
+        否则 AD 得不到 ∂F_u/∂d 这一块（那正是交错丢掉的东西）。
+
+        """
+
+        model = self.model
+
+        dd = self.d if d is None else d
+
+        if self.plastic is None:
+
+            psi = elastic_energy_density(
+
+                strain(u), dd, model.material, model.split, self.dim,
+
+                model.k_res, degrade_stiffness=model.degrade_stiffness,
+
+            )
+
+            F = ufl.derivative(psi * self.dx, u, v)
+
+        else:
+
+            s3 = stress_split_3d(
+
+                self.plastic.elastic_strain(u, g=degradation(dd, model.k_res)),
+
+                model.material, model.split, dd, model.k_res,
+
+                degrade_stress=model.degrade_stiffness,
+
+            )
+
+            sigma = ufl.as_tensor([[s3[0, 0], s3[0, 1]], [s3[1, 0], s3[1, 1]]])
+
+            F = ufl.inner(sigma, ufl.sym(ufl.grad(v))) * self.dx
+
+        if self.external_work_factory is not None and with_external:
+
+            # 工厂签名是 ``lambda V: Form``（TestFunction 取自 V），故传 v 的
+
+            # 函数空间而不是 v 本身。
+
+            # 工厂签名是 ``lambda V: Form``（TestFunction 取自 V）。
+            # v 由 ufl.split 得到（ListTensor，没有 function_space），
+            # 故由调用方显式给 V_u。
+            F = F - self.external_work_factory(V_u)
+
+        if self.contact is not None:
+
+            F = F - self.contact.residual(u, v)
+
+        return F
+
+    def residual_d_form_at(self, u, d, w):
+        """d 残差写成 ``(u, d, w)`` 的显式函数（monolithic 用，D-68 方案 a）。
+
+        与 ``_build_d_problem`` 的能量同式：g(d)psi+ + f(alpha_bar)(3Gc/8)(d/ell
+        + ell|grad d|^2)，对 d 求导。``d`` 由调用方给出以便 AD 得到交叉块。
+        """
+        model = self.model
+        if self.plastic is None:
+            psi_plus, _psi_minus = energy_split(
+                strain(u), model.material, model.split, self.dim)
+        else:
+            eps_e = self.plastic.elastic_strain(u, g=degradation(d, model.k_res))
+            psi_plus, _psi_minus = energy_split_3d(eps_e, model.material, model.split)
+        energy = (
+            degradation(d, model.k_res) * psi_plus
+            + dissipation_density(d, model.material, self.f_alpha, model.dissipation)
+        ) * self.dx
+        return ufl.derivative(energy, d, w)
     # ---------------- 诊断量 ----------------
     def _assemble(self, form) -> float:
         return self.comm.allreduce(fem.assemble_scalar(form), op=MPI.SUM)

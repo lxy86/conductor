@@ -447,9 +447,32 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
     # （PLAN §2 原口径）。False 时 u 方程的弹性能不再乘 g(d)，打断
     # d↑→g↓→刚度↓→u↑→ψ⁺↑→d↑ 的正反馈环；d 方程驱动力与屈服面的 g(d) 保留。
     mcfg = raw.get("model", {})
+
+    # damage_region（D-68 路线 A，A-1 + A-b）：把 d 方程的驱动力限制在
+    # **实测单元尺寸够细**的区域（h ≤ h_max）。区外 h/ℓ = 42~945 的 ψ⁺ 是
+    # 离散误差（反推 σ_eq 451 MPa，超 J2 屈服面上界 7.3 倍，问题 13），
+    # 拿它当判据会把不该起裂的状态推成 d 的棘轮发散。
+    #   h_max: 阈值（m）。默认 **关闭**（None = 全域，既有行为不变）；
+    #          给值即启用，本工况取 3ℓ = 6 µm（ell 从材料卡读）。
+    # 只屏蔽驱动力，ᾱ 照旧累积（A-1 口径：不声称区外没有疲劳）。
+    mask = None
+    if mcfg.get("damage_region_h_max") is not None:
+        from pfwire.mesh_h import damage_region_mask as _mask
+        h_max = float(mcfg["damage_region_h_max"])
+        mask = _mask(msh, h_max)
+        if comm.rank == 0:
+            from pfwire.mesh_h import damage_region_stats as _stats
+            st = _stats(msh, h_max, comm)
+            print("damage_region：h ≤ %.3g m 的单元 %d / %d（%.2f%%），"
+                  "域内 h ∈ [%.3g, %.3g]"
+                  % (h_max, int(st["n_in_region"]), int(st["n_cell"]),
+                     100.0 * st["fraction"], st["h_min"], st["h_max"]),
+                  flush=True)
+
     model = PhaseFieldModel(material=material, split="spectral", k_res=1.0e-6,
                             degrade_stiffness=bool(
-                                mcfg.get("degrade_stiffness", True)))
+                                mcfg.get("degrade_stiffness", True)),
+                            damage_region=mask)
     sv = raw.get("solver", {})
     cfg = SolverConfig(u_solver=str(sv.get("u_solver", "newton")),
                        tol_d=float(sv.get("tol_d", 1.0e-4)),
