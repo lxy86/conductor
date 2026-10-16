@@ -1,0 +1,23 @@
+=== 装配 case（恢复 N=94.2773 断点）===
+N = 94.2773，degrade_stiffness = True（原口径：正反馈最强）
+峰值相位 u 已解，W = 1.749851e+06
+
+=== 基线 staggered（应复现发散）===
+轮   max_d      ‖Δd‖_inf
+ 1   0.08359  8.359e-02
+ 2   0.22716  1.436e-01
+ 3   0.45146  2.243e-01
+ 4   0.74836  2.969e-01
+ 5   1.00000  2.516e-01
+ 6   失败：d 的 SNES(vinewtonrsls) 未收敛：SNESConvergedReason=-6（界约束 [d_old,1]）。最终残差 
+
+=== monolithic（同解 u-d）===
+混合空间 dofs = 247812
+残差与 Jacobian 构造完成
+界约束已加：d 的 dofs 82604 个（父空间总 dof 1474821）
+
+monolithic SNES: reason = -6, iters = 4
+  d range = [-0.004254, 0.015602]（界 [0,1]，本 rank 82604 个 d dof）
+  max_d（全局）= 295352.312359
+  max_d = 0.015602
+  => 未收敛：方案 a 在此状态也不成立
