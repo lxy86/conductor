@@ -1,0 +1,16 @@
+装配完成：model.damage_region = 'None'
+初始： ∫ψ⁺=2.0336762202e+00  ∫drive=2.0336762202e+00  （差 0.000e+00）
+
+掩码： sum = 480796 / 490529   （1 的比例 98.0158%）
+      mask 值域 [0.000, 1.000]
+
+直接改 model.damage_region 后：
+   ∫ψ⁺=2.0336762202e+00  ∫drive=6.3742055379e-03  （drive 应明显小于 ψ⁺）
+   比值 drive/ψ⁺ = 0.003134
+
+set_damage_region(mask) 后：
+   ∫ψ⁺=2.0336762202e+00  ∫drive=6.3742055379e-03   比值 = 0.003134
+   model.damage_region = 'Function'
+
+=== 判读 ===
+掩码生效：∫drive < ∫ψ⁺，比值 0.0031

@@ -3827,6 +3827,73 @@ PLAN 要求起裂在接触边缘；这 38 个点离边缘 1 mm 远、且多半�
   后再统计。← 这是本项目**第三次**踩同一个坑（探针 3、探针 26、本探针），
   凡是有「取最大 / 是否非空」的地方一律先看是不是 rank 局部。
 
+#### 问题 14（2026-10-17）：路线 A 已实现；短探针失败（探针 bug，非代码 bug）
+
+**A（A-1 + A-b）已落地**：`src/pfwire/mesh_h.py` 新增
+`cell_max_edge` / `damage_region_mask` / `damage_region_stats`；
+`PhaseFieldModel.damage_region`（DG0 掩码，默认 None 逐位不变）；
+`PhaseFieldSolver.psi_plus_drive()` = ψ⁺ × 掩码；
+`_build_d_problem` 的驱动力改用 `psi_plus_drive()`；
+`psi_plus_expr()` 保持未屏蔽（诊断/A-1 的 ᾱ 累积仍看原始值）。
+`clamp_case.py` 读 `model.damage_region_h_max`，不设即关闭。
+新增 `PhaseFieldSolver.set_damage_region(mask)`：掩码在装配时烘进 d 方程
+的 form，**直接改 model.damage_region 会静默无效**（form 不重编译），
+此入口重建 `_d_problem`。
+
+**掩码覆盖率（`_probe_mask.py`，只读网格）**：
+
+    h_max      kℓ    覆盖 cell / 总数     覆盖率
+    2.0 µm    1.0   478165 / 490529    97.48%
+    4.0 µm    2.0   480067             97.87%
+    6.0 µm    3.0   480796             98.02%
+    40 µm    20.0   486226             99.12%
+
+1ℓ 到 5ℓ 只差 0.7 个百分点 —— 阈值不敏感，掩码稳健。
+98% 的 cell 在 h ≈ 0.7 µm 的细区；粗区只占 2% 单元数。
+注意：refine_boxes[0] 只加深到 y = −0.3 mm，故 |x|≤3.5 但深层的粗单元
+也被排除 —— 物理上 OK（起裂深度 100 µm 在 0.3 mm 内），但裂纹超过
+0.3 mm 深会进入屏蔽区冻结（本工况验收深度 100 µm，不影响）。
+
+**掩码确实生效（`_probe_maskcheck.py`，只装配不解方程，几秒）**：
+
+    初始：  ∫ψ⁺=2.033676e+00  ∫drive=2.033676e+00   （差 0）
+    掩码后：∫ψ⁺=2.033676e+00  ∫drive=6.374206e-03   ratio = 0.003134
+
+∫drive/∫ψ⁺ = 0.31% —— 掩码切掉 99.7% 的驱动，只留下加密区。
+这是「路线 A 是否真限制住驱动力」的直接证据。
+
+**短探针失败（探针自身 bug，如实记录）**：
+连续几个探针（`_probe_mask_run` / `_probe_rebuild` / `_probe_lb` /
+`_probe_setmask_bug`）在解 d 时全部报 `reason=+2, iters=0, max_d=0`，
+与 `_probe_diag.py`（同一状态、先解一次 u 再解 d）得的 0.0836 矛盾。
+iters=0 说明 SNES 认为**初值已收敛**，残差一次就过。
+
+期间我自己踩的坑（都修了）：
+- 把 u 清零当「重置」—— 破坏一致初值，u 的 Newton SNES -4；
+- 误读 `∫drive == ∫ψ⁺`：那次是在掩码生效**前**量的；
+- `raw.get("model", {})` 在「model: 后只有注释」时为 None
+  （YAML 空 section 解析成 null，dict.get 默认值只管键不存在）。
+  顺带修了 run_case.py:218、clamp_case.py:449/479 的同款隐患。
+
+**结论：路线 A 的代码（掩码、set_damage_region、DG0 校验）**经单元测试
+（14 项）与 `_probe_maskcheck.py` 双重确认是**对的**；
+短探针的空收敛是探针写法问题，不影响 A 的有效性。
+
+**为何需要完整跑**：短探针的初值陷阱（要不要先解 u、要不要重置 d/d_old）
+在完整跑里不存在 —— 完整跑从一致的断点状态推进，掩码从装配就烘进。
+**(a) `iters=0` 机制探针结果（`_probe_iters0.py`）**：
+
+    A 直接解 d：        ‖F₀‖=1.929086e+00  max_d=0        reason=+2  iters=0
+    B 先解 u 再解 d：  ‖F₀‖=1.920180e+00  max_d=0.0836   reason=+2  iters=1
+
+两次残差几乎相同（差 0.5%），**排除**「ψ⁺ 读旧值」的假设。
+差别只在解 d 前有没有先解一次 u：
+  不解 u -> SNES 的首次残差检查就过 -> iters=0、返回 d=0；
+  解 u 后 -> SNES 做一次 Newton 步 -> iters=1、解出 d=0.0836（复现问题 9）。
+
+**故 `iters=0` 是探针写法的假象**：真实推进（solve_step）总是 u/d 交替，
+不存在「不解 u 直接解 d」的路径，短探针的空收敛不影响路线 A 的验证。
+
 ### 待决（需用户）
 
 - 6.5：T-a2 已证 monolithic 与 staggered 同时发散（问题 9）。需要用户在

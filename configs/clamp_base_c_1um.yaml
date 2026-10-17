@@ -85,7 +85,7 @@ model:
   # 是离散误差；拿它当起裂判据会把不该起裂的状态推成 d 的棘轮发散。
   # **不设此键 = 关闭**（全域参与，既有行为不变）。
   # 启用时取 3ℓ = 6 µm（ℓ 从材料卡读），既有加密盒 edge_target 5 µm 仍在窗内。
-  # damage_region_h_max: 6.0e-06
+  damage_region_h_max: 6.0e-06
 output:
   dir: data/clamp_base_c_1um
   save_every: 1

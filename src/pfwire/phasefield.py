@@ -1093,6 +1093,39 @@ class PhaseFieldSolver:
         """
         return self._energy_pair()[0]
 
+    def set_damage_region(self, mask) -> None:
+        """换损伤可信区掩码并**重建 d 问题**（D-68 路线 A）。
+
+        为什么需要这个入口：掩码在装配时烘进 d 方程的 form，直接改
+        ``model.damage_region`` 会**静默无效**（form 不重编译）—— 这是
+        很容易踩的坑。此方法同时改 model 并重建 ``_d_problem``。
+
+        ``mask=None`` 即恢复全域。重建只涉及 form 装配与 SNES 对象，
+        不重建网格/函数空间，代价很小（实测秒级）。
+        """
+        if mask is not None:
+            # __post_init__ 的 DG0 校验不会在这条路径上重跑（frozen dataclass
+            # 用 object.__setattr__ 绕过），故这里显式重做同一套检查。
+            from dolfinx.fem import Function as _Fn
+            if not isinstance(mask, _Fn):
+                raise TypeError(
+                    "damage_region 必须是 DG0 的 fem.Function，收到 %r。"
+                    % (type(mask).__name__,))
+            bx = mask.function_space.element.basix_element
+            if int(bx.degree) != 0 or not bool(bx.discontinuous):
+                raise TypeError(
+                    "damage_region 必须是 DG0（degree=0 且不连续），收到 "
+                    "degree=%d discontinuous=%s。"
+                    % (int(bx.degree), bool(bx.discontinuous)))
+            if mask.function_space.mesh is not self.mesh:
+                raise ValueError("damage_region 的网格与求解器的网格不是同一个。")
+        object.__setattr__(self.model, "damage_region", mask)
+        self._build_d_problem()
+        # _build_d_problem 把 _lb/_ub 重建成零/一，下界的「不可逆」部分要重新
+        # 用 d_old 填（与每步 solve_damage 前的 _sync_lower_bound 同一动作）。
+        self._sync_lower_bound()
+        self._d_problem.solver.setVariableBounds(self._lb, self._ub)
+
     def psi_plus_drive(self):
         """d 方程**实际使用**的驱动力（D-68 路线 A）。
 

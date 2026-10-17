@@ -215,7 +215,10 @@ def load_case(path: str | Path) -> CaseConfig:
         material_path = candidate
     material = load_material(material_path)
 
-    model_cfg = dict(raw.get("model", {}))
+    # ⚠ dict(raw.get("model", {})) 在「model: 后只有注释」时为 dict(None) ->
+    # TypeError。YAML 把空的 ``model:`` 解析成 null，而 get 的默认值只管
+    # **键不存在**的情形。
+    model_cfg = dict(raw.get("model") or {})
     _require_keys(model_cfg, {"split", "dissipation", "ell", "k_res"}, "model")
     ell_override = model_cfg.get("ell")
     if ell_override is not None:
