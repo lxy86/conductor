@@ -463,9 +463,16 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
         from pfwire.mesh_h import damage_region_mask as _mask
         h_max = float(mcfg["damage_region_h_max"])
         mask = _mask(msh, h_max)
+        # ⚠ **统计必须所有 rank 都算，打印才只由 rank 0 做**。
+        # 把 damage_region_stats 放进 `if comm.rank == 0:` 会死锁：它内部
+        # 有 5 次 comm.allreduce，只有 rank 0 进来就永远等不到其他 rank
+        # —— 表现为 100% CPU 空转、零输出、连 Python 信号都不响应
+        # （实测：完整跑卡在 build_clamp_case >40 min，问题 15）。
+        # 这正是 CLAUDE.md 陷阱 3「并行下不要写按 rank 局部的判断」，
+        # 本项目已第四次踩到（探针 3、26、29、本处）。
+        from pfwire.mesh_h import damage_region_stats as _stats
+        st = _stats(msh, h_max, comm)
         if comm.rank == 0:
-            from pfwire.mesh_h import damage_region_stats as _stats
-            st = _stats(msh, h_max, comm)
             print("damage_region：h ≤ %.3g m 的单元 %d / %d（%.2f%%），"
                   "域内 h ∈ [%.3g, %.3g]"
                   % (h_max, int(st["n_in_region"]), int(st["n_cell"]),
