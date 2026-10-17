@@ -347,6 +347,20 @@ class ShakedownConfig:
     zero_tol: float
     decay_ratio: float
     n_check: int
+    decay_jitter: float = 0.0
+    """对 decay_ratio 的**相对容差**（默认 0，严格判据）。
+
+    为什么需要：周期塑性应变增量 e_k 是 FEM 在离散网格上量出来的，
+    会带数值抖动。若序列本意是逐周期精确减半（e_k ≈ 0.5·e_{k-1}），
+    某个 e_k 可能读出 0.502 而不是 0.499 —— 严格判据
+    `cur <= decay_ratio * prev` 会因这 0.4% 的超标把整条衰减序列误判成
+    not_decaying（D-68 问题 17 实测：[..., 1.263e-08, 6.325e-09]，第三项
+    超出 0.5 阈值 0.16%，被误判为棘轮停机）。
+
+    这不是调参让跑通：jitter 只放宽「衰减」的**边界判定**，不放宽
+    「不衰减」的定义 —— 真正的棘轮（e_k ≈ e_{k-1} 或更大）依然过不了。
+    取 0.01（1%）即覆盖测量噪声，又远小于区分「衰减 vs 持平」所需的间隔。
+    """
 
     def __post_init__(self) -> None:
         if not self.zero_tol >= 0.0:
@@ -355,6 +369,8 @@ class ShakedownConfig:
             raise ValueError("decay_ratio 须在 (0,1) 内，收到 %r" % (self.decay_ratio,))
         if self.n_check < 2:
             raise ValueError("n_check 须 >= 2，收到 %r" % (self.n_check,))
+        if not 0.0 <= self.decay_jitter < 0.5:
+            raise ValueError("decay_jitter 须在 [0, 0.5) 内，收到 %r" % (self.decay_jitter,))
 
 
 #: 允许外推的判定结果；其余（not_decaying、undetermined）一律不外推
@@ -377,7 +393,11 @@ def classify_plastic_history(increments, cfg: ShakedownConfig) -> str:
         return "closed"
     recent = e[-cfg.n_check:]
     prev, cur = recent[:-1], recent[1:]
-    if np.all(prev > cfg.zero_tol) and np.all(cur <= cfg.decay_ratio * prev):
+    # decay_jitter：允许 e_k 超出 decay_ratio·e_{k-1} 一个小的相对量
+    # （D-68 问题 17：FEM 噪声会让本该 0.499 的项读出 0.502，
+    #  严格判据把整条 halving 序列误判成 not_decaying）。
+    ratio_limit = cfg.decay_ratio * (1.0 + cfg.decay_jitter)
+    if np.all(prev > cfg.zero_tol) and np.all(cur <= ratio_limit * prev):
         return "decaying"
     return "not_decaying"
 

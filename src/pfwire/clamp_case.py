@@ -528,7 +528,8 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
         peak_phase=None if c.get("peak_phase") is None else float(c["peak_phase"]),
         shakedown=ShakedownConfig(zero_tol=float(sd["zero_tol"]),
                                   decay_ratio=float(sd["decay_ratio"]),
-                                  n_check=int(sd["n_check"])))
+                                  n_check=int(sd["n_check"]),
+                                  decay_jitter=float(sd.get("decay_jitter", 0.0))))
     import math
     phase = [0.0]
 
