@@ -83,6 +83,17 @@ def main() -> int:
     comm = MPI.COMM_WORLD
     results = {"elastic": life(False), "plastic": life(True)}
     if comm.rank == 0:
+        # 自检：σ_a/σ_y > 1 时塑性必须真正激活（max_eps_p > 0）。
+        # 否则「弹塑性 N」与「弹性 N」相同是**假阳性** —— 问题 19 已两次
+        # 被「resume 后 ε_p = 0 导致 ψ⁺ 虚高」坑过（6.5 的 1.1441 vs 0.9994）。
+        # 若此处触发，说明塑性没算，**结论不可信**。
+        sigma_over_yield = SIGMA_A / load_j2_params(MATERIAL).sigma_y0
+        if sigma_over_yield > 1.0 and results["plastic"]["max_eps_p"] == 0.0:
+            raise RuntimeError(
+                "σ_a/σ_y = %.2f > 1 但塑性档 max_eps_p = 0 —— 塑性未激活，"
+                "N 比对是假阳性（见 D-68 问题 19 的 ε_p=0 陷阱）" % sigma_over_yield
+            )
+        results["plasticity_active_check"] = "skipped" if sigma_over_yield <= 1.0 else "passed"
         e, p = results["elastic"], results["plastic"]
         rel = abs(p["N_nucleation"] - e["N_nucleation"]) / e["N_nucleation"]
         results["rel_diff_N"] = rel
