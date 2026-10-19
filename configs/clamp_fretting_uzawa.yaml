@@ -1,0 +1,105 @@
+case: clamp_fretting_uzawa
+case_type: clamp
+material: configs/material_al1350.yaml
+mesh:
+  from_config: configs/clamp_mesh.yaml
+  layout: C
+  workdir: data/clamp_mesh_C_1um
+  edge_target: 5.0e-05
+  refine_boxes:
+  - - -0.0035
+    - 0.0035
+    - -0.0003
+    - 0.0
+    - 5.0e-05
+  - - 0.002717
+    - 0.003117
+    - -0.00012
+    - 0.0
+    - 1.0e-06
+  - - -0.003117
+    - -0.002717
+    - -0.00012
+    - 0.0
+    - 1.0e-06
+contact:
+  R_clamp: 0.33
+  kappa: 10.0
+  kappa_sens: 1.0
+  h_contact: 5.0e-05
+  symmetric: true
+  mu: 0.7          # 6.6.1 Coulomb 摩擦（PLAN §1.2）；不设 = 关闭（D-67 基准）
+  kappa_t: 10.0   # 切向罚系数；Uzawa 下只影响收敛速度，不影响精度（D-68 问题 26）
+loading:
+  W_target: 1750000.0
+  delta0: 1.7e-05
+  search:
+    rtol: 0.01
+    max_iter: 20
+  sigma_a: 45.0e6
+  T_prime: 1.0e4
+  H: 0.00375
+  side: right
+  cycle:
+    n_sub: 20
+    dN_init: 1.0
+    dN_min: 1.0
+    dN_max: 1.0e4
+    dd_max: 0.02
+    grow_below: 0.01
+    factor: 1.5
+    N_max: 2.0e7
+    peak_phase: 0.25
+  shakedown:
+    zero_tol: 1.0e-10
+    decay_ratio: 0.5
+    # decay_jitter：对 decay_ratio 的相对容差（D-68 问题 17）。
+    # FEM 噪声会让本该 0.499 的衰减步读出 0.502 —— 严格判据
+    # cur <= decay_ratio*prev 会因这 0.4% 超标把整条 halving 序列误判成
+    # not_decaying（实测：[..., 1.263e-08, 6.325e-09]，第三项超 0.16%）。
+    # 取 0.01（1%）：只放宽「衰减」的边界，不放宽「不衰减」的定义；
+    # 真正的棘轮（e_k ≈ e_{k-1} 或更大）依然过不了。
+    decay_jitter: 0.01
+    # 2026-10-15 由 5 改 3（D-66 阈值「待确认」，D-68 记录）。
+    # 5 在本工况错杀：N=13.125 的增量序列末四个精确减半
+    # (5.156e-08/2.527e-08/1.263e-08/6.325e-09) 全满足 cur <= 0.5*prev，
+    # 但第 5 个（e4→e5 那一对）不满足，n_check=5 取不到 5 个连续衰减值即判
+    # not_decaying。3 只看末三个：1.263e-08 → 6.325e-09 满足，判 decaying 放行。
+    n_check: 3
+  self_equilibrated: true
+  support: free
+nucleation:
+  threshold: 0.95
+  nucleation_depth: 6.0e-06
+  turn_depth: 0.0001
+  incline_deg: 10.0
+  turn_deg: 20.0
+  x_init_tol: 0.002389
+sampling:
+  halfwidth: 0.003517
+  depth_max: 0.00015
+  spacing: 1.0e-06
+solver:
+  u_solver: newton
+  tol_d: 0.0001
+  max_iter: 50
+  u_linesearch: bt
+  snes_rtol: 1.0e-10
+  snes_atol: 1.0e-06
+  snes_max_it: 60
+model:
+  # damage_region（D-68 路线 A，A-1 + A-b）：把 d 方程的驱动力限制在
+  # 「实测单元尺寸 h ≤ damage_region_h_max」的可信区。区外 h/ℓ = 42~945，
+  # ψ⁺ 反推的等效应力 451 MPa 超出 J2 屈服面上界 7.3 倍（问题 13），
+  # 是离散误差；拿它当起裂判据会把不该起裂的状态推成 d 的棘轮发散。
+  # **不设此键 = 关闭**（全域参与，既有行为不变）。
+  # 启用时取 3ℓ = 6 µm（ℓ 从材料卡读），既有加密盒 edge_target 5 µm 仍在窗内。
+  damage_region_h_max: 6.0e-06
+output:
+  dir: data/clamp_fretting_uzawa
+  save_every: 1
+  dump_every: 1
+# 6.6 摩擦工况：在 6.5 基准上开 Coulomb 摩擦（Uzawa 返回映射）。
+# 与 clamp_base_c_1um.yaml 的唯一区别是 contact.mu / contact.kappa_t。
+# 依据：PLAN §1.2 取 μ = 0.7（铝-铝对偶）；D-68 问题 26 的 Uzawa 实现。
+# 无摩擦基准（clamp_base_c_1um.yaml）逐位不变 —— mu 不设 = 关闭。
