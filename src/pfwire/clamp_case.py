@@ -430,11 +430,17 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
     if bs is not None and str(bs) in ("auto", "bottom"):
         bs = -H                       # 单丝底面
     sym = bool(cc.get("symmetric", False))
+    # 摩擦（6.6.1）：``contact.mu`` **不设 = 关闭**（= D-67 的无摩擦工况，
+    # 既有结果逐位不变）。给了才建切向项。kappa_t 缺省 = kappa（各向同性）。
+    mu_cfg = cc.get("mu")
+    kappa_t_cfg = cc.get("kappa_t")
     clamp = ClampContact(msh, facet_tags, E=material.elastic.E,
                          R_clamp=float(cc["R_clamp"]), kappa=float(cc["kappa"]),
                          h_contact=h_contact,
                          bottom_support=None if bs is None else float(bs),
-                         symmetric=sym, depth=H)
+                         symmetric=sym, depth=H,
+                         mu=None if mu_cfg is None else float(mu_cfg),
+                         kappa_t=None if kappa_t_cfg is None else float(kappa_t_cfg))
     ld = raw["loading"]
     self_eq = bool(ld.get("self_equilibrated", False))
     loads = ClampLoads(msh, facet_tags, H=float(ld["H"]),
@@ -516,6 +522,10 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
                  else PlasticLaw(msh, load_j2_params(root / raw["material"]))),
         contact=clamp)
     state.bind_solver(solver)
+    # 摩擦的切向滑移基准场建在**求解器自己的** V_u 上（CLAUDE.md 陷阱 1 的摩擦版：
+    # 在外部另建同构空间，插值/取值的 dof 顺序对不上，滑移基准会静默错位）。
+    if getattr(clamp, "has_friction_at_build", False):
+        clamp.bind_slip_space(solver.V_u)
 
     # --- cycle-jump ---
     c = raw["loading"]["cycle"]

@@ -837,6 +837,11 @@ class PhaseFieldSolver:
             F = F - self.external_work
         if self.contact is not None:
             F = F - self.contact.residual(self.u, v)
+            # 摩擦切向牵引（6.6.1）。与法向项同号进入残差：接触力的虚功
+            # 在 u 方程里取负。无摩擦时 tangential_residual 返回 0，
+            # 加不加都对结果无影响（但会让 UFL 多带一个零项，故判一下）。
+            if getattr(self.contact, "has_friction_at_build", False):
+                F = F - self.contact.tangential_residual(self.u, v)
         return F
 
     def _build_d_problem(self) -> None:
@@ -1072,6 +1077,11 @@ class PhaseFieldSolver:
         self.d_old.x.scatter_forward()
         if self.plastic is not None:
             self.plastic.commit(self.u, g=self._g())
+        # 摩擦的切向滑移基准（6.6.1）：本步收敛后冻结，下一步的 s = τ·(u − u_prev)
+        # 就是「本步新增的滑移」。放这里是因为 commit_step 的契约正是
+        # 「交错迭代收敛后才调」，与 Coulomb 的增量语义天然对齐。
+        if getattr(self.contact, "has_friction_at_build", False):
+            self.contact.set_slip_reference(self.u)
 
     def _g(self):
         """损伤退化因子 g(d) = (1−d)² + k_res（UFL 表达式，随 d 变化）。"""
@@ -1224,6 +1234,12 @@ class PhaseFieldSolver:
         if self.contact is not None:
 
             F = F - self.contact.residual(u, v)
+
+            # 摩擦切向牵引（6.6.1）：与法向项同号。无摩擦时跳过。
+
+            if getattr(self.contact, "has_friction_at_build", False):
+
+                F = F - self.contact.tangential_residual(u, v)
 
         return F
 

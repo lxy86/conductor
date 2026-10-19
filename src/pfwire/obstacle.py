@@ -24,6 +24,7 @@ from pfwire.mesh import BLOCK_BOTTOM, BLOCK_TOP, block_mesh
 __all__ = [
     "BLOCK_TOP", "BLOCK_BOTTOM",
     "clamp_gap", "clamp_normal", "penalty_pressure", "penalty_stiffness",
+    "penalty_tangential_stiffness", "tangential_traction",
     "build_block_mesh",
 ]
 
@@ -109,6 +110,73 @@ def penalty_stiffness(kappa: float, E: float, h: float) -> float:
     if kappa <= 0 or E <= 0 or h <= 0:
         raise ValueError("κ、E、h 必须为正：%r %r %r" % (kappa, E, h))
     return float(kappa) * float(E) / float(h)
+
+
+def penalty_tangential_stiffness(kappa_t: float, E: float, h: float) -> float:
+    """切向罚刚度 ε_t = κ_t E / h（单位 Pa/m）。
+
+    与 :func:`penalty_stiffness` 同式，只是系数可独立给。**默认 κ_t = κ**
+    （接触面各向同性），此时 ε_t = ε；只有当摩擦项的切向刚度与法向罚刚度
+    耦合得过强、矩阵病态时才分开调（见 PLAN 6.6.1 的风险注）。
+    """
+    if kappa_t <= 0 or E <= 0 or h <= 0:
+        raise ValueError("κ_t、E、h 必须为正：%r %r %r" % (kappa_t, E, h))
+    return float(kappa_t) * float(E) / float(h)
+
+
+def tangential_traction(s_trial, p, mu: float, eps_t: float, *, regularized: bool = True):
+    """Coulomb 摩擦的切向牵引 q。
+
+    ``regularized=True``（**缺省**）::
+
+        q = μp · (ε_t s) / (μp + ε_t |s|)
+
+    ``regularized=False``（硬截断的试探-惩罚格式）::
+
+        q = ε_t · sign(s) · min(|s|, μp/ε_t)
+
+    出处：Wriggers, *Computational Contact Mechanics*, 2nd ed. (2006), §6.2 的
+    **试探-惩罚格式**（trial-penalty）：先按弹性罚刚度由试探切向滑移 s^{tr}
+    算切向牵引，再用 Coulomb 上限 μp 截断。截断后超出部分变成真实滑移，
+    于是只需一个辅助历史量（本步的切向位移基准），**不需要 KKT 迭代**。
+
+    **为什么缺省用正则化形式**（2026-10-19 实测，教训记在 DECISIONS）：
+    硬截断在 |s| = μp/ε_t 处有折点，且 μ = 0 时 `min(|s|, 0)` 恒为 0 但
+    **其导数在该点不连续**（`sign(s)` 在 s = 0 无定义）。把切向项装进
+    u 方程的 form 之后，这个坏导数会毒化 Jacobian —— 实测**仅仅带着该项**
+    （μ 已设 0）就让 δ = 1 µm 的法向步 Newton 发散（SNES -6），
+    而同一网格不装该项则步步收敛。正则化形式
+    q = μp·ε_t s/(μp + ε_t|s|) 处处光滑（含 μ = 0，此时 q ≡ 0 且导数 ≡ 0），
+    且过渡宽度 |s| ~ μp/ε_t = 3e-11 m 比任何物理滑移小 3 个数量级，
+    故在物理上就是 Coulomb 律。
+
+    参数
+    ----
+    s_trial : 试探切向滑移 s = τ·(u − u_prev)，UFL 表达式。
+    p       : 同点的法向接触压力（Pa），由 :func:`penalty_pressure` 给出。
+    mu      : Coulomb 摩擦系数（无量纲），可为 UFL Constant（运行时改）。
+    eps_t   : 切向罚刚度 ε_t（Pa/m）。
+
+    ⚠ **s_trial 必须已经是 `ufl.variable`**（调用方负责）：q 与其导数里
+    多次引用 s，包成 variable 才能让 UFL/FFC 把它们识别成同一个中间量。
+    """
+    mu = float(mu) if not isinstance(mu, ufl.Constant) else mu
+    eps_t = float(eps_t)
+    if eps_t <= 0.0:
+        raise ValueError("ε_t 必须为正，收到 %r" % (eps_t,))
+    if regularized:
+        # 分子分母同乘 μp：μ = 0 时整式为 0，且对 s 的导数也恒为 0（光滑）。
+        # ⚠ 分母必须加下限：接触区外 p = 0（法向没穿透），此时
+        # limit = μp = 0、s 也常为 0，0/(0+0) = **NaN** —— 实测 μ=0 时
+        # q 的 y 分量读出 [0, nan, nan]，Newton 立刻 SNES -4。
+        # 加一个远小于任何物理量的地板项（ε_t × 1e-30 m ≈ 1e-14 Pa）即可，
+        # 它不改变黏着区/滑移区的任何行为。
+        limit = mu * p                      # Coulomb 上限（Pa）
+        return limit * (eps_t * s_trial) / (limit + eps_t * abs(s_trial)
+                                            + eps_t * 1.0e-30)
+    if float(mu) < 0.0:
+        raise ValueError("μ 必须非负，收到 %r" % (mu,))
+    return eps_t * ufl.sign(s_trial) * ufl.min_value(abs(s_trial), mu * p / eps_t)
 
 
 def build_block_mesh(workdir: pathlib.Path, *, width: float, depth: float,
