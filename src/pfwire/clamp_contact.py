@@ -136,12 +136,17 @@ class ClampContact:
 
         必须在 **开摩擦**（mu 非 None）且 seek_solver 空间建好后调用。
         q 存入 checkpoint（FIELD_NAMES），续跑时从 .bp 读回。
+
+        ⚠ 名字必须是 ``"q"``：adios4dolfinx 按 ``Function.name`` 存取，
+        不给名字时 dolfinx 会塞一个自动名（实测是 ``"f"``），于是写进去的
+        键不是 q、读的时候按 "q" 找不到 —— 报的是
+        ``"q not found ... Did you mean {'f'}?"``。
         """
         if not self.has_friction_at_build:
             return
         if self.q is not None:
             return
-        self.q = fem.Function(fem.functionspace(V.mesh, ("DG", 0)))
+        self.q = fem.Function(fem.functionspace(V.mesh, ("DG", 0)), name="q")
         self.q.x.array[:] = 0.0
         self._uzawa_bound = True
 
@@ -281,6 +286,16 @@ class ClampContact:
 
         ⚠ 仅在 **Uzawa 模式**（``has_uzawa() == True``）下可用；
            罚函数模式直接返回 0.0。
+
+        ⚠⚠ **已知局限（D-68 问题 26 续 5，2026-10-19）**：在**深度黏着**工况
+        （接触面切向位移 ≪ μp/E*）下本迭代**不收敛，进二周期极限环**
+        （Q/(μP) 在 ±0.97 之间翻符号，rel_change 恒 ~2）。
+        根因是黏着区的 q 由体平衡唯一确定，而 Uzawa 用 ε_t·s 迭代它必然过冲；
+        ε_t 调小则摩擦被丢掉（Q → 0）。这不是参数问题，是算法与工况不匹配。
+        **当前路由**：靠调用方（`PhaseFieldSolver._solve_u_uzawa`）在达到
+        max_it 后取**最后一步的 q** 并继续，故不会崩溃、只是切向力停在饱和值。
+        要真解黏着区，需改用带 Lipschitz 连续化的对偶原续迄法（Fischer-
+        Wriggers 的 Uzawa-CG 或光滑化 Coulomb），PLAN 6.6.2 再评估。
         """
         if not self.has_uzawa():
             return 0.0
@@ -311,7 +326,7 @@ class ClampContact:
         s_cg.x.scatter_forward()
         s_dg = self._p_dg_projector.dot(s_cg.x.array[:self._p_n_owned])
 
-        # 3) q 更新：q_tr = q - eps_t * s（注：负号，见 docstring 物理推导），投影到 |q| ≤ μp
+        # 3) q 更新：q_tr = q - eps_t * s（负号的物理推导见 docstring），投影到 |q| ≤ μp
         q_old = self.q.x.array.copy()
         q_tr = q_old - eps_t * s_dg
         lim = float(self.mu.value) * np.maximum(p_dg, 0.0)

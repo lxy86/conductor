@@ -977,22 +977,35 @@ class PhaseFieldSolver:
           2. 更新 q ← Proj(q − ε_t·s)，s = τ·(u - u_prev)
           3. 检查 max|Δq|/max(1, max|q|) < tol
 
-        ``max_it``: Uzawa 最大迭代数（默认 50，prototype v3 实测 5-11 次收敛；
-                    对称挤压 + 远场驱动需更多迭代，测得 15-30 次）
-        ``tol``: 相对收敛容差（默认 1e-4，prototype 同值）
+        ``max_it``: Uzawa 最大迭代数（默认 80）
+        ``tol``: 相对收敛容差（默认 1e-3）
 
+        ⚠ **深度黏着工况下本迭代进二周期极限环、不会收敛**
+        （D-68 问题 26 续 5：黏着区 q 由体平衡唯一确定，ε_t·s 迭代必过冲）。
+        此时**不抛异常**（那会让整条 case 停在一个已知局限上），而是：
+          - 取最后一步的 q 继续（切向力停在饱和值附近，量级仍合理）；
+          - 把实际迭代次数写进 ``self.uzawa_iters`` 供调用方诊断。
         返回 (Uzawa 迭代次数, 0) —— chi 翻转在 Newton 路径无意义。
         """
         assert self.contact is not None and self.contact.has_uzawa()
         eps_t = self.contact.eps_t
 
-        for it in range(max_it):
+        self.uzawa_iters = 0
+        for it in range(1, max_it + 1):
             self._solve_u_once()
             rel_change = self.contact.uzawa_update(self.u, eps_t=eps_t)
+            self.uzawa_iters = it
             if rel_change <= tol:
-                return it + 1, 0
+                self.uzawa_converged = True
+                return it, 0
 
-        # 未收敛也返回当前迭代数（上层 solve_step 会按交错判据决定是否继续）
+        self.uzawa_converged = False
+        if self.config.log_iterations:
+            logger.warning(
+                "Uzawa %d 次未收敛（rel=%.3e）：深度黏着工况的已知局限，"
+                "取末步 q 继续。见 DECISIONS.md D-68 问题 26 续 5。",
+                max_it, rel_change,
+            )
         return max_it, 0
 
     def _snes_diagnostics(self) -> str:

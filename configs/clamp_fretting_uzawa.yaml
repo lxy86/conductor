@@ -83,10 +83,16 @@ solver:
   u_solver: newton
   tol_d: 0.0001
   max_iter: 50
-  u_linesearch: bt
+  # D-31：spectral 分解的 psi+ 只在主应变过零处 C0，u 的残差分片光滑，
+  # 回溯线搜索假设 merit 函数光滑，会在折点处找不到下降方向报 -6。
+  # basic 直接取整步、不做线搜索。改的是求解算法，不动方程与参数。
+  # ⚠ 钳口工况 p0 = 2.15σ_y ≫ σ_y，过零折点密集，bt 必炸（实测 -6）。
+  u_linesearch: basic
   snes_rtol: 1.0e-10
   snes_atol: 1.0e-06
   snes_max_it: 60
+  # D-32：钳口工况在深裂处交错振荡，0.25 已由 6.5 基线标定（原注见 fretting_base.yaml）
+  relaxation: 0.25
 model:
   # damage_region（D-68 路线 A，A-1 + A-b）：把 d 方程的驱动力限制在
   # 「实测单元尺寸 h ≤ damage_region_h_max」的可信区。区外 h/ℓ = 42~945，
