@@ -526,6 +526,8 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
     # 在外部另建同构空间，插值/取值的 dof 顺序对不上，滑移基准会静默错位）。
     if getattr(clamp, "has_friction_at_build", False):
         clamp.bind_slip_space(solver.V_u)
+        # Uzawa 乘子场 q（DG0）也建在求解器网格上，断点续跑需存取
+        clamp.bind_uzawa_space(solver.V_u)
 
     # --- cycle-jump ---
     c = raw["loading"]["cycle"]

@@ -28,7 +28,8 @@ from mpi4py import MPI
 
 #: 续跑需要的全部场。``d_old`` 不能漏 —— 它是 d 的 SNES 界约束下界，
 #: 少了它续跑就允许损伤倒退，不可逆性被悄悄破坏。
-FIELD_NAMES = ("u", "d", "d_old", "alpha_bar", "psi_plus_prev")
+#: ``q``（6.6.1 Uzawa 乘子）是 DG0 场，必须存取以保证摩擦历史连续。
+FIELD_NAMES = ("u", "d", "d_old", "alpha_bar", "psi_plus_prev", "q")
 
 POINTER = "checkpoint.json"
 SLOTS = ("ckpt_0.bp", "ckpt_1.bp")
@@ -42,7 +43,14 @@ def _fields(solver, state) -> dict[str, Any]:
         "alpha_bar": state.alpha_bar,
         "psi_plus_prev": state.psi_plus_prev,
     }
-    missing = [n for n in FIELD_NAMES if got.get(n) is None]
+    # Uzawa 乘子 q（6.6.1）：仅当接触启用摩擦且已绑定时存在
+    if (solver.contact is not None
+            and getattr(solver.contact, "has_uzawa", lambda: False)()):
+        got["q"] = solver.contact.q
+    else:
+        got["q"] = None
+    # q 为可选字段：若当前运行未启用 Uzawa（q=None），不将其计入缺失
+    missing = [n for n in FIELD_NAMES if n != "q" and got.get(n) is None]
     if missing:
         raise ValueError("checkpoint 缺少场 %r" % (missing,))
     return got
@@ -106,7 +114,10 @@ def save(
 
     adios4dolfinx.write_mesh(path, solver.mesh)
     for name in FIELD_NAMES:
-        adios4dolfinx.write_function(path, _fields(solver, state)[name])
+        fn = _fields(solver, state)[name]
+        if fn is None:
+            continue
+        adios4dolfinx.write_function(path, fn)
     if facet_tags is not None:
         adios4dolfinx.write_meshtags(
             path, solver.mesh, facet_tags, meshtag_name=FACET_TAGS
@@ -150,6 +161,9 @@ class Resumed:
         fields = _fields(solver, state)
         for name in FIELD_NAMES:
             fn = fields[name]
+            if fn is None:
+                # 当前运行未启用该场（如无摩擦时 q=None），跳过读取
+                continue
             adios4dolfinx.read_function(self.path, fn)
             fn.x.scatter_forward()
 

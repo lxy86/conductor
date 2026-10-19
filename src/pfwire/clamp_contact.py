@@ -16,6 +16,7 @@ max(Δψ⁺,0) 会把它滤掉。6.6.1 的价值在**独立验证**（Mindlin �
 
 from __future__ import annotations
 
+import numpy as np
 import ufl
 from dolfinx import fem
 from mpi4py import MPI
@@ -114,6 +115,11 @@ class ClampContact:
         # 建在与 u 同构的空间上（调用方用 set_slip_reference 冻结）。
         self.u_prev = None       # fem.Function(V)，惰性建（要 V，构造时还没有）
 
+        # ---- Uzawa/ALM: 切向牵引乘子 q（DG0 场，断点续跑需存取）----
+        # 只有开摩擦时才建（mu is not None），否则为 None 避免白占内存。
+        self.q: fem.Function | None = None
+        self._uzawa_bound = False  # q 空间是否已绑定
+
     # ---- 摩擦的运行时接口 ---------------------------------------------
     def bind_slip_space(self, V) -> None:
         """在求解器的位移空间 V 上建切向滑移基准场（只调一次）。
@@ -124,6 +130,24 @@ class ClampContact:
         if self.u_prev is None:
             self.u_prev = fem.Function(V)
             self.u_prev.x.array[:] = 0.0
+
+    def bind_uzawa_space(self, V) -> None:
+        """在求解器网格上建 Uzawa 乘子场 q（DG0）。
+
+        必须在 **开摩擦**（mu 非 None）且 seek_solver 空间建好后调用。
+        q 存入 checkpoint（FIELD_NAMES），续跑时从 .bp 读回。
+        """
+        if not self.has_friction_at_build:
+            return
+        if self.q is not None:
+            return
+        self.q = fem.Function(fem.functionspace(V.mesh, ("DG", 0)))
+        self.q.x.array[:] = 0.0
+        self._uzawa_bound = True
+
+    def has_uzawa(self) -> bool:
+        """是否已绑定 Uzawa 乘子场（开摩擦且 bind_uzawa_space 已调用）。"""
+        return self._uzawa_bound
 
     def set_slip_reference(self, u) -> None:
         """冻结当前切向位移作 s = τ·(u − u_prev) 的基准。
@@ -157,6 +181,11 @@ class ClampContact:
     def tangential_residual(self, u, v) -> ufl.Form:
         """切向牵引的虚功 ∫ q τ·v ds（上侧 + 下侧）。求解器在 u 方程里取负号。
 
+        - **Uzawa 模式**（`has_uzawa() == True`）：用乘子场 q（DG0）作 Neumann 面力，
+          q 由外层 Uzawa 循环更新。此时 form 只含 `q * tau·v`，**不含**切向罚函数。
+        - **罚函数模式**（开摩擦但未绑 Uzawa 空间，或兼容旧路径）：
+          用正则化试探-惩罚格式 `tangential_traction(s, p, mu, eps_t)`。
+
         ``mu=None``（未开摩擦）时返回 **UFL 标量零**（``ufl.as_ufl(0.0)``）。
         ⚠ 判据是 ``has_friction_at_build`` 而非 ``has_friction``：切向项装不装
         在 form 构造时定死，而标准加载序列是「先关摩擦压法向、再开摩擦推切向」
@@ -172,8 +201,24 @@ class ClampContact:
             # ε_p=0 那类假阳性的同型陷阱。故直接抛。
             raise RuntimeError(
                 "开摩擦后必须先 bind_slip_space(V)（切向滑移基准场还没建）")
-        p, _n = self._pressure_and_normal(u)
+
         tau_up, tau_lo = self._tangents(u)
+
+        # Uzawa 模式：直接用乘子场 q（已绑定在 mesh 上的 DG0 函数）
+        if self.has_uzawa():
+            assert self.q is not None
+            form = self.q * ufl.dot(tau_up, v) * self.ds(BLOCK_TOP)
+            pb = self._bottom_pressure(u)
+            if pb is not None and tau_lo is not None:
+                # 对称挤压：下侧线夹的切向基准 τ_lo ≈ −τ_up，故同一个乘子场
+                # 取**相反号**即给出同方向的摩擦力（见 uzawa_update 的推导）。
+                # ⚠ 这里**不能**回退到 tangential_traction：那正是墙 3 ——
+                # ε_t = κ_t E/h ≈ 3e16 Pa/m 的刚性罚弹簧，Newton 必报 -6。
+                form = form + (-self.q) * ufl.dot(tau_lo, v) * self.ds(BLOCK_BOTTOM)
+            return form
+
+        # 罚函数模式（旧路径，保留兼容）
+        p, _n = self._pressure_and_normal(u)
         du = u - self.u_prev
         s_up = ufl.variable(ufl.dot(tau_up, du))
         q_up = tangential_traction(s_up, p, self.mu, self.eps_t)
@@ -189,6 +234,8 @@ class ClampContact:
         """总切向力 Q = ∫ q τ_x ds（N/m，单位厚度），上侧 + 下侧。
 
         诊断/验证用：判 Coulomb 饱和（Q ≤ μP）、黏着半宽收缩、Q 单调性。
+        - **Uzawa 模式**：直接积分乘子场 q。
+        - **罚函数模式**：用罚函数公式（兼容旧路径）。
         与 :meth:`tangential_residual` 同判据（``has_friction_at_build``）：
         μ 被设 0 时它算出的是 0，不是「跳过」。
         """
@@ -197,8 +244,22 @@ class ClampContact:
         if self.u_prev is None:
             raise RuntimeError(
                 "开摩擦后必须先 bind_slip_space(V)（切向滑移基准场还没建）")
-        p, _n = self._pressure_and_normal(u)
+
         tau_up, tau_lo = self._tangents(u)
+
+        # Uzawa 模式：直接积分乘子场 q
+        if self.has_uzawa():
+            assert self.q is not None
+            local = fem.assemble_scalar(fem.form(self.q * tau_up[0] * self.ds(BLOCK_TOP)))
+            pb = self._bottom_pressure(u)
+            if pb is not None and tau_lo is not None:
+                # 对称挤压：下侧用 -q（与 tangential_residual 一致）
+                local = local + fem.assemble_scalar(
+                    fem.form((-self.q) * tau_lo[0] * self.ds(BLOCK_BOTTOM)))
+            return float(self.mesh.comm.allreduce(local, op=MPI.SUM))
+
+        # 罚函数模式（旧路径，保留兼容）
+        p, _n = self._pressure_and_normal(u)
         du = u - self.u_prev
         s_up = ufl.variable(ufl.dot(tau_up, du))
         q_up = tangential_traction(s_up, p, self.mu, self.eps_t)
@@ -210,6 +271,98 @@ class ClampContact:
             local = local + fem.assemble_scalar(
                 fem.form(q_lo * tau_lo[0] * self.ds(BLOCK_BOTTOM)))
         return float(self.mesh.comm.allreduce(local, op=MPI.SUM))
+
+    def uzawa_update(self, u, eps_t: float | None = None) -> float:
+        """Uzawa/ALM 乘子更新：q ← Proj_{|q| ≤ μp}[q − ε_t · s]。
+
+        ``s = τ·(u − u_prev)`` 是相对上一载荷步（已 commit）的切向滑移。
+        ``eps_t`` 为迭代参数（默认 ``self.eps_t``，决定收敛快慢，不影响精度）。
+        返回 ``max|Δq| / max(1, max|q|)`` 用作收敛判据。
+
+        ⚠ 仅在 **Uzawa 模式**（``has_uzawa() == True``）下可用；
+           罚函数模式直接返回 0.0。
+        """
+        if not self.has_uzawa():
+            return 0.0
+        assert self.q is not None
+        assert self.u_prev is not None
+
+        if eps_t is None:
+            eps_t = self.eps_t
+
+        # 只在接触面（上表面）更新 q；对称/底部支撑用 -q
+        tau_up, _ = self._tangents(u)
+
+        # 1) 组装 p（DG0：在接触面单元上取 CG1 节点平均，与 q 同口径）
+        if not hasattr(self, "_p_dg_projector"):
+            self._build_p_dg_projector()
+
+        p_expr, _n = self._pressure_and_normal(u)
+        Vs = fem.functionspace(self.mesh, ("Lagrange", 1))
+        p_cg = fem.Function(Vs)
+        p_cg.interpolate(fem.Expression(p_expr, Vs.element.interpolation_points))
+        p_cg.x.scatter_forward()
+        p_dg = self._p_dg_projector.dot(p_cg.x.array[:self._p_n_owned])
+
+        # 2) 滑移 s = τ·(u - u_prev) -> DG0
+        s_expr = ufl.dot(tau_up, u - self.u_prev)
+        s_cg = fem.Function(Vs)
+        s_cg.interpolate(fem.Expression(s_expr, Vs.element.interpolation_points))
+        s_cg.x.scatter_forward()
+        s_dg = self._p_dg_projector.dot(s_cg.x.array[:self._p_n_owned])
+
+        # 3) q 更新：q_tr = q - eps_t * s（注：负号，见 docstring 物理推导），投影到 |q| ≤ μp
+        q_old = self.q.x.array.copy()
+        q_tr = q_old - eps_t * s_dg
+        lim = float(self.mu.value) * np.maximum(p_dg, 0.0)
+        q_new = np.where(np.abs(q_tr) <= lim, q_tr, np.sign(q_tr) * lim)
+
+        # 4) 写回并散布
+        self.q.x.array[:] = q_new
+        self.q.x.scatter_forward()
+
+        # 5) 收敛度量
+        dq = float(np.max(np.abs(q_new - q_old)))
+        qmax = float(np.max(np.abs(q_new))) if q_new.size else 1.0
+        return dq / max(1.0, qmax)
+
+    def _build_p_dg_projector(self) -> None:
+        """预构建 CG1 -> DG0 的归约矩阵（仅 BLOCK_TOP 单元的接触节点平均）。
+
+        与 prototype v3 同策略：每个 DG0 单元取它在 BLOCK_TOP 上的 CG1 节点值平均。
+        """
+        import scipy.sparse as sp
+        import numpy as np
+        from dolfinx import fem
+        from pfwire.mesh import BLOCK_TOP
+
+        Vs = fem.functionspace(self.mesh, ("Lagrange", 1))
+        Vq = self.q.function_space  # DG0
+        fdim = self.mesh.topology.dim - 1
+
+        # 接触面上的 CG1 节点
+        top_nodes = fem.locate_dofs_topological(Vs, fdim,
+                                                 self.facet_tags.find(BLOCK_TOP))
+        n_owned = Vs.dofmap.index_map.size_local
+        top_nodes = top_nodes[top_nodes < n_owned]
+        top_set = np.zeros(n_owned, dtype=bool)
+        top_set[top_nodes] = True
+
+        n_cell = Vq.dofmap.index_map.size_local
+        rows, cols, vals = [], [], []
+        for c in range(n_cell):
+            nds = np.asarray(Vs.dofmap.cell_dofs(c))
+            sel = np.asarray([n for n in nds if n < n_owned and top_set[n]],
+                             dtype=np.int32)
+            if sel.size:
+                for nd in sel:
+                    rows.append(c)
+                    cols.append(int(nd))
+                    vals.append(1.0 / sel.size)
+
+        self._p_dg_projector = sp.csr_matrix((vals, (rows, cols)),
+                                              shape=(n_cell, n_owned))
+        self._p_n_owned = n_owned
 
     def set_delta(self, delta: float) -> None:
         """线夹下压位置（绝对值，m）。由求解器的外层（W' 搜索或延拓）调用。

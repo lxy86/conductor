@@ -751,9 +751,28 @@ class PhaseFieldSolver:
                   else lambda v, _ew=external_work: _ew)
         )
 
+        # u/d 问题在 setup() 中构建（若有接触需先绑定滑移空间）
+        self._u_problem = None
+        self._d_problem = None
+        self._problems_built = False
+
+    def setup(self) -> None:
+        """构建 u/d 子问题（延迟到绑定接触滑移空间之后）。
+
+        必须在 PhaseFieldSolver 创建后、首次求解前调用一次。
+        若有接触且开启摩擦，调用方需先 bind 滑移/Uzawa 空间，再调用 setup()。
+        """
+        if self._problems_built:
+            return
         self._build_u_problem()
         self._build_d_problem()
         self._build_energy_forms()
+        self._problems_built = True
+
+    def _ensure_setup(self) -> None:
+        """内部用：若问题未构建则自动构建（兼容旧调用方式）。"""
+        if not self._problems_built:
+            self.setup()
 
     # ---------------- 子问题装配 ----------------
     def _build_u_problem(self) -> None:
@@ -905,6 +924,7 @@ class PhaseFieldSolver:
         return self.V_d.dofmap.index_map.size_local
 
     def _sync_lower_bound(self) -> None:
+        self._ensure_setup()
         n = self._n_owned_d()
         self._lb.array[:n] = self.d_old.x.array[:n]
 
@@ -915,8 +935,16 @@ class PhaseFieldSolver:
         交错循环里用默认值 1 即可（外层已在迭代）。d 冻结、只推进 u 正是 D-4 提速
         路线中「周期内子步」的做法，故这里做成公开接口。
         newton 路径无 chi 可冻结，恒返回 (1, 0)。
+
+        **Uzawa 循环**（Newton + 接触 + 摩擦）：
+        当 ``u_solver='newton'`` 且 ``contact.has_uzawa()`` 时，在每次 Newton 求解后
+        执行乘子更新 ``q ← Proj(q + eps_t·s)`` 直到收敛。这替代了罚函数的切向项，
+        能突破 Q/(μP) ~ 0.1 的数值墙（D-68 问题 22/23）。
         """
+        self._ensure_setup()
         if self.config.u_solver == "newton":
+            if self.contact and self.contact.has_uzawa():
+                return self._solve_u_uzawa()
             self._solve_u_once()
             return 1, 0
         sign_state = self._eval_trace_sign()
@@ -929,6 +957,7 @@ class PhaseFieldSolver:
         return max(1, fixed_point_iterations), flips
 
     def _solve_u_once(self) -> None:
+        self._ensure_setup()
         self.u_prev.x.array[:] = self.u.x.array
         self._u_problem.solve()
         reason = self._u_problem.solver.getConvergedReason()
@@ -940,12 +969,39 @@ class PhaseFieldSolver:
                 )
             raise RuntimeError("u 的 Newton 求解未收敛：SNESConvergedReason=%d" % reason)
 
+    def _solve_u_uzawa(self, max_it: int = 80, tol: float = 1.0e-3) -> tuple[int, int]:
+        """Uzawa/ALM 循环解带 Coulomb 摩擦的接触位移问题。
+
+        外层循环：
+          1. 解 u（带当前 q 的 Neumann 切向牵引）
+          2. 更新 q ← Proj(q − ε_t·s)，s = τ·(u - u_prev)
+          3. 检查 max|Δq|/max(1, max|q|) < tol
+
+        ``max_it``: Uzawa 最大迭代数（默认 50，prototype v3 实测 5-11 次收敛；
+                    对称挤压 + 远场驱动需更多迭代，测得 15-30 次）
+        ``tol``: 相对收敛容差（默认 1e-4，prototype 同值）
+
+        返回 (Uzawa 迭代次数, 0) —— chi 翻转在 Newton 路径无意义。
+        """
+        assert self.contact is not None and self.contact.has_uzawa()
+        eps_t = self.contact.eps_t
+
+        for it in range(max_it):
+            self._solve_u_once()
+            rel_change = self.contact.uzawa_update(self.u, eps_t=eps_t)
+            if rel_change <= tol:
+                return it + 1, 0
+
+        # 未收敛也返回当前迭代数（上层 solve_step 会按交错判据决定是否继续）
+        return max_it, 0
+
     def _snes_diagnostics(self) -> str:
         """d 求解失败时的可诊断信息：最终残差、容差、迭代数。
 
         只报 reason=-5 是查不出问题的——真正的信息是「残差停在什么量级、
         与 atol 差多少」。见 SolverConfig.snes_atol 的注释。
         """
+        self._ensure_setup()
         snes = self._d_problem.solver
         rtol, atol, _, max_it = snes.getTolerances()
         try:
@@ -960,6 +1016,7 @@ class PhaseFieldSolver:
         )
 
     def solve_damage(self) -> None:
+        self._ensure_setup()
         self._sync_lower_bound()
         self._d_problem.solve()
         reason = self._d_problem.solver.getConvergedReason()
@@ -989,6 +1046,7 @@ class PhaseFieldSolver:
 
     def solve_step(self) -> StaggeredResult:
         """交错迭代到 ‖Δd‖_inf < tol_d 或达到 max_iter。"""
+        self._ensure_setup()
         cfg = self.config
         history: list[tuple[int, float, int]] = []
         delta = np.inf
@@ -1266,6 +1324,7 @@ class PhaseFieldSolver:
         return self.comm.allreduce(fem.assemble_scalar(form), op=MPI.SUM)
 
     def energies(self) -> dict[str, float]:
+        self._ensure_setup()
         elastic = self._assemble(self._form_elastic)
         dissipated = self._assemble(self._form_dissipated)
         return {
@@ -1283,6 +1342,7 @@ class PhaseFieldSolver:
         故这里对**精确**（非冻结）弹性能求导即可，两种分解都适用。
         比直接积分边界面力稳妥：不需要显式写出 sigma，避免对分解求导写错。
         """
+        self._ensure_setup()
         model = self.model
         if self.plastic is None:
             psi = elastic_energy_density(
@@ -1297,6 +1357,7 @@ class PhaseFieldSolver:
 
     def make_probe(self, bcs_probe) -> fem.Function:
         """按给定的 DirichletBC（值为单位方向）构造 :meth:`reaction` 用的探针场。"""
+        self._ensure_setup()
         probe = fem.Function(self.V_u, name="probe")
         for bc in _resolve_bcs(bcs_probe, self.V_u, "u"):
             bc.set(probe.x.array)
