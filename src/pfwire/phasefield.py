@@ -560,6 +560,17 @@ class SolverConfig:
     报 SNESConvergedReason=-6（DIVERGED_LINE_SEARCH），哪怕整步 Newton 本身没问题。
     ``basic`` 直接取整步、不做线搜索。改的是求解算法，不动方程与参数。
     """
+    u_linesearch_cyclic: str | None = None
+    """进入**循环相位**后可选切换到的线搜索类型（**None = 不切换**，默认）。
+
+    背景（6.6.3 实测，D-68 问题 28 续）：延拓/W' 搜索阶段必须 ``bt`` ——
+    ``basic`` 在延拓上直接 SNES -5（无损伤光滑问题，整步 Newton 过冲）。
+    循环相位则视工况：摩擦 Uzawa 深黏着极限环下 **bt 与 basic 都救不了**
+    （实测同点位 -6/-9），此时该修的是返回映射而非线搜索；但纯谱分解折点
+    场景（D-31 原文）bt 确实会卡 -6。故保留此旋钮供后者使用，切换由
+    调用方在 ramp→cyclic 边界通过 :meth:`PhaseFieldSolver.set_u_linesearch`
+    完成（``snes.getLineSearch().setType``，不重建 Jacobian）。
+    """
     log_iterations: bool = False  # 逐迭代日志（排查静默不收敛）
     relaxation: float = 1.0
     """交错更新中 d 的松弛因子：d <- d_prev + omega (d_solved - d_prev)。
@@ -586,6 +597,13 @@ class SolverConfig:
             raise ValueError(
                 "u_linesearch 只能是 PETSc 的 bt/basic/l2/cp/nleqerr，收到 %r"
                 % (self.u_linesearch,)
+            )
+        if self.u_linesearch_cyclic is not None and self.u_linesearch_cyclic not in (
+            "bt", "basic", "l2", "cp", "nleqerr"
+        ):
+            raise ValueError(
+                "u_linesearch_cyclic 只能是 PETSc 的 bt/basic/l2/cp/nleqerr，收到 %r"
+                % (self.u_linesearch_cyclic,)
             )
 
 @dataclass
@@ -927,6 +945,21 @@ class PhaseFieldSolver:
         self._ensure_setup()
         n = self._n_owned_d()
         self._lb.array[:n] = self.d_old.x.array[:n]
+
+    def set_u_linesearch(self, ls_type: str) -> None:
+        """运行时切换 u-SNES 的线搜索类型（不重建 Jacobian/问题）。
+
+        用于 ramp→cyclic 边界的 ``bt``↔``basic`` 切换（见 SolverConfig.u_linesearch_cyclic）：
+        SNES 已在首次求解时建好，这里只改其子对象 ``LineSearch`` 的类型，PETSc 下一次
+        ``snes.solve`` 即生效。None 或空串视为不切换。
+        """
+        if not ls_type:
+            return
+        if self._problems_built:
+            snes = self._u_problem.solver
+            ls = snes.getLineSearch()
+            ls.setType(str(ls_type))
+            snes.setLineSearch(ls)
 
     def solve_displacement(self, fixed_point_iterations: int = 1) -> tuple[int, int]:
         """解 u（d 保持不动），返回 (实际迭代次数, 最后一次 chi 翻转数)。

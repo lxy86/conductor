@@ -1,0 +1,116 @@
+case: clamp_fretting_uzawa
+case_type: clamp
+material: configs/material_al1350.yaml
+mesh:
+  from_config: configs/clamp_mesh.yaml
+  layout: C
+  workdir: data/clamp_mesh_C_coarse
+  # 粗网格跑通全流程（用户 2026-10-20 拍板）：加密带设定值 2e-5 → 实际边长
+  # ≈ 9 µm（edge_ratio 0.45）。h/ℓ ≈ 4.5，相场裂纹仍可见，单元数从 49 万降到 ~2.6 万。
+  # 近表面统一一档，避免接触罚刚度 ε=κE/h 在中心/边缘错配。
+  edge_target: 5.0e-05
+  refine_boxes:
+  - - -0.0035
+    - 0.0035
+    - -0.0003
+    - 0.0
+    - 2.0e-05
+  - - 0.002717
+    - 0.003117
+    - -0.00012
+    - 0.0
+    - 2.0e-05
+  - - -0.003117
+    - -0.002717
+    - -0.00012
+    - 0.0
+    - 2.0e-05
+contact:
+  R_clamp: 0.33
+  kappa: 10.0
+  kappa_sens: 1.0
+  h_contact: 2.0e-05
+  symmetric: true
+  mu: 0.7          # 6.6.1 Coulomb 摩擦（PLAN §1.2）；不设 = 关闭（D-67 基准）
+  kappa_t: 10.0   # 切向罚系数；Uzawa 下只影响收敛速度，不影响精度（D-68 问题 26）
+  # 6.6.2 线夹切向往复 δ_x(t)（D-68 问题 27）。**默认 0 = 关**，逐位回到无切向工况。
+  # 幅值未定、不得预设摩擦学工况（D-44），列为 Phase 7.5 扫参对象。
+  # ⚠ 实测部分滑移只在**亚微米**窗口（tiny 网格：0.1 µm 档 Q/(μP)=0.833 黏着 54/62，
+  #   5 µm 档已全滑移）——罚函数黏滑过渡宽度 μp/ε_t ≈ 50 pm，大档一律整体滑移。
+  tangential_amplitude: 1.0e-07   # m；0 = 关
+  tangential_opposed: true        # 上下线夹反向（相对错动 2A）；同向 = 刚体平移、摩擦不起作用
+loading:
+  W_target: 1750000.0
+  delta0: 1.7e-05
+  search:
+    rtol: 0.01
+    max_iter: 20
+  sigma_a: 45.0e6
+  T_prime: 1.0e4
+  H: 0.00375
+  side: right
+  cycle:
+    n_sub: 20
+    dN_init: 1.0
+    dN_min: 1.0
+    dN_max: 1.0e4
+    dd_max: 0.02
+    grow_below: 0.01
+    factor: 1.5
+    N_max: 2.0e7
+    peak_phase: 0.25
+  shakedown:
+    zero_tol: 1.0e-10
+    decay_ratio: 0.5
+    # decay_jitter：对 decay_ratio 的相对容差（D-68 问题 17）。
+    # FEM 噪声会让本该 0.499 的衰减步读出 0.502 —— 严格判据
+    # cur <= decay_ratio*prev 会因这 0.4% 超标把整条 halving 序列误判成
+    # not_decaying（实测：[..., 1.263e-08, 6.325e-09]，第三项超 0.16%）。
+    # 取 0.01（1%）：只放宽「衰减」的边界，不放宽「不衰减」的定义；
+    # 真正的棘轮（e_k ≈ e_{k-1} 或更大）依然过不了。
+    decay_jitter: 0.01
+    # 2026-10-15 由 5 改 3（D-66 阈值「待确认」，D-68 记录）。
+    # 5 在本工况错杀：N=13.125 的增量序列末四个精确减半
+    # (5.156e-08/2.527e-08/1.263e-08/6.325e-09) 全满足 cur <= 0.5*prev，
+    # 但第 5 个（e4→e5 那一对）不满足，n_check=5 取不到 5 个连续衰减值即判
+    # not_decaying。3 只看末三个：1.263e-08 → 6.325e-09 满足，判 decaying 放行。
+    n_check: 3
+  self_equilibrated: true
+  support: free
+nucleation:
+  threshold: 0.95
+  nucleation_depth: 6.0e-06
+  turn_depth: 0.0001
+  incline_deg: 10.0
+  turn_deg: 20.0
+  x_init_tol: 0.002389
+sampling:
+  halfwidth: 0.003517
+  depth_max: 0.00015
+  spacing: 2.0e-06
+solver:
+  u_solver: newton
+  tol_d: 0.0001
+  max_iter: 50
+  # 延拓/W' 搜索阶段（光滑、无损伤）必须用 bt；basic 会在那一刻发散 SNES -5。
+  # 摩擦工况（cyclic 见谱分解折点）首步 u-SNES 实测 -6 —— 见 D-68 问题 28 续，
+  # 暂用 bt，待 cyclic 阶段单独处理（D-31 的 basic 只针对深裂区）。
+  u_linesearch: bt
+  snes_rtol: 1.0e-10
+  snes_atol: 1.0e-06
+  snes_max_it: 60
+  # D-32：钳口工况在深裂处交错振荡，0.25 已由 6.5 基线标定（原注见 fretting_base.yaml）
+  relaxation: 0.25
+model:
+  # damage_region（D-68 路线 A）：常态取 3ℓ = 6 µm 把驱动力限制在可信区。
+  # 粗网格版整个近表面都是 ~9 µm，该窗反而会**排除**裂纹带、压住起裂，
+  # 故粗网格探索关闭此窗（全域参与），目的是先把 6.6.3 全流程跑通。
+  # 细网格收敛验证时再按 3ℓ 重新启用。
+output:
+  dir: data/clamp_fretting_coarse
+  save_every: 1
+  dump_every: 1
+# 6.6 摩擦工况：在 6.5 基准上开 Coulomb 摩擦（Uzawa 返回映射）。
+# 与 clamp_base_c_1um.yaml 的唯一区别是 contact.mu / contact.kappa_t。
+# 依据：PLAN §1.2 取 μ = 0.7（铝-铝对偶）；D-68 问题 26 的 Uzawa 实现。
+# 无摩擦基准（clamp_base_c_1um.yaml）逐位不变 —— mu 不设 = 关闭。

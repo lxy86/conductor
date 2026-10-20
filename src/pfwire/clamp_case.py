@@ -462,6 +462,22 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
     # 罚压力不对称、可能诱发 Newton -6。装配后显式声明（Constant 初值即 0）。
     clamp.set_tangential(0.0)
 
+    # ---- 法向延拓期**关摩擦**（Mindlin 加载的标准序列，D-68 问题 28）----
+    # ⚠ 只关 μ 的**大小**，不摘除切向项：``has_friction_at_build`` 是在 form
+    # 构造时定死的（clamp_contact 的注释），延拓后要重新开摩擦，故该项必须一直
+    # 在 form 里。``set_mu(None)`` 把 μ 设 0，q ≡ 0 且切线 ≡ 0，逐位无影响。
+    #
+    # 为什么必须关：低压时 Coulomb 上限 μp/ε_t 极小，q 恰好坐在 min() 的折点上，
+    # Newton 一步就飞 —— 实测 μ=0.3 时 δ=1e-6 报 -6、μ=1.0 时 δ=1e-5 报 -5，
+    # 而同网格不挂摩擦则步步收敛。测试 fixture（test_clamp_uzawa.py 的
+    # _setup）一直这么做，生产此前漏了这整个序列，于是 δ 延拓带着 μ=0.7 跑、
+    # 在 find_working_delta 里 SNES -9。
+    #
+    # 延拓结束后由 ``_enable_friction_after_ramp`` 开摩擦并冻结滑移基准。
+    if getattr(clamp, "has_friction_at_build", False):
+        clamp._mu_config = float(cc["mu"]) if "mu" in cc else None
+        clamp.set_mu(None)
+
     # --- 求解器：plastic + contact，必须 newton ---
     # degrade_stiffness（b-1 口径，D-68 问题 5）：从 model: 段读，默认 True
     # （PLAN §2 原口径）。False 时 u 方程的弹性能不再乘 g(d)，打断
@@ -508,6 +524,8 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
                        tol_d=float(sv.get("tol_d", 1.0e-4)),
                        max_iter=int(sv.get("max_iter", 50)),
                        u_linesearch=str(sv.get("u_linesearch", "bt")),
+                       u_linesearch_cyclic=(str(sv["u_linesearch_cyclic"])
+                                            if sv.get("u_linesearch_cyclic") else None),
                        # d 用 snes_atol/rtol（默认 1e-8/1e-6，见 SolverConfig 注释）；
                        # u 另设（6.1 标定值 atol=1e-6/rtol=1e-10），两者量级差很远。
                        snes_rtol=float(sv.get("snes_rtol_d", 1.0e-6)),
@@ -671,12 +689,36 @@ def end_bcs(V, msh, facet_tags, *, bottom_fixed: bool = False,
     return bcs
 
 
+def _enable_friction_after_ramp(case: ClampCase) -> None:
+    """法向延拓结束后**开摩擦**并冻结切向滑移基准（Mindlin 序列的第二步）。
+
+    与装配时 ``clamp.set_mu(None)``（延拓期关摩擦）配对。滑移基准必须在
+    **接触已建立**之后再冻结：Coulomb 是增量本构，滑移从「法向平衡态」起算；
+    若在还没接触时就冻结，压入过程本身的切向位移会被误算成滑移。
+    """
+    clamp = case.clamp
+    if not getattr(clamp, "has_friction_at_build", False):
+        return
+    mu = getattr(clamp, "_mu_config", None)
+    if mu is None:
+        return
+    # 冻结基准：此时 δ 已到位、接触已建立
+    clamp.set_slip_reference(case.solver.u)
+    clamp.set_mu(mu)
+
+
 def find_working_delta(case: ClampCase, W_target: float, *, delta0: float = 17.0e-6,
                        rtol: float = 1.0e-2, max_iter: int = 20) -> float:
-    """T4 的 FEM 侧：割线法搜 δ 使接触反力 = W'，并把结果留在 case 上。"""
+    """T4 的 FEM 侧：割线法搜 δ 使接触反力 = W'，并把结果留在 case 上。
+
+    ⚠ **延拓期是关着摩擦跑的**（装配时 ``set_mu(None)``）。搜索结束后调用
+    :func:`_enable_friction_after_ramp` 开摩擦并冻结滑移基准 —— 之后才是真正的
+    摩擦工况。
+    """
     delta = secant_delta(lambda d: solve_contact_at(case, d), W_target,
                          delta0=delta0, rtol=rtol, max_iter=max_iter)
     case.set_delta(delta)
+    _enable_friction_after_ramp(case)
     return delta
 
 

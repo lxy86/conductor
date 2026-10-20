@@ -280,6 +280,8 @@ def load_case(path: str | Path) -> CaseConfig:
         log_iterations=bool(solver_cfg.get("log_iterations", False)),
         relaxation=float(solver_cfg.get("relaxation", 1.0)),
         u_linesearch=str(solver_cfg.get("u_linesearch", "bt")),
+        u_linesearch_cyclic=(str(solver_cfg["u_linesearch_cyclic"])
+                             if solver_cfg.get("u_linesearch_cyclic") else None),
     )
 
     output_cfg = dict(raw.get("output", {}))
