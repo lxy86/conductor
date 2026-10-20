@@ -434,13 +434,17 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
     # 既有结果逐位不变）。给了才建切向项。kappa_t 缺省 = kappa（各向同性）。
     mu_cfg = cc.get("mu")
     kappa_t_cfg = cc.get("kappa_t")
+    # uzawa_eta_rel：FB 光滑化参数 η = η_rel·μp（D-68 问题 28 续）。盒内恒等，
+    # 只影响滑移区 |q| 偏差与 Newton 光滑度；缺省 0.05。
+    eta_rel_cfg = cc.get("uzawa_eta_rel")
     clamp = ClampContact(msh, facet_tags, E=material.elastic.E,
                          R_clamp=float(cc["R_clamp"]), kappa=float(cc["kappa"]),
                          h_contact=h_contact,
                          bottom_support=None if bs is None else float(bs),
                          symmetric=sym, depth=H,
                          mu=None if mu_cfg is None else float(mu_cfg),
-                         kappa_t=None if kappa_t_cfg is None else float(kappa_t_cfg))
+                         kappa_t=None if kappa_t_cfg is None else float(kappa_t_cfg),
+                         uzawa_eta_rel=0.05 if eta_rel_cfg is None else float(eta_rel_cfg))
     ld = raw["loading"]
     self_eq = bool(ld.get("self_equilibrated", False))
     loads = ClampLoads(msh, facet_tags, H=float(ld["H"]),

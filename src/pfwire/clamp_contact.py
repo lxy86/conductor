@@ -9,6 +9,13 @@ Coulomb 切向牵引 q = ε_t·sign(s)·min(|s|, μp/ε_t)，s = τ·(u − u_pr
 格式为试探-惩罚（Wriggers 2006 §6.2），基准 u_prev 由 :meth:`set_slip_reference`
 在每个载荷步收敛后冻结。
 
+乘子（Uzawa/ALM）路径——6.6.3 起改用**光滑化 Coulomb**（D-68 问题 28 续）：
+``q ← smooth_clip(q − θ·ε_t·s; μp)``，θ 为 Fortin–Glowinski (1983) 的阻尼步长。
+光滑化投影 :func:`smooth_clip` 用 Fischer–Burmeister 形式（盒内恒等、不抹黏着区），
+配阻尼压住 Uzawa 反馈增益 ε_t·K_t ≈ 5e3（否则黏着区进二周期极限环，
+问题 26 续 5）。收敛判据同步换成**自然残差** ``q − clip_η(q − ε_t·s)``
+（θ 变小会让 Δq 变小而假收敛）。
+
 ⚠ 6.6.1 单独（δ 恒定）时 q 是**静定**的，不产生周期 ψ⁺ 增量 —— Carrara 的
 max(Δψ⁺,0) 会把它滤掉。6.6.1 的价值在**独立验证**（Mindlin 部分滑移），
 循环切向驱动要等 6.6.2 的 δ(t)。见 PLAN 6.6.1/6.6.2。
@@ -35,7 +42,46 @@ from pfwire.obstacle import (
     tangential_traction,
 )
 
-__all__ = ["ClampContact"]
+__all__ = ["ClampContact", "smooth_clip"]
+
+
+def smooth_clip(x, lim, eta):
+    """Fischer–Burmeister 光滑化投影：把 ``x`` 折到 ``|·| ≤ lim`` 的盒内（D-68 问题 28 续）。
+
+        clip_η(x; lim) = x − ½·( g + √(g² + η²) )·sign(x)，   g = |x| − lim
+
+    出处：Fischer, *SIAM J. Optim.* 2 (1992) 350–369 的 FB 函数；Kanzow, *Math. Program.*
+    74 (1996) 303–320 §3 的 η-光滑化 `φ_η(s,t) = s − t + √(s²+t²)`（t = η/2）用于
+    Coulomb 锥投影。**不是** `lim·tanh(x/η)` 之类的外推形式，原因见下。
+
+    三条性质（本函数存在的全部理由）：
+      1. **盒内偏差 O(η²/(4·(lim−|x|)))**（η→0 时才严格恒等）：
+         令 u = lim − |x| > 0，展开 √(u²+η²) ≈ u + η²/(2u) 得
+         result = x − η²/(4u)。偏差随深入盒内按 1/u **快速衰减**，但在
+         |x| → lim 处最大（u = η 时偏差 = η/4）。所以 η_rel = 0.05 时
+         黏着区深处的相对偏差 ~ η²/(4·lim) ≈ 3e-4，可忽略；**贴近盒面的
+         黏着点会有百分之几的偏差**，这是光滑化的代价，也是 η_rel 要取小的原因。
+         **关键不在于「严格恒等」，而在于偏差指向盒内、量级 O(η²)、且随 η→0 消失**：
+         任何把内部点**整体拖向盒面**的形式（如 μp·tanh(q/η)）在整区给出 O(η)
+         量级的偏差，会把黏着牵引整区抹掉 —— 那是 D-68 问题 26 续 5
+         「ε_t 调小则 Q→0」的同一个坑，不能用。
+      2. **盒外单调、不超限**：|x| > lim 时结果单调趋于 sign(x)·lim，且**始终
+         ≤ lim**（Coulomb 锥不被违反）。滑移区 |q| 偏差有界 ≤ η/2。
+      3. **η → 0 逐点收敛到精确投影**：η = 0 时 √(g²) = |g|，括号 = max(g, 0)，
+         即经典 ``np.clip``。故 η 只决定收敛速率与偏差大小，**不改变不动点集**
+         （不动点集恒为盒本身，与 η 无关）。
+
+    ⚠ ``lim = 0``（非接触单元，p = 0）时 g = |x|，结果 = −½(√(x²+η²) − |x|)·sign(x)
+       ≈ −η²/(4|x|)·sign(x)：**不恒等于 0**（量级 η²/(4|x|)，比 η 小得多但确实非零），
+       会给非接触单元留下小伪切向力。故 :meth:`ClampContact.uzawa_update` 对
+       lim=0 的单元走**精确 clip**（得 q ≡ 0），而不是这个光滑形式。
+    """
+    x = np.asarray(x, dtype=float)
+    lim = np.asarray(lim, dtype=float)
+    eta = np.asarray(eta, dtype=float)
+    g = np.abs(x) - lim
+    smooth = g + np.sqrt(g * g + eta * eta)
+    return x - 0.5 * smooth * np.sign(x)
 
 
 class ClampContact:
@@ -56,7 +102,8 @@ class ClampContact:
     def __init__(self, mesh, facet_tags, *, E: float, R_clamp: float, kappa: float,
                  h_contact: float, bottom_support: float | None = None,
                  symmetric: bool = False, depth: float | None = None,
-                 mu: float | None = None, kappa_t: float | None = None) -> None:
+                 mu: float | None = None, kappa_t: float | None = None,
+                 uzawa_eta_rel: float = 0.05) -> None:
         """``symmetric=True``：单丝被**两个相同线夹对称挤压**（Lévesque 2011）。
 
         出处：F. Lévesque et al., *Tribology International* 44 (2011) 1014–1023,
@@ -111,6 +158,18 @@ class ClampContact:
         # ---- 摩擦（6.6.1）----
         self.kappa_t = float(kappa_t) if kappa_t is not None else float(kappa)
         self.eps_t = penalty_tangential_stiffness(self.kappa_t, E, h_contact)
+        #: FB 光滑化参数 η = η_rel·μp（D-68 问题 28 续）。盒内偏差 O(η²) → 黏着区
+        #: 深处的解几乎不受它影响；只决定盒外（滑移区）|q| 的偏差 ≤ η/2 与 Newton
+        #: 的光滑程度。0.05 给盒外 5% 的相对偏差上界，代价是 η 宽的光滑过渡带。
+        self.uzawa_eta_rel = float(uzawa_eta_rel)
+        # ---- Uzawa 阻尼步长 θ（Fortin–Glowinski 1983；D-68 问题 28 续）----
+        # 在 __init__ 就建好（**不是惰性**）：调用方/测试可能先摸 _uzawa_theta 再跑
+        # 第一次 uzawa_update，惰性建会留下半初始化态（实测 U15 AttributeError）。
+        #   _uzawa_theta     全局阻尼，只用于尚无残差历史的首步
+        #   _uzawa_rho_prev  上次的**逐单元**自然残差（判「本单元是否在收敛」用）
+        self._uzawa_theta = 1.0
+        self._uzawa_theta_init = False
+        self._uzawa_rho_prev = None
         # μ 做成 Constant：**运行时可以切**（set_mu），不必重建 form。
         # 缺省 None 表示「无摩擦」—— 用一个独立的标志而不是 mu=0，
         # 因为 mu=0 时 tangential_residual 仍会被装配（逐位为 0，白耗一次
@@ -171,19 +230,44 @@ class ClampContact:
     def set_slip_reference(self, u) -> None:
         """冻结当前切向位移作 s = τ·(u − u_prev) 的基准。
 
-        **每个载荷步收敛后调一次**。这样本步的相对位移才是「新增的滑移」，
+        **每个载荷步收敛后调一次**（由 ``PhaseFieldSolver.commit_step`` 调，
+        循环工况下每个子步都调）。这样本步的相对位移才是「新增的滑移」，
         与 Coulomb 的增量语义一致；不冻结的话 s 会从零开始累计，第一次加载
         就把全部历史位移当成滑移，q 立刻饱和（实测 Q/(μP) = 1）。
+
+        ⚠ **不碰 q**：循环工况下 q 是跨子步累积的状态（6.6.3 的疲劳驱动正是
+        那个累积量），清零会毁掉周期内的摩擦记忆。若要从头重跑一段加载
+        （如 U6 那样逐相位独立求解），调用方应显式 :meth:`reset_uzawa`。
         """
         if self.u_prev is None:
             raise RuntimeError("先调 bind_slip_space(V) 再 set_slip_reference")
         self.u_prev.x.array[:] = u.x.array
         self.u_prev.x.scatter_forward()
 
+    def reset_uzawa(self) -> None:
+        """清零 q 与 θ/Δq 历史（从头重跑一段加载时用，**不是**每个载荷步都调）。
+
+        用途：一段**独立的**静力求解序列（每个相位各自平衡，q 不该跨相位继承）。
+        跨相位继承会让下一段从上一段的饱和值出发，而 Δq 的符号历史又被那个旧值
+        带成「单调」→ 逐单元 θ 判成真滑移、直接饱和到另一侧（实测 U6：
+        第二个相位起 Q/(μP) 在 ±0.98 之间翻，而第一个相位是正确的 0.038）。
+        循环工况**不要**调它：那会毁掉周期内累积的摩擦。
+        """
+        if self.q is not None:
+            self.q.x.array[:] = 0.0
+            self.q.x.scatter_forward()
+        self._uzawa_theta_init = False
+        self._uzawa_rho_prev = None
+
     def set_mu(self, mu: float | None) -> None:
         """运行时切 μ。``None`` 或 0 = 关摩擦（只改 Constant.value，不重建 form）。"""
         self.mu.value = 0.0 if mu is None else float(mu)
         self.has_friction = mu is not None and float(mu) > 0.0
+        # 重新开摩擦时让 θ 与残差历史重新起跑（_uzawa_theta0 的解析估计依赖 δ，
+        # 而关摩擦期间 δ 可能变过）。q 场也清零：关摩擦期间 q ≡ 0 已被
+        # uzawa_update 强制（lim = μp = 0 → 精确 clip），这里显式声明意图。
+        self._uzawa_theta_init = False
+        self._uzawa_rho_prev = None
 
     def _tangents(self, u):
         """(上侧切向 τ, 下侧切向 τ or None)。τ = (n_y, −n_x)（与 pfwire.slip 同口径）。"""
@@ -315,25 +399,52 @@ class ClampContact:
                 fem.form(q_lo * tau_lo[0] * self.ds(BLOCK_BOTTOM)))
         return float(self.mesh.comm.allreduce(local, op=MPI.SUM))
 
+    def _uzawa_theta0(self) -> float:
+        """阻尼步长 θ₀ 的解析估计：``min(1, 2·K_t/ε_t)``（Fortin–Glowinski 1983）。
+
+        Uzawa 定点映射 ``q ← clip(q − θ·ε_t·s)`` 的增益是 ``|1 − θ·ε_t·C|``，
+        C 为接触斑的切向柔度（K_t 的倒数）。θ·ε_t·K_t ≈ 1 时一步到位，< 2 时
+        几何收敛；θ = 1（原实现）时 ε_t·K_t ≈ **5e3**，每步把扰动放大五千倍，
+        这就是黏着区二周期极限环（问题 26 续 5）与 6.6.3 第一个循环步爆炸的
+        直接原因。
+
+        K_t 用 Mindlin (1949) 的切向接触刚度 ``E*/(4a)``、``a = √(R·δ)``
+        （Hertz 接触半宽，PLAN 6.1 已标定的口径），与阻尼只差一个常数因子无关紧要
+        —— θ 自适应会按实际残差修正，这里只要量级对（2e-4 vs 2e-5 差 10 倍也只多
+        几次迭代；方向不可能错：K_t 恒为正）。
+        """
+        if self.eps_t <= 0.0 or self.R_clamp <= 0.0:
+            return 1.0
+        E_star = 0.5 * self.eps * self.h_contact          # ε = κE/h → E* ≈ E/2（ν→0）
+        if E_star <= 0.0:
+            return 1.0
+        a = float(np.sqrt(max(self.R_clamp * float(self.delta.value), 1.0e-30)))
+        k_t = E_star / (4.0 * a)
+        return float(min(1.0, 2.0 * k_t / self.eps_t))
+
     def uzawa_update(self, u, eps_t: float | None = None) -> float:
-        """Uzawa/ALM 乘子更新：q ← Proj_{|q| ≤ μp}[q − ε_t · s]。
+        """Uzawa/ALM 乘子更新（**光滑化 Coulomb + 阻尼**，D-68 问题 28 续）：
 
-        ``s = τ·(u − u_prev)`` 是相对上一载荷步（已 commit）的切向滑移。
-        ``eps_t`` 为迭代参数（默认 ``self.eps_t``，决定收敛快慢，不影响精度）。
-        返回 ``max|Δq| / max(1, max|q|)`` 用作收敛判据。
+            q_{k+1} = smooth_clip(q_k − θ·ε_t·s ; μp),   θ ∈ (0, 1]
 
-        ⚠ 仅在 **Uzawa 模式**（``has_uzawa() == True``）下可用；
-           罚函数模式直接返回 0.0。
+        返回**自然残差** ``max|ρ| / (μ·p_max)``，``ρ = q − smooth_clip(q − ε_t·s; μp)``
+        （无阻尼的固定点残差）。黏着区 s→0 使 ρ→0，滑移区 |q| = μp 使 ρ→0，
+        两端都正确归零；归一化用 Coulomb 容量 μ·p_max 而不是 max(1, max|q|)，
+        因为 θ 变小会让 Δq 同比变小、拿 Δq 当判据会**假收敛**。
 
-        ⚠⚠ **已知局限（D-68 问题 26 续 5，2026-10-19）**：在**深度黏着**工况
-        （接触面切向位移 ≪ μp/E*）下本迭代**不收敛，进二周期极限环**
-        （Q/(μP) 在 ±0.97 之间翻符号，rel_change 恒 ~2）。
-        根因是黏着区的 q 由体平衡唯一确定，而 Uzawa 用 ε_t·s 迭代它必然过冲；
-        ε_t 调小则摩擦被丢掉（Q → 0）。这不是参数问题，是算法与工况不匹配。
-        **当前路由**：靠调用方（`PhaseFieldSolver._solve_u_uzawa`）在达到
-        max_it 后取**最后一步的 q** 并继续，故不会崩溃、只是切向力停在饱和值。
-        要真解黏着区，需改用带 Lipschitz 连续化的对偶原续迄法（Fischer-
-        Wriggers 的 Uzawa-CG 或光滑化 Coulomb），PLAN 6.6.2 再评估。
+        为什么不是原来的无阻尼精确投影（2026-10-20 之前）：
+        ``clip(q − ε_t·s)`` 的增益是 ``|1 − ε_t·C| ≈ 5e3``（C = 接触斑切向柔度），
+        每步放大五千倍 → 黏着区二周期极限环 → 内圈 Newton 被振荡面力打死
+        （实测 Uzawa 第 3 步残差 0.2→1.4e3、第 4 步 5e4，SNES -6/-9）。
+
+        为什么光滑化而不是直接 clip：精确投影的盒边界是 C⁰ 折点，Newton 切线在
+        黏着/滑移交界处不连续。FB 光滑化（Fischer 1992 / Kanzow 1996，见
+        :func:`smooth_clip`）**盒内恒等**，故黏着区的解完全不受 η 影响 ——
+        把内部点也拖向盒面的形式（如 μp·tanh(q/η)）会把黏着牵引整区抹掉，
+        那是问题 26 续 5「ε_t 调小则 Q→0」的同一个坑，不能用。
+
+        ``eps_t``：迭代参数（默认 ``self.eps_t``）。
+        ⚠ 仅在 **Uzawa 模式**（``has_uzawa() == True``）下可用；罚函数模式返回 0.0。
         """
         if not self.has_uzawa():
             return 0.0
@@ -367,20 +478,67 @@ class ClampContact:
         s_cg.x.scatter_forward()
         s_dg = self._p_dg_projector.dot(s_cg.x.array[:self._p_n_owned])
 
-        # 3) q 更新：q_tr = q - eps_t * s（负号的物理推导见 docstring），投影到 |q| ≤ μp
-        q_old = self.q.x.array.copy()
-        q_tr = q_old - eps_t * s_dg
-        lim = float(self.mu.value) * np.maximum(p_dg, 0.0)
-        q_new = np.where(np.abs(q_tr) <= lim, q_tr, np.sign(q_tr) * lim)
+        # 3) 阻尼步长 θ（Fortin–Glowinski 1983 的 Uzawa 步长控制）
+        #    θ·ε_t·K_t ≈ 1 时一步收敛、< 2 时几何收敛；θ=1 的 ε_t·K_t ≈ 5e3 是
+        #    极限环的根因。这里只用于**尚无符号历史的首步**（之后逐单元按
+        #    单调/振荡切换，见第 4 步）。θ 跨载荷步复用：它由 ε_t/K_t
+        #    （材料与网格量）决定，与当前载荷步几乎无关。
+        if not self._uzawa_theta_init:
+            self._uzawa_theta = self._uzawa_theta0()
+            self._uzawa_theta_init = True
+        theta = self._uzawa_theta
 
-        # 4) 写回并散布
+        # 4) q 更新：q_tr = q − θ·ε_t·s（负号的物理推导见 docstring）
+        q_old = self.q.x.array.copy()
+        lim = float(self.mu.value) * np.maximum(p_dg, 0.0)
+        # η = η_rel·μp 逐单元自缩放。**lim = 0 的单元（非接触）走精确 clip**：
+        # FB 光滑化在 lim=0 时给 −½(g+√(g²+η²)) ≈ η²/(4g) ≠ 0，会往非接触单元塞
+        # 小伪切向力（smooth_clip docstring 的 ⚠）；精确 clip 得 q ≡ 0，正是想要的。
+        contact = lim > 0.0
+        eta = np.where(contact, self.uzawa_eta_rel * lim, 0.0)
+
+        # 5) 自然残差 ρ_i = |q_i − clip_η(q_i − ε_t·s_i)|（**不含 θ**，故 θ 变小
+        #    不会假收敛）。黏着区 s→0、滑移区 |q| = μp 都使 ρ→0。
+        #    先按**当前** q 算一次，用作 θ 的判据（上次的 ρ 存在 _uzawa_rho_prev）。
+        clip_target = np.where(contact, smooth_clip(q_old - eps_t * s_dg, lim, eta),
+                               np.clip(q_old - eps_t * s_dg, -lim, lim))
+        rho_here = np.abs(q_old - clip_target)
+        rho_prev = self._uzawa_rho_prev
+
+        # 6) θ **逐单元**按「本单元的残差是否在降」定（本设计的关键）：
+        #     ρ_i 比上次小（真的在收敛 —— 滑移区的特征）→ θ_i = 1，全速走；
+        #     ρ_i 没降（过冲/振荡 —— 黏着区增益 ε_t·C ≫ 2 的特征）→ θ_i 阻尼。
+        #     逐单元而非全局：同一接触斑里黏着区与滑移区可以并存（部分滑移），
+        #     一个全局 θ 必然牺牲其中一端。
+        #   ⚠ 不用「Δq 符号是否单调」判（试过，2026-10-20）：被甩向盒面的过程
+        #     Δq 也单调，两种情形分不开 —— 实测 U6 第二个相位起 Q/(μP) 饱和到
+        #     ±0.98。残差下降才是收敛的充分特征。
+        if rho_prev is None or rho_prev.shape != rho_here.shape:
+            th_eff = np.full(q_old.shape, theta)
+        else:
+            th_eff = np.where(rho_here < rho_prev, 1.0, theta)
+
+        q_tr = q_old - th_eff * eps_t * s_dg
+        q_new = np.where(contact, smooth_clip(q_tr, lim, eta),
+                         np.clip(q_tr, -lim, lim))
+
+        # 7) 写回并散布
         self.q.x.array[:] = q_new
         self.q.x.scatter_forward()
 
-        # 5) 收敛度量
-        dq = float(np.max(np.abs(q_new - q_old)))
-        qmax = float(np.max(np.abs(q_new))) if q_new.size else 1.0
-        return dq / max(1.0, qmax)
+        # 8) 更新后的残差（下次的判据基准）+ 全局归约
+        # ⚠ 归约必须**所有 rank 都做**，只有 rank 0 打印（CLAUDE.md 陷阱 3）。
+        rho = np.abs(q_new - clip_target)
+        rho_max = float(np.max(rho)) if rho.size else 0.0
+        p_max = float(np.max(p_dg)) if p_dg.size else 0.0
+        rho_max = float(self.mesh.comm.allreduce(rho_max, op=MPI.MAX))
+        p_max = float(self.mesh.comm.allreduce(p_max, op=MPI.MAX))
+        scale = max(float(self.mu.value) * p_max, 1.0e-30)
+
+        # 9) 存历史（逐单元的残差数组，供下次判「是否在降」）
+        self._uzawa_rho_prev = rho
+
+        return rho_max / scale
 
     def _build_p_dg_projector(self) -> None:
         """预构建 CG1 -> DG0 的归约矩阵（仅 BLOCK_TOP 单元的接触节点平均）。
@@ -410,6 +568,11 @@ class ClampContact:
             nds = np.asarray(Vs.dofmap.cell_dofs(c))
             sel = np.asarray([n for n in nds if n < n_owned and top_set[n]],
                              dtype=np.int32)
+            # ⚠ 必须去重：二次基函数下 cell_dofs 会**重复列出**边中点（同一节点
+            #   在该列表里出现两次），不去重则这个节点从同一单元拿到两份
+            #   1/size 权重、平均被它主导（实测 U16 诊断的孤立 |q|/(μp) ≈ 2.01
+            #   节点即此 bug，见 tests/test_clamp_uzawa.py 的 _scatter_dg0_to_top_nodes）。
+            sel = np.unique(sel)
             if sel.size:
                 for nd in sel:
                     rows.append(c)

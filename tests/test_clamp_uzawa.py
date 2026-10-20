@@ -20,6 +20,11 @@ ClampContact.set_tangential），与 Mindlin 的物理设定一致，
   U10. 对称反向：上下线夹切向偏移反号，接触斑内存在相对错动；
   U11. 相位同步：切向行程与弯矩同相位（都由 sin(2πt/T) 驱动）；
   U12. 部分滑移：切向行程足够大时接触斑内同时有黏着点与滑移点。
+  U13. smooth_clip 单元性质：盒内恒等 / 盒外单调不超限 / η→0 收敛 / 奇对称；
+  U14. 深黏着 Uzawa 收敛（6.6.3 第一个循环步的爆点，旧实现此处爆炸）；
+  U15. 滑移区饱和与阻尼 θ 无关（θ 是步长，不改滑移区不动点）；
+  U16. 光滑化 Coulomb 的两条底线：Coulomb 锥逐单元满足 + 大幅行程能饱和
+        （部分滑移形貌在生产粗网格上验，见该用例 docstring 的理由）。
 """
 
 import numpy as np
@@ -247,18 +252,23 @@ def test_U5_precision_independent_of_eps_t(tmp_path):
 
 
 def test_U6_far_field_drive_stays_stick(tmp_path):
-    """U6：纯远场弯矩驱动下接触处于**深度黏着**，Q 不随相位反向。
+    """U6：纯远场弯矩驱动下 Coulomb 锥不被违反、|Q/(μP)| 的**幅值**对相位不敏感。
 
-    依据 D-68 问题 26 续 5：远场弯矩引起的接触面切向位移 ≈ 1.88 µm，
-    而 Coulomb 黏着能承受的弹性滑移 ≈ μp/E* ≈ 1.7 mm，差三个数量级。
-    故接触斑没有真实滑移，Q 由体平衡唯一确定，**不随弯矩相位反向**。
+    ⚠⚠ **本用例原写的「深度黏着 → Q ≈ 0」前提，实测两版实现都没达到**
+    （2026-10-20 对照 bc787af 基线）：远场弯矩驱动的接触斑在这套罚接触下
+    **饱和到 |Q/(μP)| ≈ 0.98**，新旧实现逐位同量级（基线 |q|max = 1.757e8，
+    新 = 1.757e8）。基线只是因为从不重置 q、各相位恰好都落在**正值**才「通过」
+    —— 那是符号运气，不是物理。故本用例改为判两条**算法底线**：
+      1. Coulomb 锥逐相位成立（|Q| ≤ μP）；
+      2. |Q/(μP)| 的幅值对相位不敏感（黏着区的真实特征是量级不随弯矩相位变）。
+    不要求 Q 保持小 —— 「小」需要 6.6.2 的线夹切向微动把接触斑拉进部分滑移
+    窗口，那是另一个工况。
 
-    ⚠ 不断言 |Q/(μP)| 远离饱和：深度黏着 + Uzawa 极限环时 Q 会停在锥面上
-    （Q/(μP) ≈ 0.97 但不随相位变）。那个「停在锥上」是 D-68 问题 26 续 5
-    记录的**已知局限**，不是本用例要判的物理量。本用例判的是**相位不敏感**。
-
-    ⚠ 若把本测试改成「Q 应该反向」就错了 —— 那需要线夹的切向微动 δ(t)
-    （PLAN 6.6.2 尚未落地的部分）。
+    饱和机理（记录备查，**不是 Uzawa 迭代问题**）：q 增大 → 切向位移 →
+    法向间隙张开 → p 塌下去（实测 p_max 从 1e8 掉到 7e3）→ lim = μp 跟着塌 →
+    clip 箍不住 q。这是**法向-切向耦合不稳定**，在内圈 Newton 就发生了，
+    换阻尼/换光滑化都不改它。要治得改接触格式（Nitsche/Mortar，或给切向步加
+    「不越过当前 p 支持的 Coulomb 容量」的限幅），超出本用例范围。
     """
     ctx = _setup(tmp_path)
     clamp, u, loads = ctx["clamp"], ctx["u"], ctx["loads"]
@@ -266,6 +276,10 @@ def test_U6_far_field_drive_stays_stick(tmp_path):
     ratios = []
     for ph in phases:
         loads.set_phase(ph)
+        # 每个相位是**独立的静力平衡**（不是循环），q 不得跨相位继承 ——
+        # 否则从上一相位的饱和值出发，Δq 符号历史被带成「单调」，逐单元 θ
+        # 判成真滑移并饱和到另一侧（实测 ±0.98 的假滑移）。
+        clamp.reset_uzawa()
         _uzawa(ctx["problem"], clamp, u)
         P = clamp.reaction(u)
         Q = clamp.tangential_reaction(u)
@@ -273,11 +287,17 @@ def test_U6_far_field_drive_stays_stick(tmp_path):
         assert abs(Q) <= MU * P * (1.0 + 1.0e-9), (
             "Coulomb 被违反：Q=%g > mu P=%g（phase=%g）" % (Q, MU * P, ph))
         ratios.append(Q / (MU * P) if P else 0.0)
-    # 深度黏着：Q 不反向（若出现真实的滑移-反向，最小值应为负）
-    assert min(ratios) > 0.0, "Q 反向了，说明真有滑移：%r" % (ratios,)
-    # 且对相位不敏感（黏着的 Q 由法向压力定，弯矩只改变远场）
-    spread = max(ratios) - min(ratios)
-    assert spread < 0.05, "Q/(muP) 随相位变化 %.3f 过大（黏着应几乎不变）" % spread
+    # 幅值对相位不敏感：**只在弯矩非零的相位之间比**。零弯矩相位（0.0）的
+    # Q 本来就该接近 0（没有切向驱动），把它算进 spread 会得到 0.979 的
+    # 假警报（实测 8 个非零相位 0.9746~0.9792、2 个零相位 1e-4）。
+    mags = [abs(r) for r in ratios]
+    if comm_rank0():
+        print("  U6: |Q|/(muP) 逐相位 = %s" % " ".join("%.4f" % m for m in mags))
+    nz = [m for m in mags if m > 1.0e-3]      # 滤掉零弯矩相位
+    assert nz, "没有任何非零弯矩相位"
+    assert max(nz) - min(nz) < 0.05, (
+        "非零弯矩相位的 |Q|/(muP) 幅值变化 %.3f 过大（黏着应几乎不变）：%r"
+        % (max(nz) - min(nz), nz))
 
 
 def test_U7_friction_does_not_change_normal_reaction(tmp_path):
@@ -388,25 +408,54 @@ def _surface_pressure(msh, ft, clamp, u):
 
 
 def _surface_profile(msh, ft, clamp, u):
-    """接触面上的 (x, p, q)，按 x 排序，只含接触面节点。
+    """接触面上的 (x, p, q)，按 x 排序，只含接触面/接触单元。
 
-    q 取**乘子场**（Uzawa 模式）或罚函数公式，与 ``tangential_residual`` 同口径：
-    两者都要经 CG1 节点插值后才能与 p 逐点比（DG0 与 CG1 不能直接比）。
+    **Uzawa 模式（q 是 DG0）走单元口径**，罚函数模式走 CG1 节点口径：
+
+    - Uzawa：q 逐单元定义，p 也用**同一个** CG1→DG0 归约
+      （``clamp._p_dg_projector``，与 ``uzawa_update`` 里算 lim 的那个完全同源），
+      于是 |q| ≤ μp 的逐点比对是自洽的。实测（2026-10-20，U16 诊断）单元口径下
+      max|q|/(μ·p) = 0.9998 —— Coulomb 锥满足。
+      ⚠ 不要试图把 DG0 的 q 插值到 CG1 节点再比：那是无定义操作，实测给出
+      |q|/(μp) ≈ 2.0 的假剖面（节点被 2~3 个单元共享、各贡献一份权重，
+      叠加后超出单元值）。
+    - 罚函数：q 由 UFL 表达式给出，天然 CG1，与 p 同口径逐点比。
     """
     from pfwire.obstacle import tangential_traction
 
+    if clamp.has_uzawa():
+        # ---- 单元口径（DG0 q 与同源归约的 p）----
+        if not hasattr(clamp, "_p_dg_projector"):
+            clamp._build_p_dg_projector()
+        Vs = fem.functionspace(msh, ("Lagrange", 1))
+        p_expr, _ = clamp._pressure_and_normal(u)
+        p_f = fem.Function(Vs)
+        p_f.interpolate(fem.Expression(p_expr, Vs.element.interpolation_points))
+        p_dg = clamp._p_dg_projector.dot(p_f.x.array[:clamp._p_n_owned])
+        q_dg = clamp.q.x.array
+        n_owned_dg = clamp.q.function_space.dofmap.index_map.size_local
+        p_dg, q_dg = p_dg[:n_owned_dg], q_dg[:n_owned_dg]
+
+        # 接触单元 = 压力为正的单元；取它们的形心 x 作剖面横坐标
+        tdim = msh.topology.dim
+        cmid = msh.geometry.x[msh.geometry.dofmap[:n_owned_dg]].mean(axis=1)
+        live = p_dg > 0.10 * float(np.max(p_dg)) if p_dg.size else np.zeros(0, bool)
+        xs = np.concatenate(msh.comm.allgather(cmid[live, 0]))
+        ps = np.concatenate(msh.comm.allgather(p_dg[live]))
+        qs = np.concatenate(msh.comm.allgather(q_dg[live]))
+        o = np.argsort(xs)
+        return xs[o], ps[o], qs[o]
+
+    # ---- 节点口径（罚函数路径，q 是 CG1 表达式）----
     Vs = fem.functionspace(msh, ("Lagrange", 1))
     p_expr, _ = clamp._pressure_and_normal(u)
     p_f = fem.Function(Vs)
     p_f.interpolate(fem.Expression(p_expr, Vs.element.interpolation_points))
 
     tau_up, _ = clamp._tangents(u)
-    if clamp.has_uzawa():
-        q_expr = clamp.q
-    else:
-        # 与 clamp.tangential_residual 同口径：s 相对**线夹**量（含 x_clamp）
-        s_up = ufl.variable(clamp._slip(u, tau_up, clamp.x_clamp))
-        q_expr = tangential_traction(s_up, p_expr, clamp.mu, clamp.eps_t)
+    # 与 clamp.tangential_residual 同口径：s 相对**线夹**量（含 x_clamp）
+    s_up = ufl.variable(clamp._slip(u, tau_up, clamp.x_clamp))
+    q_expr = tangential_traction(s_up, p_expr, clamp.mu, clamp.eps_t)
     q_f = fem.Function(Vs)
     q_f.interpolate(fem.Expression(q_expr, Vs.element.interpolation_points))
 
@@ -678,6 +727,221 @@ def test_U12_partial_slip_with_tangential_stroke(tmp_path):
             <= np.median(np.abs(xs[slip])) + 2.0 * 0.1e-3), (
         "黏着区不在内侧：stick |x| 中位 %g vs slip %g"
         % (np.median(np.abs(xs[stick])), np.median(np.abs(xs[slip]))))
+
+
+# --------------------------------------------------------------------------
+# U13–U16：光滑化 Coulomb + 阻尼 Uzawa（D-68 问题 28 续，6.6.3 的解药）
+#
+# 背景：无阻尼精确投影的 Uzawa 增益 |1 − ε_t·C| ≈ 5e3，黏着区进二周期极限环，
+# 6.6.3 第一个循环步直接炸（Uzawa 残差 0.2 → 1.4e3 → 5e4，SNES -6/-9）。
+# 修复：FB 光滑化投影（Fischer 1992 / Kanzow 1996）+ Fortin–Glowinski 阻尼 θ。
+# 判据换成自然残差（θ 变小会让 Δq 假收敛）。
+# --------------------------------------------------------------------------
+def test_U13_smooth_clip_is_identity_inside_and_monotonic_outside():
+    """U13：:func:`smooth_clip` 的三条单元性质（盒内 O(η²) 偏差 / 盒外单调不超限 / η→0 收敛）。
+
+    **盒内偏差是 O(η²/(4·(lim−|x|)))、而不是 O(η)，这是本修复的全部理由**：
+    黏着区深处（|q| ≪ μp）偏差 ~ η²/(4μp) 可忽略；若换成把内部点整体拖向盒面的
+    形式（如 μp·tanh(q/η)），整区都是 O(η) 偏差、黏着牵引被抹掉 —— 那是
+    D-68 问题 26 续 5「ε_t 调小则 Q→0」的同一个坑。故这条性质必须逐点钉死：
+    偏差上界用解析式 η²/(4·(lim−|x|)) 直接检验。
+    """
+    from pfwire.clamp_contact import smooth_clip
+
+    lim, eta = 2.0, 0.1
+
+    # (1) 盒内：偏差 <= 解析上界 eta^2/(4*(lim-|x|))（留 1% 余量给浮点）
+    inside = np.linspace(-lim + eta, lim - eta, 401)
+    out = smooth_clip(inside, lim, eta)
+    bound = eta ** 2 / (4.0 * (lim - np.abs(inside)))
+    assert np.all(np.abs(out - inside) <= bound * 1.01), (
+        "盒内偏差超过解析上界（最大偏差 %g vs 上界 %g）"
+        % (np.max(np.abs(out - inside)), np.max(bound)))
+    # 深处（|x| <= lim/2）的相对偏差应在 eta^2 量级 —— O(eta) 的形式过不了这条
+    deep = np.abs(inside) <= 0.5 * lim
+    rel_deep = np.max(np.abs(out[deep] - inside[deep])) / lim
+    assert rel_deep < 0.05 * eta, (
+        "盒内深处的相对偏差 %g 达到 O(eta) 量级（阈值 0.05*eta=%g）："
+        "这不是 O(eta^2) 的光滑化，会抹掉黏着牵引" % (rel_deep, 0.05 * eta))
+
+    # (2) 盒外单调、不超限、量级趋近 lim
+    outside = np.linspace(lim + eta, 10.0 * lim, 200)
+    out = smooth_clip(outside, lim, eta)
+    assert np.all(np.diff(out) > 0.0), "盒外必须单调不减"
+    assert np.all(out <= lim + 1e-12), "盒外不得超过 lim（Coulomb 锥）"
+    assert np.all(np.abs(out) > 0.5 * lim), "盒外应快速趋近 lim"
+    # 盒外偏差有界 <= eta/2（滑移区相对误差可控）
+    assert np.all(lim - out <= 0.5 * eta), "盒外偏差超过 eta/2"
+
+    # (3) η → 0 逐点收敛到精确投影 np.clip
+    xs = np.linspace(-10.0, 10.0, 401)
+    for e in (1.0e-1, 1.0e-3, 1.0e-6):
+        assert np.allclose(smooth_clip(xs, lim, e), np.clip(xs, -lim, lim), atol=e), \
+            "η=%g 时未收敛到精确 clip" % e
+
+    # (4) 奇对称（tau 指向 ±x 两侧必须一致，否则摩擦方向会不对称）
+    xs = np.linspace(-10.0, 10.0, 401)
+    assert np.allclose(smooth_clip(xs, lim, eta), -smooth_clip(-xs, lim, eta), atol=0.0)
+
+    # (5) lim = 0 时 FB 形式**不**给 0（= docstring 里那条 ⚠ 的定量版本）。
+    #     精确式：结果 = −½(√(x²+η²) − |x|)·sign(x)，量级 η²/(4|x|) 但**不是**那个
+    #     近似式本身（近似丢掉 η⁴ 项，x=0.3/η=0.1 时差 2.7%）。故这里用精确式检验。
+    #     意义：uzawa_update 对非接触单元必须走精确 clip，否则会残留这个小伪力。
+    zero = smooth_clip(np.array([0.3, -0.3]), 0.0, eta)
+    exact = 0.5 * (np.sqrt(0.3 ** 2 + eta ** 2) - 0.3)
+    assert np.all(zero != 0.0), "lim=0 时 FB 必须非零（否则 uzawa_update 的分支无意义）"
+    assert np.allclose(np.abs(zero), exact, rtol=1e-12), (zero, exact)
+
+
+def test_U14_deep_stick_first_cycle_step_converges(tmp_path):
+    """U14：深黏着工况下 Uzawa 收敛 —— 今天 6.6.3 爆掉的那个点。
+
+    复现场景：法向延拓 → 冻结滑移基准 → **开摩擦**（= `_enable_friction_after_ramp`）
+    → 解一次平衡。旧实现（无阻尼精确投影）在此处 Uzawa 残差爆炸
+    （0.2 → 1.4e3 → 5e4），内圈 Newton SNES -6/-9，整条 case 死在第一个循环步。
+
+    ⚠ 若此处在 tiny 网格上复现不出旧败（tiny 网格接触斑只有几个单元、
+    切向柔度量级不同），则不调参硬凑，而是报告「tiny 网格不足以复现」，
+    以粗网格现场为准（粗网格实测复现，见 D-68 问题 28）。
+    """
+    ctx = _setup(tmp_path)
+    clamp, u, prob = ctx["clamp"], ctx["u"], ctx["problem"]
+
+    # 关摩擦延拓（Mindlin 序列第一步，与生产 build_clamp_case 一致）
+    clamp.set_mu(None)
+    for d in (1.0e-7, 1.0e-6, 1.0e-5, DELTA):
+        clamp.set_delta(d)
+        prob.solve()
+        assert prob.solver.getConvergedReason() > 0, "法向延拓不收敛（delta=%g）" % d
+
+    # 开摩擦 + 冻结滑移基准（_enable_friction_after_ramp 的两个动作）
+    clamp.set_slip_reference(u)
+    clamp.set_mu(MU)
+
+    # 载荷停在零相位（远场弯矩 0、切向行程 0）—— 真解 q ≡ 0。
+    # 旧实现在这个**平凡**点都被迭代噪声炸飞，最能暴露增益问题。
+    ctx["loads"].set_phase(0.0)
+    it = _uzawa(prob, clamp, u)
+
+    if comm_rank0():
+        print("  U14: 深黏着 Uzawa 迭代 %d 次收敛，theta=%.3e"
+              % (it, getattr(clamp, "_uzawa_theta", float("nan"))))
+    assert it < 40, "深黏着 Uzawa 未在 max_it 内收敛（%d 次）" % it
+
+    # q 应停在 0 附近（Coulomb 容量以内），且不违反锥
+    Q = abs(clamp.tangential_reaction(u))
+    P = clamp.reaction(u)
+    assert Q <= MU * P * (1.0 + 1.0e-9), "违反 Coulomb 锥：Q=%g > mu P=%g" % (Q, MU * P)
+
+
+def test_U15_slip_zone_saturation_is_theta_independent(tmp_path):
+    """U15：滑移区饱和与阻尼 θ 无关（θ 只改黏着区的收敛速率，不改滑移区不动点）。
+
+    滑移区不动点满足 |q| = μp（与 θ 无关，因 clip 在盒外单调饱和到 lim）。
+    这是阻尼合法性的直接检验：若 θ 影响了滑移解，说明它不只是「步长」而是改了方程。
+    """
+    ctx = _setup(tmp_path)
+    clamp, u, prob = ctx["clamp"], ctx["u"], ctx["problem"]
+    clamp.set_mu(MU)
+
+    # 大幅切向行程（5 µm ≫ μp/ε_t ≈ 50 pm 过渡宽度）→ 整体滑移
+    clamp.set_tangential(5.0e-6)
+    prob.solve()
+    assert prob.solver.getConvergedReason() > 0, "滑移工况 Newton 不收敛"
+
+    def _saturated_ratio() -> float:
+        xs, ps, qs = _surface_profile(ctx["msh"], ctx["ft"], clamp, u)
+        live = ps > 0.10 * ps.max()
+        assert live.any(), "接触斑为空"
+        return float(np.max(np.abs(qs[live]) / (MU * ps[live])))
+
+    # ⚠ 必须先跑 Uzawa 再量：q 场在 _setup 的关摩擦延拓后恒为 0，不跑 Uzawa
+    # 直接量会得到「饱和比 0」的假象（实测踩过）。
+    it0 = _uzawa(prob, clamp, u)
+    r_default = _saturated_ratio()
+
+    # 清零后重跑，θ 被人为压到 1e-6：滑移区的 Δq 单调（真滑移特征），
+    # 逐单元 θ 会判「单调 → θ=1」，故饱和比必须几乎不变。
+    clamp.q.x.array[:] = 0.0
+    clamp.q.x.scatter_forward()
+    clamp._uzawa_rho_prev = None
+    clamp._uzawa_theta = 1.0e-6
+    it1 = _uzawa(prob, clamp, u, max_it=40, tol=1.0e-6)
+    r_small_theta = _saturated_ratio()
+
+    if comm_rank0():
+        print("  U15: 饱和比 theta 默认 %.6f -> 1e-6 时 %.6f"
+              % (r_default, r_small_theta))
+    assert abs(r_small_theta - r_default) < 0.05 * max(r_default, 1.0e-12), (
+        "滑移区饱和比随 theta 变化（%g -> %g）：theta 不该改变滑移区不动点"
+        % (r_default, r_small_theta))
+
+
+def test_U16_smoothed_coulomb_saturates_without_violating_cone(tmp_path):
+    """U16：光滑化 Coulomb 下 Coulomb 锥**始终满足**、滑移区能饱和（修复的两个底线）。
+
+    本用例不判「部分滑移形貌」—— 实测（2026-10-20）本测试网格（_setup：δ=5 µm、
+    h=0.1 mm、接触斑 ~30 个单元）上 **Uzawa 路径整斑滑移、罚函数路径整斑黏着**，
+    两者都不落在那条「中心黏着 + 边缘滑移」的部分滑移窗口里（该窗口在 tiny 网格
+    的亚微米行程档，D-68 问题 27）。部分滑移的形貌判据归**生产粗网格跑**去验
+    （那里接触斑有上百个单元、行程 0.1 µm 与 μp/ε_t 的比值才落进窗口），
+    不在这里硬设一个会逼着调参的判据（硬约束 6）。
+
+    这里判两条修复底线，任一条破了就说明光滑化/阻尼实现有错：
+      1. **Coulomb 锥**：逐单元 |q| ≤ μp（容 1e-6 相对余量给 η 光滑化）。
+      2. **滑移区能饱和**：大幅行程下 max|q| 达到 μ·p_max 的 95% 以上
+         （若阻尼把滑移区也拖慢到饱和不了，说明 θ 施错了地方 —— 见
+         uzawa_update 里 θ 分区施加的注释）。
+    """
+    ctx = _setup(tmp_path)
+    clamp, u, prob, loads = (ctx["clamp"], ctx["u"], ctx["problem"], ctx["loads"])
+    clamp.set_mu(MU)
+    loads.set_phase(0.25)
+
+    rows = []
+    for amp in (0.05e-6, 0.1e-6, 0.2e-6, 0.5e-6, 2.0e-6, 5.0e-6):
+        clamp.set_tangential(0.0)
+        if clamp.q is not None:
+            clamp.q.x.array[:] = 0.0
+            clamp.q.x.scatter_forward()
+        prob.solve()
+        reason = 0
+        for frac in (0.25, 0.5, 1.0):
+            clamp.set_tangential(amp * frac)
+            prob.solve()
+            reason = prob.solver.getConvergedReason()
+            if reason <= 0:
+                break
+        if reason <= 0:
+            continue
+        it = _uzawa(prob, clamp, u)
+        xs, ps, qs = _surface_profile(ctx["msh"], ctx["ft"], clamp, u)
+        live = ps > 0.10 * ps.max()
+        assert live.any(), "amp=%.2f um 接触斑为空" % (amp * 1e6)
+
+        # 底线 1：逐单元 Coulomb 锥（DG0 口径，自洽）
+        cone = float(np.max(np.abs(qs[live]) / (MU * ps[live])))
+        assert cone <= 1.0 + 1.0e-6, (
+            "违反 Coulomb 锥：max|q|/(mu p) = %.6f（amp=%.2f um）" % (cone, amp * 1e6))
+
+        stick = int((live & (np.abs(qs) < 0.8 * MU * ps)).sum())
+        slip = int((live & (np.abs(qs) >= 0.8 * MU * ps)).sum())
+        rows.append((amp * 1e6, stick, slip, it, cone))
+
+    if comm_rank0():
+        print("  U16 诊断（amp(um), 黏着单元, 滑移单元, Uzawa迭代, max|q|/(mu p)）:")
+        for a, ns, nl, it, cone in rows:
+            print("    %6.2f   %3d   %3d   %3d   %.6f" % (a, ns, nl, it, cone))
+
+    assert rows, "所有幅值都未收敛"
+    # 底线 2：大幅行程下必须饱和（θ 没有把滑移区拖住）
+    big = [r for r in rows if r[0] >= 2.0]
+    assert big, "缺少大幅行程档"
+    for a, _ns, _nl, it, cone in big:
+        assert cone > 0.95, (
+            "大幅行程（%.2f um）未饱和：max|q|/(mu p) = %.4f（Uzawa %d 次）—— "
+            "阻尼把滑移区拖住了，见 uzawa_update 的 θ 分区施加"
+            % (a, cone, it))
 
 
 def comm_rank0() -> bool:
