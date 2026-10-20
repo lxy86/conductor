@@ -87,6 +87,20 @@ class ClampContact:
         if symmetric and bottom_support is not None:
             raise ValueError("symmetric 与 bottom_support 二选一（对称挤压用 symmetric）")
         self.delta_low = fem.Constant(mesh, 0.0)   # 下侧线夹的位移（对称时 = δ/2）
+        # ---- 切向往复 δ_x(t)（PLAN 6.6.2，D-68 问题 27）----
+        # 线夹的**水平行程**。动线夹（刚性障碍的圆心）而不是动接触面自由度：
+        # 后者与罚接触同面 prescribed 切向位移是病理组合（黏滑极限环，
+        # 6 个测试 SNES -6，D-68 问题 22/25）。
+        # 与 delta/mu 同为 fem.Constant：改 .value 即生效，不重建 form（D-16）。
+        self.x_clamp = fem.Constant(mesh, 0.0)
+        self.x_clamp_low = fem.Constant(mesh, 0.0)
+        #: 对称挤压时上下线夹切向运动是否**反向**。默认 True（D-68 问题 27）：
+        # 只有相对错动才能在接触斑内产生 Mindlin 部分滑移；同向同幅是刚体平移、
+        # 接触面无错动、摩擦不起作用（静默失效），故 False 只作对照工况。
+        self.oppose_x = True
+        #: 切向行程幅值（m），0 = 关。由配置 contact.tangential_amplitude 给，
+        #: 幅值未定（Phase 7.5 扫参对象，D-44「不得预设摩擦学工况」）。
+        self.x_amplitude = 0.0
         # 接触项核含 sqrt/max_value（法向、罚压力）。UFL 对残差 F 与对其 u 的导数 J
         # 估计出的多项式阶不同，默认的「按表达式估计求积阶」会让两者落到不同规则，
         # 离散上 F 与 dF/du 不一致（切线校验差到 1.6e-4）。显式固定求积阶 2，
@@ -174,14 +188,39 @@ class ClampContact:
     def _tangents(self, u):
         """(上侧切向 τ, 下侧切向 τ or None)。τ = (n_y, −n_x)（与 pfwire.slip 同口径）。"""
         x = ufl.SpatialCoordinate(self.mesh) + u
-        n_up = clamp_normal(x, self.R_clamp, self.delta)
+        n_up = clamp_normal(x, self.R_clamp, self.delta, self.x_clamp)
         tau_up = ufl.as_vector([n_up[1], -n_up[0]])
         if self.bottom_support is not None:
             return tau_up, ufl.as_vector(plane_normal())
         if self.symmetric:
-            n_lo = clamp_normal_lower(x, self.R_clamp, self.delta_low, -self.depth)
+            n_lo = clamp_normal_lower(x, self.R_clamp, self.delta_low, -self.depth,
+                                      self.x_clamp_low)
             return tau_up, ufl.as_vector([n_lo[1], -n_lo[0]])
         return tau_up, None
+
+    def _slip(self, u, tau, x_clamp):
+        """相对滑移 s = τ·[(u − u_prev) − Δx_clamp]（**唯一口径**，D-68 问题 27）。
+
+        线夹是刚体，其位移矢量是 ``(x_clamp, 0)``，故
+
+            s = τ·(u_wire − u_clamp) = τ·(u − u_prev) − τ_x·x_clamp
+
+        **符号必须是减**：上侧切向 τ = (n_y, −n_x) 在接触顶点附近是 (−1, 0)，
+        即 τ 指向 −x。线夹沿 +x 走 x_clamp 时，单丝相对线夹向 −x 错动，
+        投影到 τ 上是 **+x_clamp**（正）。写成 ``+τ_x·x_clamp`` 会得到 −x_clamp，
+        方向整个反了 —— 实测那样会让摩擦力把单丝往反方向拖，全斑相对滑移
+        变大且均匀，``|q|/(μp)`` 在整个接触斑上恒为 0.99（**整体滑移**），
+        幅值从 1 µm 到 5 µm 几乎不变，完全看不到 Mindlin 的部分滑移形貌。
+
+        为什么必须相对**线夹**量、而不能只相对单丝自己的历史位移：只取
+        τ·(u − u_prev) 时，线夹平移但单丝被摩擦钉住，s ≡ 0 —— 实测线夹走
+        40 µm 而表面 u_x 只动 6.8 nm（0.07%），模型完全「看不见」相对滑移。
+
+        ⚠ **残差、反力、Uzawa 更新、诊断必须共用本函数**。此前只有
+        ``tangential_residual`` 加了线夹项，``tangential_reaction`` 与测试里的
+        剖面辅助没加，于是「装进方程的牵引」与「量出来的牵引」是两个不同的量。
+        """
+        return ufl.dot(tau, u - self.u_prev) - tau[0] * x_clamp
 
     def tangential_residual(self, u, v) -> ufl.Form:
         """切向牵引的虚功 ∫ q τ·v ds（上侧 + 下侧）。求解器在 u 方程里取负号。
@@ -223,14 +262,14 @@ class ClampContact:
             return form
 
         # 罚函数模式（旧路径，保留兼容）
+        # ⚠ 滑移 s 必须**相对线夹**量（见 _slip 的说明）
         p, _n = self._pressure_and_normal(u)
-        du = u - self.u_prev
-        s_up = ufl.variable(ufl.dot(tau_up, du))
+        s_up = ufl.variable(self._slip(u, tau_up, self.x_clamp))
         q_up = tangential_traction(s_up, p, self.mu, self.eps_t)
         form = q_up * ufl.dot(tau_up, v) * self.ds(BLOCK_TOP)
         pb = self._bottom_pressure(u)
         if pb is not None and tau_lo is not None:
-            s_lo = ufl.variable(ufl.dot(tau_lo, du))
+            s_lo = ufl.variable(self._slip(u, tau_lo, self.x_clamp_low))
             q_lo = tangential_traction(s_lo, pb, self.mu, self.eps_t)
             form = form + q_lo * ufl.dot(tau_lo, v) * self.ds(BLOCK_BOTTOM)
         return form
@@ -265,13 +304,12 @@ class ClampContact:
 
         # 罚函数模式（旧路径，保留兼容）
         p, _n = self._pressure_and_normal(u)
-        du = u - self.u_prev
-        s_up = ufl.variable(ufl.dot(tau_up, du))
+        s_up = ufl.variable(self._slip(u, tau_up, self.x_clamp))
         q_up = tangential_traction(s_up, p, self.mu, self.eps_t)
         local = fem.assemble_scalar(fem.form(q_up * tau_up[0] * self.ds(BLOCK_TOP)))
         pb = self._bottom_pressure(u)
         if pb is not None and tau_lo is not None:
-            s_lo = ufl.variable(ufl.dot(tau_lo, du))
+            s_lo = ufl.variable(self._slip(u, tau_lo, self.x_clamp_low))
             q_lo = tangential_traction(s_lo, pb, self.mu, self.eps_t)
             local = local + fem.assemble_scalar(
                 fem.form(q_lo * tau_lo[0] * self.ds(BLOCK_BOTTOM)))
@@ -319,8 +357,11 @@ class ClampContact:
         p_cg.x.scatter_forward()
         p_dg = self._p_dg_projector.dot(p_cg.x.array[:self._p_n_owned])
 
-        # 2) 滑移 s = τ·(u - u_prev) -> DG0
-        s_expr = ufl.dot(tau_up, u - self.u_prev)
+        # 2) 滑移 s -> DG0
+        # ⚠ 相对滑移必须**相对线夹**量，且与 _slip() 同口径（减号，见其 docstring）。
+        # 只取 τ·(u − u_prev) 时线夹平移但单丝被摩擦钉住，s ≡ 0 —— 实测线夹走
+        # 40 µm 表面 u_x 只动 6.8 nm（0.07%），模型「看不见」相对滑移。
+        s_expr = self._slip(u, tau_up, self.x_clamp)
         s_cg = fem.Function(Vs)
         s_cg.interpolate(fem.Expression(s_expr, Vs.element.interpolation_points))
         s_cg.x.scatter_forward()
@@ -391,10 +432,30 @@ class ClampContact:
         if self.symmetric:
             self.delta_low.value = float(delta)   # 上下同行程，相对接近量 2δ
 
+    def set_tangential(self, x_amp: float) -> None:
+        """设线夹的切向（水平）行程（m）。**只改 Constant.value，不重建 form。**
+
+        上侧线夹移 ``+x_amp``；对称模式下下侧取**反对号**（``oppose_x`` 默认
+        True），于是上下线夹的相对错动 = 2|x_amp| —— 这才是微动疲劳的加载方式
+        （D-68 问题 27）。同向同幅的相对错动为 0，接触斑内无微滑、摩擦不起作用，
+        是必须避免的静默失效，故 ``oppose_x=False`` 只作对照工况。
+
+        ``x_amp=0`` 逐位回到无切向工况（D-67 基准）。
+
+        用途：``clamp_case.set_phase`` 里按相位调它，使切向运动与弯曲同相位::
+
+            clamp.set_tangential(delta_x_amp * sin(2 pi t / T))
+        """
+        self.x_clamp.value = float(x_amp)
+        if self.symmetric:
+            sign = -1.0 if self.oppose_x else 1.0
+            self.x_clamp_low.value = sign * float(x_amp)
+
     def _pressure_and_normal(self, u):
         x = ufl.SpatialCoordinate(self.mesh) + u
-        g = clamp_gap(x, self.R_clamp, self.delta)
-        return penalty_pressure(g, self.eps), clamp_normal(x, self.R_clamp, self.delta)
+        g = clamp_gap(x, self.R_clamp, self.delta, self.x_clamp)
+        return penalty_pressure(g, self.eps), clamp_normal(
+            x, self.R_clamp, self.delta, self.x_clamp)
 
     def _bottom_pressure(self, u):
         """下侧障碍的压力（无下侧障碍时为 0）。"""
@@ -403,7 +464,8 @@ class ClampContact:
             return penalty_pressure(plane_gap(x, self.bottom_support), self.eps)
         if self.symmetric:
             x = ufl.SpatialCoordinate(self.mesh) + u
-            g = clamp_gap_lower(x, self.R_clamp, self.delta_low, -self.depth)
+            g = clamp_gap_lower(x, self.R_clamp, self.delta_low, -self.depth,
+                                self.x_clamp_low)
             return penalty_pressure(g, self.eps)
         return None
 
@@ -412,7 +474,8 @@ class ClampContact:
             return ufl.as_vector(plane_normal())
         if self.symmetric:
             x = ufl.SpatialCoordinate(self.mesh) + u
-            return clamp_normal_lower(x, self.R_clamp, self.delta_low, -self.depth)
+            return clamp_normal_lower(x, self.R_clamp, self.delta_low, -self.depth,
+                                      self.x_clamp_low)
         return None
 
     def residual(self, u, v) -> ufl.Form:

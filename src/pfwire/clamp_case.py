@@ -448,6 +448,20 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
                        side=str(ld.get("side", "right")),
                        self_equilibrated=self_eq)
 
+    # ---- 切向往复 δ_x(t)（PLAN 6.6.2，D-68 问题 27）----
+    # 幅值从 contact.tangential_amplitude 读，**默认 0 = 关**（逐位回到 6.6.1）。
+    # 幅值未定：属 Phase 7.5 扫参对象，且按 D-44「不得预设摩擦学工况，
+    # 由求解结果判定」不在这里挑一个「能起裂」的数。
+    cc_tangent = cc.get("tangential_amplitude")
+    delta_x_amp = 0.0 if cc_tangent is None else float(cc_tangent)
+    clamp.x_amplitude = delta_x_amp
+    # 上下线夹切向运动反向（对称挤压要相对错动才有微滑，见 set_tangential）
+    oppose = cc.get("tangential_opposed")
+    clamp.oppose_x = True if oppose is None else bool(oppose)
+    # 法向延拓期锁定切向行程为 0：延拓是纯法向加载，带切向偏移会让初始
+    # 罚压力不对称、可能诱发 Newton -6。装配后显式声明（Constant 初值即 0）。
+    clamp.set_tangential(0.0)
+
     # --- 求解器：plastic + contact，必须 newton ---
     # degrade_stiffness（b-1 口径，D-68 问题 5）：从 model: 段读，默认 True
     # （PLAN §2 原口径）。False 时 u 方程的弹性能不再乘 g(d)，打断
@@ -546,8 +560,13 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
     phase = [0.0]
 
     def set_phase(t_over_T: float) -> None:
+        # 同一个 sin(2πt/T) 驱动**全部**往复载荷：端部弯矩 + 线夹切向行程。
+        # 切向行程是微动疲劳的核心驱动（D-68 问题 26 续 5：远场弯矩单独只能
+        # 产生 1.88 µm 接触面切向位移，比 Coulomb 黏着上限 1.7 mm 小 900 倍）。
+        # 幅值为 0 时 set_tangential(0) 是空操作，逐位回到无切向工况。
         value = math.sin(2.0 * math.pi * float(t_over_T))
         loads.set_phase(value)
+        clamp.set_tangential(delta_x_amp * value)
 
     driver = CycleJumpDriver(solver, state, set_phase, jump_cfg)
 
