@@ -1118,7 +1118,7 @@ class PhaseFieldSolver:
                         self.d.x.array - prev
                     )
                     self.d.x.scatter_forward()
-            except RuntimeError as exc:  # 子求解器失败：立刻标记，不静默继续
+            except Exception as exc:  # 子求解器失败：立刻标记，不静默继续（捕获所有异常，含 PETSc Error）
                 failure = str(exc)
                 break
 

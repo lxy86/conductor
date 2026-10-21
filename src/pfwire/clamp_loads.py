@@ -141,6 +141,25 @@ class ClampLoads:
         return end_traction_x(self.T, self.phase * self.M_a, self.H,
                               y_grid + self.H)
 
+    def traction_with(self, v) -> ufl.Form:
+        """直接用给定的**测试函数** v 构造端部面力形式（monolithic 用，D-68 方案 a）。
+
+        为什么需要它：``traction()`` 的签名是 ``lambda V: Form``，它自己从 V 取
+        TestFunction。混合空间下 ``W.sub(0)`` 的 TestFunction 与
+        ``ufl.split(TestFunction(W))[0]`` 是两个编号相同却不同源的 Argument，
+        UFL 会报 "Found different Arguments with same number and part"
+        （与 BC 那个陷阱同源）。故 monolithic 必须把 v 直接传进来。
+
+        ``v`` 可以是向量（2D 位移）测试函数的任意分量表达式。
+        """
+        y_grid = ufl.SpatialCoordinate(self.mesh)[1]
+        tx = self.traction_x(y_grid)
+        form = ufl.dot(ufl.as_vector([tx, 0.0]), v) * self.ds(self.tag)
+        if self.self_equilibrated:
+            form = form + ufl.dot(ufl.as_vector([-tx, 0.0]), v) * self.ds(
+                self.tag_opposite)
+        return form
+
     def traction(self) -> Callable:
         """返回 ``lambda V: ufl.Form``，供 ``PhaseFieldSolver(external_work=...)`` 用。
 

@@ -560,6 +560,9 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
     state.bind_solver(solver)
     # 摩擦的切向滑移基准场建在**求解器自己的** V_u 上（CLAUDE.md 陷阱 1 的摩擦版：
     # 在外部另建同构空间，插值/取值的 dof 顺序对不上，滑移基准会静默错位）。
+    # **关键：bind_uzawa_space 必须在 PhaseFieldSolver 构造前调用**，因为切向残差 form
+    # 在构造时就已编译，依据 has_uzawa() 选择 Uzawa 还是罚函数路径。延拓期关摩擦
+    # 时 mu.value = 0.0 即可（q ≡ 0），不必重建 form。
     if getattr(clamp, "has_friction_at_build", False):
         clamp.bind_slip_space(solver.V_u)
         # Uzawa 乘子场 q（DG0）也建在求解器网格上，断点续跑需存取

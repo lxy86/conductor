@@ -337,7 +337,7 @@ def probe_runaway(
         try:
             solver.solve_displacement()
             solver.solve_damage()
-        except RuntimeError as exc:
+        except Exception as exc:
             m = measure()
             trace.append({"iter": k, "residual": None, "depth": m.depth})
             if m.depth >= judge_depth:
