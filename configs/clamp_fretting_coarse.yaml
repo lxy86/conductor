@@ -92,9 +92,11 @@ solver:
   u_solver: newton
   tol_d: 0.0001
   max_iter: 50
-  # 延拓/W' 搜索阶段（光滑、无损伤）必须用 bt；basic 在那一阶段直接 SNES -5。
-  # 循环相位遇到谱分解折点（ψ+ 在过零处 C0）bt 卡 -6 —— D-31。
-  # 故 cyclic 切到 basic，切换点在 _enable_friction_after_ramp（ramp→cyclic 边界）。
+  # u 的 Newton 线搜索。**必须 bt**：basic 在延拓期（光滑、无损伤）直接 SNES -5
+  # （实测 2026-10-20，无摩擦粗网格对照）。循环相位虽然遇到谱分解折点
+  # （ψ+ 在过零处 C0，D-31）bt 会报 -6，但**实测切到 basic 也没用**
+  # （同点位报 -9，Jacobian 奇异）—— 那才是 6.6.3 的 blocker，
+  # 见 DECISIONS.md D-68 问题 28 续 2（法向-切向耦合不稳定）。
   u_linesearch: bt
   snes_rtol: 1.0e-10
   snes_atol: 1.0e-06

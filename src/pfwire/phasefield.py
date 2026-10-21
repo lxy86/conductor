@@ -563,13 +563,18 @@ class SolverConfig:
     u_linesearch_cyclic: str | None = None
     """进入**循环相位**后可选切换到的线搜索类型（**None = 不切换**，默认）。
 
-    背景（6.6.3 实测，D-68 问题 28 续）：延拓/W' 搜索阶段必须 ``bt`` ——
-    ``basic`` 在延拓上直接 SNES -5（无损伤光滑问题，整步 Newton 过冲）。
-    循环相位则视工况：摩擦 Uzawa 深黏着极限环下 **bt 与 basic 都救不了**
-    （实测同点位 -6/-9），此时该修的是返回映射而非线搜索；但纯谱分解折点
-    场景（D-31 原文）bt 确实会卡 -6。故保留此旋钮供后者使用，切换由
-    调用方在 ramp→cyclic 边界通过 :meth:`PhaseFieldSolver.set_u_linesearch`
-    完成（``snes.getLineSearch().setType``，不重建 Jacobian）。
+    保留的旋钮，**当前生产工况不使用**（2026-10-21 实测无效）：
+    延拓/W' 搜索阶段必须 ``bt``（``basic`` 在延拓上直接 SNES -5），而循环相位
+    遇到谱分解折点（ψ+ 在过零处 C0，D-31）时 ``bt`` 报 -6。看似该在这里切
+    ``basic``，但实测**同点位只把 -6 变成 -9（Jacobian 奇异）** —— 那才是
+    6.6.3 的 blocker（法向-切向耦合不稳定，见 DECISIONS.md D-68 问题 28 续 2），
+    该修的是接触格式而非线搜索。
+
+    仍保留此字段与方法，因为：切换机制本身已验证可用
+    （``snes.getLineSearch().setType``，不重建 Jacobian），若将来某工况确实
+    只需要切线搜索即可通过（例如纯谱分解折点、无接触病态），不必重新开发。
+    切换由调用方在 ramp→cyclic 边界通过
+    :meth:`PhaseFieldSolver.set_u_linesearch` 完成。
     """
     log_iterations: bool = False  # 逐迭代日志（排查静默不收敛）
     relaxation: float = 1.0
