@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# 验证 U8/U9 的 MPI 失败是否来自按 rank 局部的归约（CLAUDE.md 陷阱 3）。
+set -u
+source /root/miniforge3/etc/profile.d/conda.sh
+conda activate pf-wire || exit 1
+cd /root/pf-wire || exit 1
+export OMP_NUM_THREADS=1
+export PYTHONUNBUFFERED=1
+timeout 600 mpirun -n 6 python -u data/_probe_rank_local.py 2>&1 | grep -vE '^Info|^$' | tail -40

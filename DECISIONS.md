@@ -5860,3 +5860,106 @@ post-step               max(ψ⁺)=6.88e+7  max(ᾱ)=1.05e8   max_d=0.0012 W=4.5
 `set_phase` 闭包持有、不在 clamp 状态里；要改幅值必须改 config 再重建 case」。
 教训：探针第一版就是踩了这个坑 —— 改了 `clamp.x_amplitude` 以为在扫参，
 三档结果逐位相同，差点把「幅值无关」这个结论建在无效数据上。
+
+## D-68 问题 29：`mpirun -n 6` 下的 4 个测试失败 —— 全是测试自身的问题，不是代码 bug（2026-10-22）
+
+### 现象澄清（先纠正一个误读）
+
+`mpirun -n 6 pytest tests/test_clamp_{uzawa,contact,loads}.py` 的屏幕上会看到
+「36 个点 + 6 个 F」，但那是 **6 个 rank 的输出交错**：每个 rank 各收 24 项、
+各报 14 个 F。**去重后只有 4 个不同的测试失败**（逐个单跑确认）：
+
+| 测试 | 文件:行 | 断言 |
+|---|---|---|
+| U8_checkpoint_roundtrip | test_clamp_uzawa.py:357 | `np.max(np.abs(clamp.q.x.array)) > 0` |
+| U9_tangential_geometry_mirrors | test_clamp_uzawa.py:442 | 镜像最大相对差 < 阈值 |
+| test_phase_changes_an_already_compiled_form | test_clamp_loads.py:112 | `n1 > 0.0` |
+| test_coupled_tangent_with_contact_matches_finite_difference | test_clamp_contact.py:153 | FD vs J |
+
+**单进程下 24 项全绿**（23 passed + 1 skipped）。
+
+### 前三个：CLAUDE.md 陷阱 3（按 rank 局部的断言）—— 已定量确认
+
+`data/_probe_rank_local.py`（mpirun -n 6）直接量到：
+
+```
+rank 0: local max|q| = 0.000e+00   local max p = 0.000e+00   live=0
+rank 1: local max|q| = 5.501e+06   local max p = 7.859e+06   live=2
+rank 2: local max|q| = 1.750e+08   local max p = 2.501e+08   live=34
+rank 3: local max|q| = 0.000e+00   local max p = 0.000e+00   live=0
+rank 4: local max|q| = 1.654e+08   local max p = 2.364e+08   live=23
+rank 5: local max|q| = 1.767e+08   local max p = 2.524e+08   live=17
+全局 max|q| = 1.767e+08（健康）
+```
+
+- **U8**：rank 0 与 3 的子域不含接触面单元，`max|q|` 恒为 0 → 这 2 个 rank 的
+  断言**必然**失败。物理完全正常（全局 max = 1.767e8）。
+- **U9**：`live = p_dg > 0.10 * np.max(p_dg)` 用的是**本 rank** 的 p 最大值。
+  逐 rank 阈值选出 76 个单元，统一用全局阈值选出 74 个（差 2.7%），
+  这个偏置在 allgather 拼剖面时表现为 8% 的镜像误差。
+- **loads:112**：`data/_probe_form_phase.py` 量到只有 rank 0 拥有右端面单元，
+  其余 5 个 rank 的 `‖F‖` 恒为 0 → `assert n1 > 0.0` 在 5/6 个 rank 上必失败。
+  全局 `‖F‖ = 3.883e4`，form 本身完全正常。
+
+### 第四个（FD 切线检验）：不是陷阱 3，是**扰动向量随分区变**
+
+这条最像真 bug，逐一排除后确认是测试构造问题。排除过程（全部实测）：
+
+| 假设 | 测量 | 结论 |
+|---|---|---|
+| 步长 h 选得不对 | 扫 h ∈ [1e-13, 1e-7]，误差**恒为 5.338e-2** | ❌ 与 h 无关 |
+| 范数把 ghost 算进去了 | owned-only 误差 1.345e-1（全数组 1.321e-1） | ❌ 无关 |
+| 塑性返回映射的切线 | 纯弹性（无塑性无接触）同样 1.32e-1 | ❌ 无关 |
+| 接触项切线 | 去接触同样 1.32e-1 | ❌ 无关 |
+| 装配不确定 / 解不可复现 | 两次装配逐位相同；再解 ‖Δu‖=1.3e-14 | ❌ 无关 |
+| 测试漏调 commit_step() | 串行**不** commit 1.44e-6（过），commit 后 2.99e-2（更差） | ❌ 相反 |
+
+关键对照（`data/_probe_fd_attrib.py`）：同一状态、同一代码，
+
+```
+n=1: 全模型 1.44e-6 ✅ | 去接触 2.25e-7 ✅ | 去塑性 9.66e-7 ✅ | 纯弹性 2.25e-7 ✅
+n=6: 全模型 1.30e-1 ❌ | 去接触 1.32e-1 ❌ | 去塑性 1.30e-1 ❌ | 纯弹性 1.32e-1 ❌
+```
+
+**连纯弹性都失败**，而 `‖J‖_F` 在串并行下**逐位相同**（2.123179e13）、
+`‖F(u=0)‖ ≈ 7e-14`、解可复现。于是唯一剩下的变量就是扰动向量 δ 本身。
+
+`data/_probe_fd_vector.py` 把它按**全局 dof 编号**导出比对：
+
+```
+n=1  指纹 c423e8c1663a514aa2905c393574d1e0   dof0 = +1.2063077811e-01
+n=6  指纹 5f640041706370457fa9e00dffb89d21   dof0 = +1.4335859154e-01
+```
+
+**同一个全局 dof 在两个进程数下拿到不同的随机数。** 根因：
+
+```python
+rng = np.random.default_rng(23)
+delta_vec.x.array[:] = rng.normal(size=delta_vec.x.array.size)  # ← size 含 ghost 且逐分区不同
+delta_vec.x.scatter_forward()                                    # ← 只发不收
+delta_vec.x.array[:] /= np.max(np.abs(delta_vec.x.array))        # ← 本 rank 的 max
+```
+
+`array.size` 串行是 5161，6 进程是 841+51=892/rank。同一个全局 dof 在
+不同的分区下从随机流的不同位置取值 —— **种子固定不等于向量固定**。
+
+这解释了为什么误差恰好与 h 无关（δ 换了，但 FD 与 J 用的是**同一个** δ，
+所以比值是稳定的大数，不是随 h 变化的截断误差），也解释了为什么纯弹性也失败
+（与物理项无关，纯粹是线性代数在同一个 δ 上的一致性）。
+
+### 结论
+
+**4 个失败全部是测试自身的问题，`src/pfwire` 无需改动。**
+前 3 个违反 CLAUDE.md 陷阱 3（按 rank 局部断言），第 4 个的随机向量不可跨
+分区复现。生产路径（`run_clamp`）不受影响：它从不做这类断言。
+
+### 修法（未实施，待用户决定）
+
+1. **U8**：把 `np.max(np.abs(q)) > 0` 改成 `allreduce(..., MPI.MAX) > 0`。
+2. **U9**：`live` 的阈值用 `allreduce(max p, MPI.MAX)` 再算。
+3. **loads:112**：`n1` 改用 `allreduce` 求和/取最大。
+4. **FD 检验**：扰动向量按**全局 dof 编号**构造，例如
+   `rng.normal(size=imap.size_global)[imap.local_to_global(...)]`，
+   或先 allgather owned 值再 scatter。归一化用全局 max。
+
+四条都是测试代码的局部修改，不动 `src/`。
