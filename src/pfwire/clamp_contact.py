@@ -145,9 +145,12 @@ class ClampContact:
         # 只有相对错动才能在接触斑内产生 Mindlin 部分滑移；同向同幅是刚体平移、
         # 接触面无错动、摩擦不起作用（静默失效），故 False 只作对照工况。
         self.oppose_x = True
-        #: 切向行程幅值（m），0 = 关。由配置 contact.tangential_amplitude 给，
-        #: 幅值未定（Phase 7.5 扫参对象，D-44「不得预设摩擦学工况」）。
-        self.x_amplitude = 0.0
+        # ⚠ **切向行程幅值不是这个对象的状态**：它由 `clamp_case.set_phase` 的
+        # 闭包持有（从 config 的 contact.tangential_amplitude 读出），本对象只经
+        # `set_tangential(x)` 接收每个相位的**瞬时**偏移。曾有一个
+        # `self.x_amplitude` 字段，但没有任何代码读它，改它不产生任何效果
+        # （静默失效：实测幅值扫参三档逐位相同）——已删。见 DECISIONS.md
+        # D-68 问题 28 续 5「附带发现」。
         # 接触项核含 sqrt/max_value（法向、罚压力）。UFL 对残差 F 与对其 u 的导数 J
         # 估计出的多项式阶不同，默认的「按表达式估计求积阶」会让两者落到不同规则，
         # 离散上 F 与 dF/du 不一致（切线校验差到 1.6e-4）。显式固定求积阶 2，

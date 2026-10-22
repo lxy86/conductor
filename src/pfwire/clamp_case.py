@@ -456,9 +456,12 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
     # 幅值从 contact.tangential_amplitude 读，**默认 0 = 关**（逐位回到 6.6.1）。
     # 幅值未定：属 Phase 7.5 扫参对象，且按 D-44「不得预设摩擦学工况，
     # 由求解结果判定」不在这里挑一个「能起裂」的数。
+    #
+    # ⚠ `delta_x_amp` **只被下面的 set_phase 闭包捕获**，不是 clamp 的状态
+    # （曾有个 clamp.x_amplitude 字段，无任何代码读它，已删；探针改它得到
+    # 三档逐位相同的无效结果）。要改幅值必须改 config 再重建 case。
     cc_tangent = cc.get("tangential_amplitude")
     delta_x_amp = 0.0 if cc_tangent is None else float(cc_tangent)
-    clamp.x_amplitude = delta_x_amp
     # 上下线夹切向运动反向（对称挤压要相对错动才有微滑，见 set_tangential）
     oppose = cc.get("tangential_opposed")
     clamp.oppose_x = True if oppose is None else bool(oppose)
