@@ -58,6 +58,17 @@ cd /root/pf-wire   # 指向 C:\Users\Administrator\Desktop\疲劳寿命 的 ASCI
    上体穿过下体，**不报错**。接触验证脚本一律串行（约 15 分钟）。另外上游的 `create_*_mesh` /
    `convert_mesh` 内部自带 rank-0 守卫和 COMM_WORLD Barrier，**必须全体 rank 调用**，
    包进 `if rank == 0` 会死锁（D-51）。
+6. **adios4dolfinx 的 `write_function` 在 MPI 下必 hang（D-68 问题 30）**：
+   `n=1` 正常，`n>1` 100% 死锁，与场类型（DG0/CG1/向量）、网格规模、mesh 来源
+   （gmsh / create_unit_square）、`engine`（BP3/BP4）、`mode`（Write/Append）、
+   路径拆分全都无关。`write_mesh` 本身正常，只有 `write_function` 挂。
+   机理：默认 `mode=Append` 会先调 3 次 `check_variable_exists`，每次以 **Read**
+   打开同一个 `.bp`，`n>1` 时多个 rank 同时 `io.Open(Read)` 同一 BP4 目录即死锁。
+   py-spy 栈：`ADIOSFile(adios2_helpers.py:70) ← check_variable_exists(:90)
+   ← write_function(writers.py:150)`。
+   ⚠ 因此**任何走 checkpoint 的代码/测试只能串行**；`tests/test_env.py:145`
+   的往返用例也从没在并行下验证过（Phase 0 的「1/2/4 进程均绿」不含它生效的证据，
+   实际上它并行也会挂）。
 
 ## 工作流
 - 每个子任务：先给出函数签名和测试意图 → 用户确认 → 实现 → `pytest -q` → 汇报

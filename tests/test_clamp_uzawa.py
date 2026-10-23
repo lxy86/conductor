@@ -355,16 +355,28 @@ def test_U8_checkpoint_roundtrip(tmp_path):
     assert "q" in checkpoint.FIELD_NAMES
     fields = checkpoint._fields(solver, state)
     assert fields["q"] is clamp.q, "checkpoint 取的 q 不是接触的乘子场"
-    assert float(np.max(np.abs(clamp.q.x.array))) > 0.0, "q 应已被 Uzawa 更新过"
+    # ⚠ 必须取**全局**量（CLAUDE.md 陷阱 3）：q 只在接触单元上非零，而接触斑
+    # 可以整个落在某几个 rank 之外。实测 6 rank 下 rank 0 与 rank 3 的
+    # size_local 各有 838 个 DG0 却**全零**（nz=0），接触单元全在另外 4 个
+    # rank 上。用本 rank 的 max 判 `> 0` 会在这 2 个 rank 上失败，
+    # 它们随即退出，其余 rank 卡在 checkpoint.save 的集体通信里忙等
+    # （实测 240 s 超时、MPI_Abort）。全局真值 max|q| = 1.7668e+08、nz = 76。
+    _q_max_local = (float(np.max(np.abs(clamp.q.x.array)))
+                    if clamp.q.x.array.size else 0.0)
+    q_max_global = msh.comm.allreduce(_q_max_local, op=MPI.MAX)
+    assert q_max_global > 0.0, "q 应已被 Uzawa 更新过（全局 max|q| = %.3e）" % q_max_global
     # ⚠ 只用**标量摘要**做往返校验，不逐点比数组：adios 按**全局 input 编号**
     # 存取，而原 mesh 与 bp 里读回的 mesh 的 DG0 dof 排序可以不同
     # （实测非零位置 869/931/997 vs 9/79/97，值本身是对的但槽位不同）——
     # 这正是 D-48「必须用 bp 读回的网格」的同一教训。逐点比只在
     # **同一张 mesh**（res.mesh）上做。
+    # ⚠ 摘要同样必须全局化：size_local / max / 非零数**全都**依赖分区
+    # （实测 size_local = 838/838/843/846/853/849，nz = 0/2/34/0/23/17）。
     n_owned_q = clamp.q.function_space.dofmap.index_map.size_local
     before = clamp.q.x.array[:n_owned_q].copy()
-    before_max = float(np.max(np.abs(before)))
-    before_nz = int(np.count_nonzero(before))
+    before_max = msh.comm.allreduce(
+        float(np.max(np.abs(before))) if before.size else 0.0, op=MPI.MAX)
+    before_nz = int(msh.comm.allreduce(int(np.count_nonzero(before)), op=MPI.SUM))
 
     with tempfile.TemporaryDirectory() as td:
         p = checkpoint.save(td, solver, state, {"N": 1.0}, MPI.COMM_WORLD)
@@ -384,18 +396,26 @@ def test_U8_checkpoint_roundtrip(tmp_path):
         res.read_fields(solver2, state2)
 
         # (a) 标量摘要：幅值与非零数必须一致（与 dof 排序无关）
+        # ⚠ 同样是全局量（陷阱 3）：读回网格的分区与 size_local 都独立于原网格，
+        # 本 rank 的 max/非零数不可比。
         got = clamp2.q.x.array
-        assert int(np.count_nonzero(got)) == before_nz, (
-            "非零数不一致：%d vs %d" % (int(np.count_nonzero(got)), before_nz))
-        assert abs(float(np.max(np.abs(got))) - before_max) <= 1e-6 * before_max, (
-            "幅值不一致：%.6e vs %.6e"
-            % (float(np.max(np.abs(got))), before_max))
+        got_max = res.mesh.comm.allreduce(
+            float(np.max(np.abs(got))) if got.size else 0.0, op=MPI.MAX)
+        got_nz = int(res.mesh.comm.allreduce(int(np.count_nonzero(got)), op=MPI.SUM))
+        assert got_nz == before_nz, (
+            "非零数不一致：%d vs %d" % (got_nz, before_nz))
+        assert abs(got_max - before_max) <= 1e-6 * before_max, (
+            "幅值不一致：%.6e vs %.6e" % (got_max, before_max))
 
         # (b) 逐点一致：在**同一张 mesh**（res.mesh）上直接读 bp 的 q 做基准
+        # ⚠ 这里的逐点比是合法的：两侧都在 res.mesh 上、用同一个 DG0 空间，
+        # 不跨 mesh 比。但 max 仍要全局化（各 rank 的局部数组不同）。
         q_bp_res = fem.Function(fem.functionspace(res.mesh, ("DG", 0)), name="q")
         import adios4dolfinx
         adios4dolfinx.read_function(p, q_bp_res)
-        err = float(np.max(np.abs(clamp2.q.x.array - q_bp_res.x.array)))
+        _d = np.abs(clamp2.q.x.array - q_bp_res.x.array)
+        err = float(res.mesh.comm.allreduce(
+            float(np.max(_d)) if _d.size else 0.0, op=MPI.MAX))
         assert err == 0.0, "read_fields 与直接读 bp 不一致：最大差 %.3e" % err
 
 
