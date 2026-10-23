@@ -6287,3 +6287,77 @@ io4dolfinx 的 `check_variable_exists` 与旧库逐行相同。**但那些都不
 2. **排除法探针之间必须逐字段 diff**。我连做 5 轮排除，每轮都无意中换了
    「固定路径」这个关键变量，于是把正确选项一个个排掉了。
    若早先 `diff` 一次「hang 的探针」与「通过的探针」，一小时前就能收工。
+
+## D-68 问题 31：**生产路径的 facet_tags 续跑受影响** —— `read_meshtags` 在 MPI 下多读 ghost facet（2026-10-23，按硬约束 6 停下报告）
+
+### 用户要求验证的问题
+
+问题 30 续 2 附带发现：`tests/test_checkpoint.py::test_facet_tags_survive_the_round_trip`
+在 `-n 6` 失败（`assert set() == {7}` 挂）。需要确认**生产路径**是否也受影响 ——
+`clamp_case.py:411` 正是
+
+```python
+resumed = checkpoint.resume(outdir, comm)
+msh, facet_tags = resumed.mesh, resumed.read_facet_tags()
+```
+
+读回的 `facet_tags` 直接喂 `ClampContact`（接触面 `BLOCK_TOP`）、
+`ClampLoads`（端面力）与 `end_bcs`（`BLOCK_LEFT/RIGHT/BOTTOM`）——
+错了会改变算例且**不报错**，所以必须验。
+
+### 实测 1：轻量算例（`data/_probe_ft_quant.py`，`make_case()` + 6 rank）
+
+```
+写前各 rank (indices,values): [(0,0), (2,2), (0,0), (0,0), (2,2), (0,0)]  共 4
+读回各 rank (indices,values): [(0,0), (3,3), (0,0), (0,0), (2,2), (0,0)]  共 5
+```
+
+**rank 1 多出 1 个，总数 4 → 5。** `-n 1` 与 `-n 2` 下该用例通过，
+`-n 6` 失败，与 rank 数相关。
+
+### 实测 2：真实生产配置（`data/_probe_prod_ftags.py`，`configs/clamp_fretting_coarse.yaml`，6 rank）
+
+```
+网格 facet 总数：新建 61434 / 读回 61434   ← 网格本身一致
+BLOCK_TOP    新建 820 / 读回 826    ← 多 6
+BLOCK_LEFT   新建  10 / 读回  10    坐标最大差 0.000e+00 m  ✅
+BLOCK_RIGHT  新建  10 / 读回  10    坐标最大差 0.000e+00 m  ✅
+BLOCK_BOTTOM 新建 108 / 读回 110    ← 多 2
+```
+
+**左右端面完全一致，但 TOP（接触面）多 6 个、BOTTOM 多 2 个。**
+
+### 机理
+
+`adios4dolfinx.read_meshtags` 在并行下把 **rank 交界处的 ghost facet** 也当作
+owned 返回。写入时每个 facet 只归一个 rank 所有（`tags.indices` 分布
+`(0,2,0,0,2,0)`），读回时交界的 facet 被相邻两个 rank 都拿到
+（`(0,3,0,0,2,0)`）。
+
+这不是本项目能修的（adios4dolfinx 0.11 已冻结开发，见问题 30 续 1）。
+
+### 对生产的后果
+
+| 用途 | 后果 |
+|---|---|
+| `end_bcs` 的 DirichletBC（`BLOCK_LEFT/RIGHT/BOTTOM`） | **幂等无害** —— 同一 DOF 设同一值，重复施加不改变结果；且 LEFT/RIGHT/BOTTOM 实测本来就一致 |
+| `ClampLoads` 的端面 Neumann 力（`BLOCK_RIGHT`） | **无害**（实测一致） |
+| `ClampContact` 的接触面积分（`BLOCK_TOP`） | **有害** —— TOP 多 6 个 facet，`ds(BLOCK_TOP)` 的积分域变大，接触压力与摩擦力会重复计入 |
+
+⚠ 但**尚不能定量说 6.6.3 的 N_f 会偏多少**：多出的 6 个 facet 是 rank 交界的
+ghost，是否真的被 `ufl.Measure("ds", subdomain_data=facet_tags)` 计入，
+要看法向量的方向与单元归属。**在验证这一点之前，不要跑 6.6.3 的并行续跑工况。**
+
+### 可选处置（待用户拍板）
+
+| 方案 | 做法 | 代价 |
+|---|---|---|
+| a | 续跑后对读回的 `facet_tags` **去重**（按 `indices` 唯一化） | 改动小，但要去掉的是哪些 index 需要按全局唯一性判断 |
+| b | 续跑时**不用**读回的 facet_tags，改用 `block_mesh` 重新生成（与 `resume=False` 同一条路） | 网格从 .bp 读、tag 重新生成，二者必须严格对应；D-48 记过「重建网格 input 编号不同会静默读乱序」的教训，有风险 |
+| c | 先定量 6 个 ghost facet 对接触积分的影响，若 <1% 则记录为已知误差 | 最稳，但要额外一个探针 |
+| d | 续跑工况一律串行 | 立刻可用，代价是慢（但串行本来就无此问题） |
+
+我倾向 **(d) 先保正确性 + (a) 作为后续修复**：6.6.3 的续跑工况先串行跑
+（`-n 1` 下 `read_meshtags` 完全正常，实测串行该用例通过），
+同时按 (a) 做去重修复并加一个并行续跑的回归测试。
+**待确认。**
