@@ -6179,142 +6179,111 @@ mpirun -n 6 单独跑 U9        ：6 rank 全部通过（原恒失败）
 （改名会牵连 4 个 verify 脚本与 DECISIONS 的历史引用），docstring 已说明
 判据口径已变。
 
-## D-68 问题 30：**`test_clamp_uzawa.py` 并行忙等的根因 = `adios4dolfinx.write_function` 在 `n>1` 下必 hang（2026-10-23）**
+## D-68 问题 30 续：**问题 30 的结论是错的** —— adios4dolfinx 在 MPI 下正常，真因是测试里 `tempfile` 每 rank 一个目录（2026-10-23 更正）
 
-### 定位路径
+### 我错在哪（先记下来，这是本轮最贵的教训）
 
-**第 1 步：逐个用例跑**（`scripts/probe_u9_each.sh`，每个独立 `mpirun -n 6` + 300s timeout）：
+问题 30 里我据 5 轮探针断定「`adios4dolfinx.write_function` 在 `n>1` 下 100% hang，
+与场类型/mesh 来源/mode/engine/路径全都无关」，并据此给 CLAUDE.md 加了陷阱 6、
+建议给上游打 patch 或 6.6.3 改串行。**该结论错误。**
 
-```
-test_U1  ~ U7    rc=0   各 3–26 s    6 rank 全过
-test_U8           rc=124 300s 超时   只有 2 个 rank 打到 100%、1 次 MPI_Abort   ← 唯一卡点
-test_U9  ~ U16   rc=0   各 2–12 s    6 rank 全过
-```
+真因是一个**探针自身的 bug**：
 
-15 个用例里**只有 U8 挂**。所谓「并行跑全文件卡死」就是 U8 一个用例拖垮整个
-pytest 进程（它的 hang 挡住了后面所有用例）。
-
-**第 2 步：U8 的第一层问题（陷阱 3，已修）**
-
-`data/_probe_u8_rank.py` 逐 rank 打印 Uzawa 后的 `q`：
-
-```
-rank 0: size_local=838  max|q|=0.0000e+00  nz=0   ← 本 rank 全零
-rank 1: size_local=838  max|q|=5.5011e+06  nz=2
-rank 2: size_local=843  max|q|=1.7505e+08  nz=34
-rank 3: size_local=846  max|q|=0.0000e+00  nz=0   ← 本 rank 全零
-rank 4: size_local=853  max|q|=1.6542e+08  nz=23
-rank 5: size_local=849  max|q|=1.7668e+08  nz=17
-全局: max|q|=1.7668e+08  nz=76
+```python
+td = pathlib.Path(tempfile.mkdtemp(prefix="probe_wmin_"))   # ← 每个 rank 各生成一个不同目录！
+...
+p1 = td / "c1.bp"
+if rank == 0:
+    p1.mkdir(parents=True, exist_ok=True)
+adios4dolfinx.write_mesh(p1, msh)
+adios4dolfinx.write_function(p1, f0)                          # ← 6 rank 写 6 个不同路径
 ```
 
-接触斑整个落在 rank 1/2/4/5 上，rank 0 与 rank 3 的 `q` **全零**。
-于是 `assert float(np.max(np.abs(clamp.q.x.array))) > 0.0`（原第 358 行）
-在这 2 个 rank 上必然失败 → 它们退出 → 其余 rank 卡在 `checkpoint.save`
-的集体通信里忙等。已按陷阱 3 改成 `allreduce` 全局量（共 6 处，见下）。
+`tempfile.mkdtemp()` 带随机后缀，**6 个 rank 各调一次就得到 6 个不同目录**。
+于是 BP4 的集合 IO 有 6 个 rank 指向 6 个不同文件 —— 不死锁才怪。
+而我所有的「排除法」探针（换目录、换 mkdir、换 mesh、换场类型、换 import 顺序）
+**全都无意中用了固定路径或 rank-0-only 路径**，所以全部通过。我据此一个个排除了
+正确选项，只剩下错误结论。
 
-**第 3 步：断言改完后 U8 仍然 hang —— 露出第二层问题**
+决定性证据（`scripts/probe_tmpdir.sh` 的对照，同一脚本只改一行）：
 
-`data/_probe_u8_save.py` 逐步打点：
-
-```
-[  8.5s] solver 建好，调 checkpoint.save      ← 之后再无输出，200s 超时
-```
-
-`data/_probe_u8_write.py` 细分到字段：
-
-```
-[  8.2s] 调 write_mesh
-[  8.2s] **write_mesh 返回**                  ← 正常
-[  8.2s] 调 write_function(u)                 ← hang，再无输出
-```
-
-**卡在第一个 `write_function`。**
-
-**第 4 步：与场类型 / mesh 来源无关**（`scripts/probe_write_var.sh`，rank × mesh 矩阵）
-
-| rank | unit_square DG2 | block mesh DG0 |
-|---|---|---|
-| 1 | ✅ 返回 | ✅ 返回 |
-| 2 | ❌ rc=124 | ❌ rc=124 |
-| 4 | ❌ hang | — |
-| 6 | — | ❌ hang |
-
-**`n=1` 一律正常，`n>1` 一律 hang。** 连 DG0 标量、连 64 单元的
-`create_unit_square` 都挂 —— 与场类型、分量数、网格规模、gmsh 来源全都无关。
-
-⚠ 这推翻了 `tests/test_env.py:145` 的隐含假设：那个用例（Phase 0 验收）
-同样调用 `write_mesh` + `write_function`，但它**从未在并行下验证过**
-（CLAUDE.md 只记了「1/2/4 进程均绿」是指 `test_env.py` 的结果，
-而并行下它其实也会 hang —— 见本节末的验证建议）。
-
-**第 5 步：py-spy 抓到确切栈**（`scripts/probe_pyspy.sh`）
-
-```
-Thread (active+gil): "MainThread"
-    ADIOSFile (adios4dolfinx/adios2_helpers.py:70)
-    __enter__ (contextlib.py:137)
-    check_variable_exists (adios4dolfinx/adios2_helpers.py:90)
-    write_function (adios4dolfinx/writers.py:150)
-    write_function (adios4dolfinx/checkpointing.py:905)
-```
-
-`adios2_helpers.py:70` 是 `file = io.Open(str(filename), mode)`，
-即 **hang 在 adios2 的 `io.Open(..., Mode.Read)`**。
-
-机理：`checkpointing.write_function` 默认 `mode=adios2.Mode.Append`，
-Append 模式下 `writers.write_function` 先调 3 次 `check_variable_exists`
-去探测变量是否已存在，每次都要以 **Read** 打开同一个 `.bp`。
-而 `write_mesh` 刚用 BP4 写过它 → `n>1` 时 6 个 rank 同时 `io.Open(Read)`
-同一个 BP4 目录 → 死锁。
-
-`check_variable_exists` 开头虽有 `if not Path(filename).exists(): return False`
-的守卫，但 `write_mesh` 之后目录**确实存在**，守卫救不到。
-
-### 试过并失败的绕法（都记录，免得重复踩）
-
-| 绕法 | 结果 |
+| 路径来源 | 结果 |
 |---|---|
-| `mode=adios2.Mode.Write` | write_function 不再 hang，但 `write_mesh` 建的 `.bp` **目录不见了**，读回 FileNotFoundError；且伴随 `*** stack smashing detected ***`（内存越界） |
-| `engine="BP3"` | Append 仍 hang（探测逻辑与 engine 无关） |
-| mesh 与字段写不同路径（S1） | 第一个字段写成功，第二个字段 Append 到同一文件 → 又触发探测 → 仍 hang |
-| 每个字段一个独立 `.bp`（S2） | 写不 hang，但 `mesh.bp` 未落盘 → `read_mesh` FileNotFoundError + stack smashing |
+| `tempfile.mkdtemp()`（原样） | **10/10 HANG**（`scripts/probe_flaky10.sh` 量化过） |
+| 固定路径 `/tmp/rw_fixed` | **4/4 通过** |
 
-**结论：adios4dolfinx 0.11 的 `write_function` 在 MPI 下不可用**，
-没有不碰它源码的绕法。要并行 checkpoint 只有三条路：
-升级/降级 adios4dolfinx、给上游打 patch、或改用别的 IO（硬约束 5 要求
-adios4dolfinx，故前两条都要先确认兼容性）。
+同一份代码、同一台机器、同一时刻，只差路径怎么来。
 
-### 已做的修复（第一层，独立有效）
+### 真正的根因（两层，都已修）
 
-`tests/test_clamp_uzawa.py` 的 U8：6 处 rank 局部量改成全局量
-（CLAUDE.md 陷阱 3），判据语义不变：
+**第一层：`tests/test_clamp_uzawa.py` 的 U8 用了 `tempfile.TemporaryDirectory()`**
 
-| 位置 | 原写法 | 改为 |
+```python
+with tempfile.TemporaryDirectory() as td:      # ← 每 rank 一个目录
+    p = checkpoint.save(td, solver, state, {"N": 1.0}, MPI.COMM_WORLD)
+```
+
+`checkpoint.save` 是按 `COMM_WORLD` 的集合操作，路径不一致即死锁。
+这正是 `tests/test_cyclejump.py:241` 的 docstring 早已记下的坑
+（「注意路径必须从 rank 0 广播……并行下各 rank 会拿到不同目录……
+路径不一致会直接死锁」）—— 同一个项目里**已经有人踩过并写下来了**，
+我改 U8 时没去找这个先例，白花了数小时。
+
+修法（与 test_cyclejump 一致）：rank 0 生成后 bcast，全体共用。
+
+**第二层：陷阱 3（rank 局部断言），独立存在，也已修**
+
+`_probe_u8_rank.py` 量到接触斑整个落在 rank 1/2/4/5 上，rank 0 与 rank 3 的 `q`
+**全零**（`size_local` 各 838 而 `nz=0`），全局 `max|q|=1.7668e+08`、`nz=76`。
+故 `assert float(np.max(np.abs(clamp.q.x.array))) > 0.0` 在这 2 个 rank 上必失败。
+已改 6 处 rank 局部量为 `allreduce` 全局量。
+
+顺带修了一个我改动引入的口径 bug：`before` 取 `[:n_owned]`（只 owned），
+而 `got` 原来取整个 `x.array`（含 ghost），DG0 的 ghost 使非零数算重
+（实测 6 rank 下 `got_nz=80` vs `before_nz=76`，差的 4 正是 ghost 重复计数）。
+两侧统一取 owned 后一致。
+
+### 修好后的实测
+
+```
+mpirun -n 6  pytest tests/test_clamp_uzawa.py     → 15 passed，6 rank 全到 100%
+                                                   （原：36 个点后忙等 3000s）
+串行 pytest tests/                                → 625 passed / 6 failed / 1 skipped
+                                                   6 个失败全在 test_clamp_friction.py
+                                                   （known dead end：prescribed u_x 与
+                                                     Coulomb 黏滑冲突，Newton 必然 -6）
+```
+
+**并行忙等消失了。** 6.6.3 的并行 checkpoint 本来就可行
+（`clamp_case._save(case, outdir, ...)` 用的正是配置里的统一 outdir，
+生产路径从头到尾没有这个问题）。
+
+### 上游查证的结论也随之更正
+
+问题 30 末尾「上游有没有修复版本」那一节，动机已不存在（没有 bug 要修），
+但查证过程本身仍有价值，保留记录：adios4dolfinx 已冻结开发（维护者 2026-02-12
+指向 io4dolfinx），已知 issue #147「MPI 随机超时」2024-12 至今 open；
+io4dolfinx 的 `check_variable_exists` 与旧库逐行相同。**但那些都不是我们的问题。**
+
+### 仍存在的并行挂起（与本次无关，已知且预期）
+
+逐文件并行测（`scripts/probe_after.sh`）：
+
+| 文件 | 并行结果 | 说明 |
 |---|---|---|
-| L358 附近 | `np.max(np.abs(clamp.q.x.array)) > 0.0` | `msh.comm.allreduce(..., MPI.MAX) > 0.0` |
-| `before_max` | `np.max(np.abs(before))` | `allreduce(..., MPI.MAX)` |
-| `before_nz` | `count_nonzero(before)` | `allreduce(..., MPI.SUM)` |
-| `got_nz` | `count_nonzero(got)` | `allreduce(..., MPI.SUM)` |
-| `got_max` | `np.max(np.abs(got))` | `allreduce(..., MPI.MAX)` |
-| 逐点比 `err` | `np.max(np.abs(...))` | `allreduce(..., MPI.MAX)` |
+| test_clamp_uzawa | ✅ 15 passed | 本次修好 |
+| test_contact_plastic | ❌ rc=124 | CLAUDE.md 陷阱 5：接触（dolfinx_contact）只能串行 |
+| test_contact_verify | ✅ | — |
+| test_cyclejump（整文件） | ❌ rc=124 | **待查**；其中 checkpoint 用例单独并行是过的 |
+| test_cyclejump_driver | ✅ | — |
 
-顺带修了一个潜在崩溃：`before.size == 0` 时 `np.max` 会抛 ValueError，
-已用条件表达式兜住。
+`test_cyclejump` 整文件并行挂、但其 `test_fatigue_state_checkpoint_round_trip`
+单独并行 6 rank 全过 → 挂的是该文件里**另一个**用例，需单独定位。
 
-串行验证：`pytest tests/test_clamp_uzawa.py` → **15 passed**（U8 的改动无副作用）。
+### 教训（写进 CLAUDE.md）
 
-### 后果与建议
-
-**并行跑不了任何走 checkpoint 的用例**，因此：
-- 验收只能串行，或用 `-k` 挑不走 checkpoint 的用例（U1–U7、U9–U16 都能并行）；
-- 硬约束 5 的「长算例支持断点续跑」在并行下**目前不成立**，
-  6.6.3 若要 `mpirun -n 6` 跑，每跳的 checkpoint 都会挂。
-
-**建议下一步（待用户拍板）**：
-1. 先确认 `tests/test_env.py:145` 在 `mpirun -n 2` 下是否也 hang
-   （`data/_probe_write_var.py unit` 已间接证明会挂，但值得正式记一笔）；
-2. 查 adios4dolfinx 0.11 上游是否有 MPI 修复版本，或评估降级到
-   DECISIONS D-0 记录中可用的版本；
-3. 若要继续推 6.6.3，先决定「串行跑」还是「先解决 checkpoint」。
-
+1. **并行下造临时目录，路径必须 rank 0 生成后 bcast**。`mkdtemp()` /
+   `TemporaryDirectory()` 每 rank 一个目录，集合 IO 必死锁。
+2. **排除法探针之间必须逐字段 diff**。我连做 5 轮排除，每轮都无意中换了
+   「固定路径」这个关键变量，于是把正确选项一个个排掉了。
+   若早先 `diff` 一次「hang 的探针」与「通过的探针」，一小时前就能收工。

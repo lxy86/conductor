@@ -28,6 +28,8 @@ ClampContact.set_tangential），与 Mindlin 的物理设定一致，
         （部分滑移形貌在生产粗网格上验，见该用例 docstring 的理由）。
 """
 
+import shutil
+
 import numpy as np
 import pytest
 import ufl
@@ -378,10 +380,18 @@ def test_U8_checkpoint_roundtrip(tmp_path):
         float(np.max(np.abs(before))) if before.size else 0.0, op=MPI.MAX)
     before_nz = int(msh.comm.allreduce(int(np.count_nonzero(before)), op=MPI.SUM))
 
-    with tempfile.TemporaryDirectory() as td:
-        p = checkpoint.save(td, solver, state, {"N": 1.0}, MPI.COMM_WORLD)
+    # ⚠ 临时目录必须**所有 rank 同一个路径**：`tempfile.TemporaryDirectory()`
+    # 每个 rank 各生成一个不同目录（随机后缀），于是 6 个 rank 把 .bp 写到 6 个
+    # 不同路径，BP4 的集合 IO 直接死锁（实测 mpirun -n 6 必挂、rc=124）。
+    # 生产路径 `clamp_case._save(case, outdir, ...)` 用配置里的统一 outdir，
+    # 没这个问题；只有测试里用临时目录才会踩。
+    # 做法：rank 0 生成后 bcast，全体共用。
+    _td = msh.comm.bcast(tempfile.mkdtemp(prefix="u8_ckpt_") if msh.comm.rank == 0
+                         else None, root=0)
+    try:
+        p = checkpoint.save(_td, solver, state, {"N": 1.0}, MPI.COMM_WORLD)
         # 按生产路径读回：resume -> 在**读回的网格**上重建一切 -> read_fields
-        res = checkpoint.resume(td, MPI.COMM_WORLD)
+        res = checkpoint.resume(_td, MPI.COMM_WORLD)
         clamp2 = ClampContact(res.mesh, None, E=E_BULK, R_clamp=R_CLAMP,
                               kappa=KAPPA, h_contact=0.1e-3, symmetric=True,
                               depth=H_DEPTH, mu=MU, kappa_t=KAPPA_T)
@@ -398,7 +408,11 @@ def test_U8_checkpoint_roundtrip(tmp_path):
         # (a) 标量摘要：幅值与非零数必须一致（与 dof 排序无关）
         # ⚠ 同样是全局量（陷阱 3）：读回网格的分区与 size_local 都独立于原网格，
         # 本 rank 的 max/非零数不可比。
-        got = clamp2.q.x.array
+        # ⚠ 口径必须与 before 对齐：只取 **owned** 段。DG0 的 x.array 含 ghost，
+        # 同一个单元会被相邻 rank 各存一份，全取会把非零数算重
+        # （实测 6 rank 下 got=80 vs before=76，差的 4 正是 ghost 重复计数）。
+        n_owned_got = clamp2.q.function_space.dofmap.index_map.size_local
+        got = clamp2.q.x.array[:n_owned_got]
         got_max = res.mesh.comm.allreduce(
             float(np.max(np.abs(got))) if got.size else 0.0, op=MPI.MAX)
         got_nz = int(res.mesh.comm.allreduce(int(np.count_nonzero(got)), op=MPI.SUM))
@@ -413,10 +427,15 @@ def test_U8_checkpoint_roundtrip(tmp_path):
         q_bp_res = fem.Function(fem.functionspace(res.mesh, ("DG", 0)), name="q")
         import adios4dolfinx
         adios4dolfinx.read_function(p, q_bp_res)
-        _d = np.abs(clamp2.q.x.array - q_bp_res.x.array)
+        _d = np.abs(got - q_bp_res.x.array[:n_owned_got])
         err = float(res.mesh.comm.allreduce(
             float(np.max(_d)) if _d.size else 0.0, op=MPI.MAX))
         assert err == 0.0, "read_fields 与直接读 bp 不一致：最大差 %.3e" % err
+    finally:
+        # 只在 rank 0 删（各 rank 的 rmtree 会对同一路径竞态）；删不掉无所谓，
+        # pytest 的 tmp 不背这个锅（这里用的是 /tmp 下的独立目录）。
+        if msh.comm.rank == 0:
+            shutil.rmtree(_td, ignore_errors=True)
 
 
 # --------------------------------------------------------------------------
