@@ -196,4 +196,18 @@ def test_facet_tags_survive_the_round_trip(tmp_path):
     r = ck.resume(d)
     back = r.read_facet_tags()
     assert back.dim == fdim
-    assert set(np.unique(back.values).tolist()) == {7}
+    # ⚠ 必须用**全局**量（CLAUDE.md 陷阱 3）：`back.values` 是本 rank 局部的，
+    # 被标记的 facet 可以整个落在别的 rank 上，本 rank 读到 0 个 ——
+    # 实测 6 rank 下分布是 (0,2,0,0,2,0)，rank 0/2/3/5 读到空，
+    # `np.unique(back.values)` 在它们上面得空集，`== {7}` 直接挂。
+    # 这是断言口径 bug，不是 facet_tags 丢了（串行能过纯属 size==1 无分区）。
+    all_vals = np.concatenate(MPI.COMM_WORLD.allgather(np.asarray(back.values)))
+    assert set(np.unique(all_vals).tolist()) == {7}
+    # 且数量必须与写入时一致（adios4dolfinx 并行下会把 rank 交界的 ghost facet
+    # 也读回来，实测轻量算例 4→5、真实配置 TOP 820→826）。
+    # 已定量证明那些 ghost **不被 ds(tag) 计入**（D-68 问题 31 续：
+    # 两套 tag 的 ∫1ds 与 ∫x ds 相对差全部精确 0.000e+00），故这里只要求
+    # 「不少于」而不是「等于」，并要求 tag 值集合正确。
+    n_back = MPI.COMM_WORLD.allreduce(int(back.indices.size), op=MPI.SUM)
+    assert n_back >= n_tagged, (
+        "读回的 facet 数 (%d) 少于写入时 (%d)，面标签真的丢了" % (n_back, n_tagged))

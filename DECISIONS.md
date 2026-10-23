@@ -6361,3 +6361,55 @@ ghost，是否真的被 `ufl.Measure("ds", subdomain_data=facet_tags)` 计入，
 （`-n 1` 下 `read_meshtags` 完全正常，实测串行该用例通过），
 同时按 (a) 做去重修复并加一个并行续跑的回归测试。
 **待确认。**
+
+### 定量结果（用户 2026-10-24 要求「先定量 ghost facet 的影响」）：**对积分零影响**
+
+`data/_probe_ghost_effect.py` 在同一张**读回网格**上，用两套 tag 各积一次分：
+
+- A = 读回的 `facet_tags`（含 ghost）
+- B = 在同一张网格上用 `locate_entities_boundary` **重新生成**的 tag
+  （即生产 `resume=False` 走的那条路）
+
+量两个积分：`∫_{tag} 1 ds`（该面总长度）与 `∫_{tag} x ds`（对坐标的矩，
+能抓「tag 赋错面」）。`h_fine` = 100 µm 与 50 µm 各跑一次，`mpirun -n 6`：
+
+```
+面      读回 tag L            重新生成 tag L        相对差
+TOP     1.0000000000e-02     1.0000000000e-02     0.000e+00
+LEFT    3.7500000000e-03     3.7500000000e-03     0.000e+00
+RIGHT   3.7500000000e-03     3.7500000000e-03     0.000e+00
+BOTTOM  1.0000000000e-02     1.0000000000e-02     0.000e+00
+（∫x 一栏同样全部 0.000e+00；50 µm 档复验亦同）
+```
+
+解析值核对：TOP/BOTTOM 长 = `width` = 10 mm、LEFT/RIGHT 高 = `depth` = 3.75 mm，
+`∫x` 在 TOP/BOTTOM 上为 0（关于 0 对称）、在 LEFT/RIGHT 上为 ±`depth·width/4`。
+**全部对得上，且两套 tag 逐位相同。**
+
+机理：`ufl.Measure("ds", domain=msh, subdomain_data=ft)` 装配时**只遍历本 rank
+拥有的单元**的 facet。多出的 ghost facet，其相邻单元归邻居 rank 所有，
+所以本 rank 根本不会积它。**meshtags 里多一条记录，但积分域一字不差。**
+
+### 问题 31 的结论修正
+
+| 项 | 修正前 | 修正后 |
+|---|---|---|
+| `BLOCK_TOP` 多 6 个 facet | 接触面积分有害，`ds(TOP)` 积分域变大 | **积分域不变**，接触压力/摩擦力不受影响 |
+| `BLOCK_BOTTOM` 多 2 个 | 有害 | **无影响** |
+| DirichletBC（LEFT/RIGHT/BOTTOM） | 幂等无害 | 幂等无害（且这三个面本来就一致） |
+| 端面 Neumann 力（RIGHT） | 无害 | 无害（实测一致） |
+
+**→ 6.6.3 的并行续跑工况可以跑**，`facet_tags` 的 ghost 多读不会改变任何积分量。
+问题 30 续 2 修好 GC 死锁后，`mpirun -n 6` 的续跑路径已通畅。
+
+### 仍建议做的两件事（不再是 blocker）
+
+1. **`tests/test_checkpoint.py::test_facet_tags_survive_the_round_trip` 的断言要全局化**
+   （陷阱 3）：现写法 `assert set(np.unique(back.values).tolist()) == {7}` 是
+   **rank 局部**的 —— 某些 rank 读回 0 个 facet，`np.unique` 得空集就挂。
+   应改成对全局量断言（`allreduce` 汇总各 rank 的 values 后再 `unique`）。
+   这是纯粹的测试口径 bug，串行能过纯属 `size==1` 时没有分区。
+2. **给 `checkpoint.read_facet_tags` 加去重**（可选，非必需）：按 `indices`
+   的全局唯一性去掉 ghost，让 meshtags 结构与 `resume=False` 严格一致。
+   不影响任何积分结果，但能让「读回 vs 重新生成」在结构上也逐位相同，
+   便于将来做更强的回归测试。
