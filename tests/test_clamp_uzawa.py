@@ -110,12 +110,17 @@ def _free_support(ft, msh):
         bcs = [fem.dirichletbc(
             np.zeros(1, dtype=np.float64)[0],
             fem.locate_dofs_topological(Vx, fdim, ft.find(BLOCK_LEFT)), Vx)]
-        dofs_y = fem.locate_dofs_topological(Vy, fdim, ft.find(BLOCK_BOTTOM))
-        coords = V.tabulate_dof_coordinates()
-        cand = dofs_y[dofs_y < Vy.dofmap.index_map.size_local]
+        # ⚠ 必须在**独立的标量空间**上选点，不能用 V.tabulate_dof_coordinates()
+        # （D-68 问题 33 续 9）：dofs_y 是 Vy 子空间的编号，而 V 的坐标行按 block
+        # 交错，两个编号空间不同。实测同一批 41 个底边 dof，coords_V[cand, 1]
+        # 只有 0/41 落在底边上 —— 取到的全是错的坐标。
+        Vs = fem.functionspace(msh, ("Lagrange", 1))
+        dofs_s = fem.locate_dofs_topological(Vs, fdim, ft.find(BLOCK_BOTTOM))
+        coords_s = Vs.tabulate_dof_coordinates()
+        cand = dofs_s[dofs_s < Vs.dofmap.index_map.size_local]
         if cand.size:
-            i = int(np.argmin(np.abs(coords[cand, 0])))
-            x_best, dof_best = float(abs(coords[cand[i], 0])), int(cand[i])
+            i = int(np.argmin(np.abs(coords_s[cand, 0])))
+            x_best, dof_best = float(abs(coords_s[cand[i], 0])), int(cand[i])
         else:
             x_best, dof_best = float("inf"), -1
         owner = min(msh.comm.allgather((x_best, dof_best, msh.comm.rank)))

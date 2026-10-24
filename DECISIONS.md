@@ -7202,3 +7202,84 @@ ghost、集合操作），但**具体机理尚未定位** —— 不能凭「都
 若 ghost 未同步而某处读了整条 `x.array`（含 ghost），就会把别的 rank 的旧值/垃圾值
 当成自己的 —— 这正好能解释「串行 0、并行 1.0」。**未证实，只是线索。**
 
+
+## D-68 问题 33 续 9：**并行机理定位成功** —— `end_bcs` 的编号空间错配，单点约束打在网格内部（2026-10-25）
+
+用户批准「定位并行的具体机理」。**根因已找到，是生产 bug**，不是分区/ghost 问题。
+
+### 定位路径
+
+1. **轻量探针**（`data/_probe_par_light.py`，`mpirun -n 6`）：`max_d = 1.0` 由
+   **1 个** dof 造成，位置 `(-0.004074, -0.00375)`，只在 rank 0。
+   （此前以为「整片区域饱和」，实际是孤立单点。）
+2. **串行对照**：同一 config 串行 `max_d = 0`，且 `end_bcs` 选出的点也不同
+   （串行 `(-0.000256, -0.000009)` vs 并行 `(-0.002515, -0.000109)`）。
+3. **编号空间核对**（`data/_probe_true_coord.py`）：以**标量空间**为可信基准，
+   底边 41 个节点 y 全 = -0.00375、`|x|` 最小 = 0.000000。而 `end_bcs` 用的
+   `coords_V[cand, 1]` ∈ [-0.003404, -0.000148]，**0/41 落在底边上**。
+
+### 根因
+
+`clamp_case.py` 的 `end_bcs`（free 构型）原实现：
+
+```python
+dofs_y = fem.locate_dofs_topological(Vy, fdim, facet_tags.find(BLOCK_BOTTOM))
+coords  = V.tabulate_dof_coordinates()        # ← 父空间 V 的坐标行
+cand    = dofs_y[dofs_y < Vy.dofmap.index_map.size_local]
+i = int(np.argmin(np.abs(coords[cand, 0])))   # ← 用 Vy 编号索引 V 的行
+```
+
+`cand` 是 **`Vy = V.sub(1)` 子空间**的 dof 编号，而 `coords` 的行号是
+**混合空间 V** 的编号 —— 两者不是同一个编号空间（V 的 dof 按 block 交错：
+Vx 走偶数行、Vy 走奇数行）。注释里还写着「坐标从父空间 V 取（子空间不能
+tabulate）」—— **那个前提是错的**，后果就是取到一堆无关坐标。
+
+于是 `argmin` 选出一个**网格内部**的任意点（实测串行 `(0.000024, -0.001109)`），
+BC 照建、不报错，只是约束在错位置。后果有两条：
+
+  1. 该处没提供应有的竖向反力；
+  2. 单点约束 + 集中反力制造**应力奇异** ⇒ ψ⁺ 局部爆炸 ⇒ d 饱和到 1
+     ⇒ `max_d = 1.0` 而 `depth_max` 恒为 0（**假损伤**）。
+
+**为什么只在并行下暴露**：选出的错点随分区而变（串行与并行选出不同的点），
+串行时那个点恰好不在驱动力大的位置，并行时落到了 ψ⁺ 爆炸处。
+这解释了续 8 的「串行 0、并行 1.0」。
+
+### 修复
+
+CG1 的 dof 与节点一一对应，故改为**在同阶独立标量空间上** locate 底边、
+取 `|x|` 最小的节点编号，该编号可直接用于 `Vy`：
+
+```python
+Vs      = fem.functionspace(msh, ("Lagrange", 1))
+dofs_s  = fem.locate_dofs_topological(Vs, fdim, facet_tags.find(BLOCK_BOTTOM))
+coords_s = Vs.tabulate_dof_coordinates()
+```
+
+实测选出节点 1087，坐标 `(-0.000000, -0.003750)` = 底边中点，`|x| = 0`（正确）。
+
+同一 bug 的三处副本一并修：
+  - `src/pfwire/clamp_case.py:end_bcs`（生产）
+  - `tests/test_clamp_loads.py:_end_bcs`（测试副本，注释同样写错）
+  - `tests/test_clamp_uzawa.py:_free_support`（测试副本）
+
+（另核查 `tests/test_failure.py:408`、`contact.py:805/889`、
+`obstacle_contact.py:141` 用的都是标量空间本身，口径正确，未动。）
+
+### 守卫测试
+
+`tests/test_clamp_loads.py::test_bottom_midpoint_bc_really_sits_on_the_bottom_edge`：
+直接核对**被约束 dof 的坐标**是否真在底边（y = -H）且 `|x|` 为底边最小值，
+**不依赖编号映射**。已做反向验证：把实现改回旧版，测试报
+`y = -0.000281，应为 -0.00375`（1 failed）；改回修复后 7 passed / 1 skipped。
+
+这个 bug 之所以危险，正因为它**不报错** —— 坐标取错后 argmin 仍给一个点，
+BC 照建，只是约束在错位置。只有直接核对坐标才能发现。
+
+### 待验证
+
+修复后重跑无摩擦基准（`bash scripts/run_mu0_fresh.sh`）**进行中**。
+预期：`max_d` 从 1.0 降为 0（或至少 `depth_max` 开始有意义地变化），
+且 `W'` 搜索的 δ 可能改变（BC 位置变了，反力分布随之变）。
+按硬约束 6，未出结果前不声称 6.6.3 已推进。
+

@@ -226,14 +226,22 @@ def _end_bcs(V, msh, ft):
     bcs = [fem.dirichletbc(default_scalar_type(0.0),
                            fem.locate_dofs_topological(Vx, fdim, ft.find(BLOCK_LEFT)),
                            Vx)]
-    # 底边中点：单个节点、只压 y。坐标从父空间 V 取（子空间不能 tabulate）。
-    dofs_y = fem.locate_dofs_topological(Vy, fdim, ft.find(BLOCK_BOTTOM))
-    coords = V.tabulate_dof_coordinates()
-    nloc = Vy.dofmap.index_map.size_local
-    cand = dofs_y[dofs_y < nloc]
+    # 底边中点：单个节点、只压 y。
+    # ⚠ **必须在独立的标量空间上选点**，不能用 V.tabulate_dof_coordinates()
+    # （D-68 问题 33 续 9）。原注释写「坐标从父空间 V 取（子空间不能 tabulate）」
+    # —— 那个前提是错的：`locate_dofs_topological(Vy, ...)` 返回的是 Vy 子空间的
+    # dof 编号，而 V 的坐标行号按 block 交错（Vx 走偶数行、Vy 走奇数行），
+    # 两者不是同一个编号空间。实测同一批 41 个底边 dof：
+    #     coords_V[cand, 1] ∈ [-0.003404, -0.000148]  ← **0/41 落在底边上**
+    # 即取到的全是错的坐标。CG1 的 dof 与节点一一对应，故在同阶标量空间上
+    # locate 再取节点编号，该编号可直接用于 Vy。
+    Vs = fem.functionspace(msh, ("Lagrange", 1))
+    dofs_s = fem.locate_dofs_topological(Vs, fdim, ft.find(BLOCK_BOTTOM))
+    coords_s = Vs.tabulate_dof_coordinates()
+    nloc = Vs.dofmap.index_map.size_local
+    cand = dofs_s[dofs_s < nloc]
     if cand.size:
-        # dofs_y 是 Vy（标量子空间）节点编号；父空间 V 的对应节点坐标是 coords[i]
-        xs = np.abs(coords[cand, 0])
+        xs = np.abs(coords_s[cand, 0])
         i = int(np.argmin(xs))
         x_best, dof_best = float(xs[i]), int(cand[i])
     else:
@@ -246,6 +254,68 @@ def _end_bcs(V, msh, ft):
             np.array([owner[1]], dtype=np.int32), Vy))
     return bcs
 
+
+def test_bottom_midpoint_bc_really_sits_on_the_bottom_edge(tmp_path):
+    """守卫：free 构型的单点 u_y 约束必须真的落在**底边**上（D-68 问题 33 续 9）。
+
+    原实现用 ``V.tabulate_dof_coordinates()[cand]`` 取坐标，而 ``cand`` 是
+    ``Vy = V.sub(1)`` 子空间的 dof 编号 —— 混合空间 V 的坐标行按 block 交错
+    （Vx 走偶数行、Vy 走奇数行），两个编号空间不同。实测同一批 41 个底边 dof：
+
+        coords_V[cand, 1] ∈ [-0.003404, -0.000148]   ← 0/41 落在底边（y = -H）
+
+    于是 argmin 选出一个**网格内部**的任意点，BC 照建、不报错，只是约束在错位置。
+    后果：既没提供竖向反力，又制造应力奇异 —— 无摩擦基准的 max_d 从 0 跳到 1.0
+    而 depth_max 恒为 0（假损伤），且只在 mpirun -n 6 下复现、串行不复现
+    （分区不同 → 选出的错点不同）。
+
+    本用例直接核对被约束 dof 的坐标，**不依赖编号映射**：
+    把该 dof 的值置 1、其余 0，插值出这个「基函数」在底边处的值 ——
+    若 dof 真在底边，则底边上的值应≈1。
+    """
+    import numpy as np
+    import ufl
+    from dolfinx import default_scalar_type, fem
+
+    from pfwire.mesh import BLOCK_BOTTOM
+
+    msh, _ct, ft = _small_mesh(tmp_path)
+    V = fem.functionspace(msh, ("Lagrange", 1, (2,)))
+    bcs = _end_bcs(V, msh, ft)
+
+    assert len(bcs) == 2, "free 构型应有 2 个 BC（左端 u_x + 底边单点 u_y）"
+    # 第二个 BC 是底边单点
+    parts = bcs[1].dof_indices()
+    idx = np.asarray(parts[0])
+    assert idx.size == 1, "底边 BC 应是单点约束，收到 %d 个 dof" % idx.size
+
+    # 该 dof 的坐标：Vy 子空间的编号，用独立标量空间取（同一网格同阶，
+    # CG1 的 dof 与节点一一对应，编号可直接搬）
+    Vs = fem.functionspace(msh, ("Lagrange", 1))
+    coords = Vs.tabulate_dof_coordinates()
+    node = int(idx[0])
+    x_dof, y_dof = float(coords[node, 0]), float(coords[node, 1])
+
+    H = 3.75e-3      # 块体深度（与 _mesh 一致）
+    if MPI.COMM_WORLD.rank == 0:
+        print("  底边单点 dof = %d，坐标 = (%.6f, %.6f)" % (node, x_dof, y_dof))
+
+    # 判据 1：必须在底边上（y = -H）
+    assert abs(y_dof - (-H)) < 1.0e-9, (
+        "被约束的 dof 不在底边上：y = %.9f，应为 %.9f。"
+        "这是 D-68 问题 33 续 9 的编号空间错配 bug（Vy 编号 vs V 坐标行）"
+        % (y_dof, -H))
+
+    # 判据 2：必须接近 x = 0（底边中点；网格对称时 |x| 最小 = 0）
+    x_bottom = np.abs(coords[:, 0])
+    # 只统计底边节点
+    fdim = msh.topology.dim - 1
+    d_bottom = fem.locate_dofs_topological(Vs, fdim, ft.find(BLOCK_BOTTOM))
+    nb = Vs.dofmap.index_map.size_local
+    x_min_bottom = float(np.min(np.abs(coords[d_bottom[d_bottom < nb], 0])))
+    assert abs(abs(x_dof) - x_min_bottom) < 1.0e-12, (
+        "被约束的 dof 不是 |x| 最小的底边节点：|x| = %.9f，应为 %.9f"
+        % (abs(x_dof), x_min_bottom))
 
 #: T3c 的远场截面 x 坐标。取 x = 0：布局 C 的两条加密带在 x = ±a_contact
 #: (≈ ±2.92 mm)，40 mm 宽的单丝上 x = 0 距两端 20 mm（5.3 H）、距加密带 2.9 mm，

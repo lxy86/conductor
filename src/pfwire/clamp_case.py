@@ -687,15 +687,36 @@ def end_bcs(V, msh, facet_tags, *, bottom_fixed: bool = False,
                            fem.locate_dofs_topological(Vx, fdim, facet_tags.find(BLOCK_LEFT)),
                            Vx)]
     # 底边中点：并行下先各进程找 |x| 最小的底边节点，再取全局最优
-    dofs_y = fem.locate_dofs_topological(Vy, fdim, facet_tags.find(BLOCK_BOTTOM))
-    coords = V.tabulate_dof_coordinates()
-    cand = dofs_y[dofs_y < Vy.dofmap.index_map.size_local]
-    if cand.size:
-        i = int(np.argmin(np.abs(coords[cand, 0])))
-        x_best, dof_best = float(abs(coords[cand[i], 0])), int(cand[i])
+    #
+    # ⚠ **必须在独立的标量空间上选点，不能用 V.tabulate_dof_coordinates()**
+    # （D-68 问题 33 续 9）。原实现：
+    #     dofs_y = locate_dofs_topological(Vy, ...)
+    #     coords = V.tabulate_dof_coordinates()
+    #     i = argmin(|coords[cand, 0]|)
+    # `cand` 是 **Vy 子空间**的 dof 编号，而 `coords` 的行号是**混合空间 V** 的编号
+    # —— 两者不是同一个编号空间（V 的 dof 按 block 交错：Vx 的 0..n-1 与 Vy 的
+    # 0..n-1 分别对应 V 的偶数/奇数行）。实测同一批 41 个底边 dof：
+    #     coords_V[cand, 1] ∈ [-0.003404, -0.000148]  ← **0/41 落在底边上**
+    # 即取到的全是错的坐标，「|x| 最小」于是选出一个**网格内部的任意点**，
+    # 且该点随分区而变（串行 (-0.000256, -0.000009)、并行 (-0.002515, -0.000109)）。
+    # 后果：BC 打在一个非支撑点上，既没提供竖向反力，又制造应力奇异 ——
+    # 表现为无摩擦基准的 max_d 从 0 跳到 1.0 而 depth_max 恒为 0（假损伤，
+    # 且只在 mpirun -n 6 下复现，串行不复现）。
+    #
+    # 正确做法：CG1 的 dof 与节点一一对应，故在**同阶标量空间** Vs 上 locate
+    # 底边、取 |x| 最小的节点编号，该编号可直接用于 Vy（编号空间一致）。
+    # 实测：选出节点 1087，坐标 (-0.000000, -0.003750) = 底边中点，|x| = 0。
+    Vs = fem.functionspace(msh, ("Lagrange", 1))
+    dofs_s = fem.locate_dofs_topological(Vs, fdim, facet_tags.find(BLOCK_BOTTOM))
+    coords_s = Vs.tabulate_dof_coordinates()
+    n_s = Vs.dofmap.index_map.size_local
+    cand_s = dofs_s[dofs_s < n_s]
+    if cand_s.size:
+        i = int(np.argmin(np.abs(coords_s[cand_s, 0])))
+        x_best, node_best = float(abs(coords_s[cand_s[i], 0])), int(cand_s[i])
     else:
-        x_best, dof_best = math.inf, -1
-    owner = min(msh.comm.allgather((x_best, dof_best, msh.comm.rank)))
+        x_best, node_best = math.inf, -1
+    owner = min(msh.comm.allgather((x_best, node_best, msh.comm.rank)))
     if owner[2] == msh.comm.rank and owner[1] >= 0:
         bcs.append(fem.dirichletbc(default_scalar_type(0.0),
                                    np.array([owner[1]], dtype=np.int32), Vy))
