@@ -68,6 +68,16 @@ cd /root/pf-wire   # 指向 C:\Users\Administrator\Desktop\疲劳寿命 的 ASCI
    ```
    ⚠ 另注意 DG0 的 `x.array` 含 **ghost**：统计非零数/取 max 时必须先切 `[:size_local]`，
    否则同一单元被相邻 rank 重复计数（实测 6 rank 下 80 vs 76）。
+7. **从 Windows 侧进 WSL 跑脚本，循环变量与路径都会被 Git Bash 吃掉**（2026-10-24）。
+   两个已实测的形态：
+   - `wsl -d Ubuntu-26 bash -lc 'for w in 0.5 0.3; do ...; done'` —— 外层 Git Bash 先把
+     `$w` 展开成空，WSL 里拿到的是空串（于是 `float(sys.argv[1])` 收到 `''`/默认值，
+     **静默跑错参数**，比报错更难发现）。
+   - `wsl -d Ubuntu-26 bash /root/pf-wire/data/x.sh` —— Git Bash 的 MSYS 路径转换把
+     `/root/...` 改写成 `C:/Program Files/Git/root/...`，报 No such file or directory。
+   正确做法：脚本写到项目里（Windows 侧可见的那个 ASCII 软链），再用
+   `wsl -d Ubuntu-26 bash -lc 'bash /root/pf-wire/data/_sweep_omega.sh'` 跑。
+
 
 ## 工作流
 - 每个子任务：先给出函数签名和测试意图 → 用户确认 → 实现 → `pytest -q` → 汇报
