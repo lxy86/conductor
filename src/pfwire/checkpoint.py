@@ -113,6 +113,13 @@ def save(
     comm.Barrier()
 
     adios4dolfinx.write_mesh(path, solver.mesh)
+    # ⚠ 必须在此处 Barrier：write_mesh 在 rank 0 上明显慢于其他 rank
+    # （实测 mpirun -n 6 下其他 5 个 rank 已进入第一个 write_function 的
+    #  Append 元数据探测（io.Open(Read)），rank 0 才刚 write_mesh 返回）。
+    #  此时读者与写者同时打开同一个 BP4 目录 → 死锁（rc=124、零 MPI_Abort）。
+    #  上面 L113（rmtree 后）与下面 L125（全部写完后）都已有 Barrier，
+    #  唯独这一步漏了。加上后 rank 间对齐，探测读到的 .bp 已完整落盘。
+    comm.Barrier()
     for name in FIELD_NAMES:
         fn = _fields(solver, state)[name]
         if fn is None:
