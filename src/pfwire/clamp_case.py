@@ -541,7 +541,10 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
                        snes_atol_u=float(sv.get("snes_atol", 1.0e-6)),
                        # max_it 也要分开：6.1 的 60 是给 u 的，d 的 SNES 默认 200。
                        # 实测 d 在 53/60 次时报 -6（还没到 200 就被截断）。
-                       snes_max_it=int(sv.get("snes_max_it_d", 200)))
+                       snes_max_it=int(sv.get("snes_max_it_d", 200)),
+                       # Uzawa 内循环 u 的欠松弛（方案 h，D-68 问题 33 续 4）：
+                       # 默认 1.0 = 不松弛；开摩擦后 u 在 Uzawa 正反馈环里漂移时取 0.3~0.5。
+                       u_relaxation=float(sv.get("u_relaxation", 1.0)))
 
     def bcs_u(V):
         # 构型由 loading.support 选：simply_supported（两端简支）/ bottom（竖向支撑）

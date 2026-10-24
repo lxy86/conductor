@@ -99,6 +99,14 @@ solver:
   snes_max_it: 60
   # D-32：钳口工况在深裂处交错振荡，0.25 已由 6.5 基线标定（原注见 fretting_base.yaml）
   relaxation: 0.25
+  # 方案 h（D-68 问题 33 续 4）：Uzawa 内循环里对 **u** 欠松弛。
+  # 6.6.3 开摩擦后 u 的 Newton 解在 Uzawa 正反馈环里漂移
+  # （u -> s -> q -> 面力 -> u），实测同一轮三次迭代 s_dg 涨 13 个数量级。
+  # 因 s = τ·(u − u_prev_clamp) 而 u_prev_clamp 跨 Uzawa 循环冻结，
+  # 对 u 欠松弛把 Δu 压 ω 倍，Δs 同比压小，正反馈增益从 1 降到 ω。
+  # 不动点不变（收敛时 u_solved = u_iter_prev，凸组合不起作用）。
+  # 默认 1.0 = 不松弛（既有行为逐位不变）。
+  u_relaxation: 1.0
 model:
   # damage_region（D-68 路线 A，A-1 + A-b）：把 d 方程的驱动力限制在
   # 「实测单元尺寸 h ≤ damage_region_h_max」的可信区。区外 h/ℓ = 42~945，

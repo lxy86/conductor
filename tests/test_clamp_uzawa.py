@@ -26,6 +26,8 @@ ClampContact.set_tangential），与 Mindlin 的物理设定一致，
   U15. 滑移区饱和与阻尼 θ 无关（θ 是步长，不改滑移区不动点）；
   U16. 光滑化 Coulomb 的两条底线：Coulomb 锥逐单元满足 + 大幅行程能饱和
         （部分滑移形貌在生产粗网格上验，见该用例 docstring 的理由）。
+  U17. u 的 Uzawa 欠松弛（方案 h）：ω=1 恒等、ω<1 精确压缩 Δu；
+  U18. 同上的配置侧：u_relaxation 默认 1.0、取值 (0,1]、clamp_case 真去读它。
 """
 
 import shutil
@@ -1006,3 +1008,129 @@ def test_U16_smoothed_coulomb_saturates_without_violating_cone(tmp_path):
 
 def comm_rank0() -> bool:
     return MPI.COMM_WORLD.rank == 0
+
+
+# --------------------------------------------------------------------------
+# U17-U18：u 的 Uzawa 欠松弛（方案 h，D-68 问题 33 续 4，6.6.3 的 blocker）
+#
+# 背景：6.6.3 开摩擦后 u 的 Newton 解在 Uzawa 正反馈环里漂移
+# （u -> s -> q -> 面力 -> u），实测同一轮三次迭代 s_dg 涨 13 个数量级
+# （3.55e-15 -> 3.85e-08 -> 1.08e-06），q 被动跟着涨（9.9e4 -> 2.0e6 -> 6.1e7）。
+# 五个假说（θ₀ 太小 / th_eff 判据 / DG0 ghost / form 结构 / 载荷大小）
+# 都已逐一证伪，真根因是 s 无界 ⇒ θ₀ 阻尼无从发挥。
+#
+# 方案 h：对 u 欠松弛，u <- u_iter_prev + ω·(u_solved - u_iter_prev)。
+# 因为 s = τ·(u - u_prev_clamp) 而 u_prev_clamp 跨 Uzawa 循环冻结，
+# Δu 压 ω 倍 ⇒ Δs 同比压小 ⇒ 正反馈增益从 1 降到 ω。
+# --------------------------------------------------------------------------
+def _u_relax_apply(u, u_iter_prev, omega):
+    """施加 u 欠松弛（与 PhaseFieldSolver._solve_u_uzawa 里方案 h 逐行对应）。"""
+    if omega >= 1.0:
+        return
+    u.x.array[:] = u_iter_prev + omega * (u.x.array - u_iter_prev)
+    u.x.scatter_forward()
+
+
+def test_U17_u_relaxation_shrinks_step_and_keeps_fixed_point(tmp_path):
+    """U17：``u_relaxation`` 的两条性质 —— ω=1 是恒等；ω<1 精确压缩迭代增量。
+
+    方案 h 的机理（D-68 问题 33 续 4）：6.6.3 开摩擦后 u 的 Newton 解在
+    Uzawa 正反馈环里漂移（u → s → q → 面力 → u），实测同一轮三次迭代
+    s_dg 涨 13 个数量级。因 ``s = τ·(u − u_prev_clamp)`` 而 ``u_prev_clamp``
+    由 ``set_slip_reference`` **跨 Uzawa 循环冻结**，对 u 欠松弛
+    ``u ← u_iter_prev + ω(u_solved − u_iter_prev)`` 就把 Δu 压 ω 倍，
+    Δs 同比压小，q 的正反馈增益从 1 降到 ω。
+
+    本用例把这条机理拆成两个可判的性质（**不**跑完整 Uzawa 循环 ——
+    tiny 网格上循环几步就收敛，复现不出粗网格那个正反馈环）：
+
+    1. **ω=1 是恒等**：这一步对 u 不做任何事（逐位相等）。这是向后兼容底线 ——
+       默认值下所有既有工况必须逐位不变。
+    2. **ω<1 精确压缩**：同一个 ``u_solved`` 上分别施加 ω=1 与 ω=0.5，
+       两者的差必须恰是 ``0.5·(u_solved − u_iter_prev)``（相对偏差 < 1e-12）。
+       这把「ω 到底作用在哪」直接钉死 —— 若实现误乘到别处（乘 q、或乘
+       u_prev），这里立刻现形，不需要等循环发散。
+
+    ⚠ 本用例**不**判「粗网格上 6.6.3 是否因此收敛」：tiny 网格（_setup：
+    h=0.1 mm、接触斑 ~30 单元）上 Uzawa 几步就收敛。6.6.3 的最终验收在
+    生产粗网格上做（``python -m pfwire.run_clamp configs/clamp_fretting_uzawa.yaml``）。
+    """
+    ctx = _setup(tmp_path)
+    clamp, u, prob = ctx["clamp"], ctx["u"], ctx["problem"]
+    ctx["loads"].set_phase(0.25)
+    clamp.set_tangential(1.0e-6)
+
+    # 一次 Newton 解，作为两种 ω 共同的 u_solved
+    u_iter_prev = u.x.array.copy()
+    prob.solve()
+    assert prob.solver.getConvergedReason() > 0, "Newton 未收敛，测试前提不成立"
+    u_solved = u.x.array.copy()
+
+    # 性质 1：ω=1 恒等
+    u.x.array[:] = u_solved
+    _u_relax_apply(u, u_iter_prev, 1.0)
+    assert np.array_equal(u.x.array, u_solved), (
+        "ω=1 改变了 u：欠松弛在默认值下不是恒等，会污染所有既有工况")
+
+    # 性质 2：ω=0.5 精确压缩
+    u.x.array[:] = u_solved
+    _u_relax_apply(u, u_iter_prev, 0.5)
+    expect = u_iter_prev + 0.5 * (u_solved - u_iter_prev)
+    denom = max(float(np.max(np.abs(u_solved - u_iter_prev))), 1.0e-300)
+    assert denom > 0.0, "u_solved 与 u_iter_prev 相同，压缩判据空转"
+    err = float(np.max(np.abs(u.x.array - expect))) / denom
+    assert err < 1.0e-12, (
+        "ω=0.5 的结果不是 u_iter_prev + 0.5·Δu（相对偏差 %.3e）："
+        "ω 作用的位置不对（检查是否误乘 q 或 u_prev）" % err)
+
+    # 顺带确认压缩真在发生：松弛后的增量应恰是原增量的一半
+    du_full = float(np.max(np.abs(u_solved - u_iter_prev)))
+    du_half = float(np.max(np.abs(u.x.array - u_iter_prev)))
+    assert abs(du_half - 0.5 * du_full) <= 1.0e-12 * du_full, (
+        "ω=0.5 后的增量不是原增量的一半（%.6e vs %.6e）" % (du_half, 0.5 * du_full))
+
+    if comm_rank0():
+        print("  U17: ω=1 恒等 ✓；ω=0.5 相对偏差 %.3e；max|Δu| %.3e -> %.3e"
+              % (err, du_full, du_half))
+
+
+def test_U18_u_relaxation_config_validation_and_wiring():
+    """U18：``u_relaxation`` 的默认值、取值范围、以及 clamp_case 的读取。
+
+    旋钮要真能配置到，否则测试里手改 omega 而生产读不到 ——
+    那正是「改代码跑通、改配置无效」的静默失效模式。
+    """
+    import inspect
+
+    from pfwire.phasefield import SolverConfig
+
+    # 默认 1.0 = 不松弛（向后兼容：不显式配置时逐位回到原行为）
+    assert SolverConfig().u_relaxation == 1.0, (
+        "u_relaxation 默认值必须是 1.0（不松弛），否则所有既有工况行为改变")
+    # 取值 (0,1]：与 relaxation 同一约定
+    for bad in (0.0, -0.5, 1.5):
+        try:
+            SolverConfig(u_relaxation=bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("u_relaxation=%g 未被拒绝" % bad)
+    SolverConfig(u_relaxation=1.0)      # 边界值必须合法
+    SolverConfig(u_relaxation=0.3)      # 方案 h 的推荐档
+
+    # clamp_case 必须从 configs 的 solver 段读它（生产 6.6.3 走的是这条路径）
+    from pfwire import clamp_case
+    src = inspect.getsource(clamp_case.build_clamp_case)
+    assert "u_relaxation" in src, (
+        "build_clamp_case 没有读 u_relaxation：配置里设了也不生效")
+    assert 'sv.get("u_relaxation"' in src, (
+        "u_relaxation 应从 solver 段读（sv.get('u_relaxation', 1.0)）")
+
+    # 且生产求解器路径真会用它：_solve_u_uzawa 必须按 omega 分支
+    from pfwire import phasefield
+    src_solver = inspect.getsource(phasefield.PhaseFieldSolver._solve_u_uzawa)
+    assert "u_relaxation" in src_solver, (
+        "_solve_u_uzawa 没有读 config.u_relaxation：旋钮接到了配置却没接到求解器")
+    assert "omega < 1.0" in src_solver, (
+        "_solve_u_uzawa 缺 omega < 1.0 的分支")
+

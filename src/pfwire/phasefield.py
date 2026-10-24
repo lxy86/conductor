@@ -582,6 +582,18 @@ class SolverConfig:
     默认 1.0（不松弛）。极限点附近交错格式可能**振荡**（‖Δd‖ 停在 1e-2 量级不降），
     此时取 omega ~ 0.5 可压住振荡；不动点不变，故不影响解的正确性。
     因 d_prev 与 d_solved 都 >= d_old，凸组合仍满足不可逆下界。"""
+    u_relaxation: float = 1.0
+    """Uzawa 内循环中 u 的松弛因子：u <- u_iter_prev + omega_u (u_solved - u_iter_prev)。
+    默认 1.0（不松弛）。**专治开摩擦后 u 在 Uzawa 正反馈环里漂移**
+    （D-68 问题 33 续 3）：s = τ·(u − u_prev_clamp) 完全由 u 决定，
+    而 u 的 Newton 解受 q 面力影响，q 又由 s 更新 ——
+    s↑ → q↑ → 面力↑ → u↑ → s↑。实测 s 在同轮 Uzawa 的三次迭代里涨
+    13 个数量级（3.55e-15 → 3.85e-08 → 1.08e-06），θ₀ 阻尼按 ε_t·C = 2
+    设计、只在 s 有界时有效，s 无界增长时无从发挥。
+    对 u 欠松弛把每轮 Δu 压 omega_u 倍，s 的增量同比压小，
+    正反馈增益从 1 降到 omega_u。**不动点不变**（收敛时
+    u_solved = u_iter_prev，凸组合不起作用），故不影响解的正确性。
+    只在 u_solver='newton' 且 contact.has_uzawa() 时生效。"""
 
     direct_solver_options: dict[str, object] = field(
         default_factory=lambda: {
@@ -598,6 +610,8 @@ class SolverConfig:
             raise ValueError("tol_d 必须为正、max_iter >= 1")
         if not 0.0 < self.relaxation <= 1.0:
             raise ValueError("relaxation 须在 (0,1] 内，收到 %r" % (self.relaxation,))
+        if not 0.0 < self.u_relaxation <= 1.0:
+            raise ValueError("u_relaxation 须在 (0,1] 内，收到 %r" % (self.u_relaxation,))
         if self.u_linesearch not in ("bt", "basic", "l2", "cp", "nleqerr"):
             raise ValueError(
                 "u_linesearch 只能是 PETSc 的 bt/basic/l2/cp/nleqerr，收到 %r"
@@ -1027,10 +1041,21 @@ class PhaseFieldSolver:
         """
         assert self.contact is not None and self.contact.has_uzawa()
         eps_t = self.contact.eps_t
+        omega = self.config.u_relaxation
 
         self.uzawa_iters = 0
         for it in range(1, max_it + 1):
+            if omega < 1.0:
+                u_iter_prev = self.u.x.array.copy()
             self._solve_u_once()
+            if omega < 1.0:
+                # 欠松弛：u ← u_iter_prev + ω·(u_solved − u_iter_prev)。
+                # s = τ·(u − u_prev_clamp) 完全由 u 决定（clamp.u_prev 跨本循环冻结），
+                # 故 Δu 被压 ω 倍 ⇒ Δs 同比被压 ⇒ q = clip(q − θε_t·s) 的正反馈
+                # 增益从 1 降到 ω。不动点不变（收敛时 u_solved = u_iter_prev）。
+                # 见 DECISIONS.md D-68 问题 33 续 4。
+                self.u.x.array[:] = u_iter_prev + omega * (self.u.x.array - u_iter_prev)
+                self.u.x.scatter_forward()
             rel_change = self.contact.uzawa_update(self.u, eps_t=eps_t)
             self.uzawa_iters = it
             if rel_change <= tol:
