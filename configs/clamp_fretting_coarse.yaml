@@ -109,12 +109,16 @@ solver:
   # 粗网格 6.6.3 第一个循环子步因此 SNES -5（blocker B，续 13）。
   # 单体用联立 Jacobian 一次解出，实测 13 步收敛、Coulomb 锥精确满足。
   #
-  # ⚠ 当前**未启用**：部分滑移形貌尚未达成（续 17 实测接触斑整体滑移，
-  #   幅值 8 倍变化 Q 只动 0.06%），那是 blocker A（幅值 vs mu*p/eps_t 容量），
-  #   不是求解器问题。留着这个开关，等幅值口径定了再上。
-  monolithic_friction: false
+  # ⚠ 当前**已启用**（2026-10-25 续 18）：粗网格串行 6.6.3 试跑中。
+  #   部分滑移形貌尚未达成（续 17 实测接触斑整体滑移，幅值 8 倍变化 Q 只动
+  #   0.06%），那是 blocker A（幅值 vs mu*p/eps_t 容量），不是求解器问题。
+  #   留此开关以便随时切回交错 Uzawa 做对照。
+  monolithic_friction: true
   # 单体 Newton 的容差与迭代上限（只在上面为 true 时生效）
-  monolithic_tol: 1.0e-8
+  # ⚠ tol 不要小于 1e-3：残差地板 ~7e-4（相对 mu p ~1.5e8 是 4.6e-12，
+  #   物理上已收敛）。实测 tol<=1e-4 会跑满 60 次迭代仍报 max_it，
+  #   慢 5 倍而答案相同（续 18 的 tol 敏感性表见 SolverConfig.monolithic_tol）。
+  monolithic_tol: 1.0e-3
   monolithic_max_it: 50
 model:
   # damage_region（D-68 路线 A）：常态取 3ℓ = 6 µm 把驱动力限制在可信区。

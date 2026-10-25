@@ -77,10 +77,31 @@ class BlockNewtonResult:
 
 
 def _to_csr(petsc_mat) -> sp.csr_matrix:
-    """PETSc Mat -> scipy csr（**必须先 assemble**，否则 error 73）。"""
+    """PETSc Mat -> scipy csr，**用 ``getValuesCSR`` 永不稠密化**。
+
+    ⚠⚠⚠ **不要用 ``getValues(range(r), range(c))``**（续 18 实测的坑）：
+    petsc4py 会为它**一次性分配 r×c 的稠密数组**。粗网格 6.6.3 上
+    ``J_uu`` 是 61910×61910 ⇒ **30.66 GB**，分配失败后 numpy 报的却是
+
+        ValueError: negative dimensions are not allowed
+
+    （整数溢出成负维数）—— 完全指不到病因。而 tiny 网格 10322×10322
+    只要 0.85 GB，所以**tiny 绿、粗网格红**，且「四块尺寸全对」
+    （尺寸是 PETSc 报的，与取数据无关）。这个坑花了两轮才定位。
+
+    ``getValuesCSR`` 直接给 (indptr, indices, data) 三元组，
+    实测与 ``getValues`` 的结果**逐位一致**（最大差 0.000e+00）。
+    """
     petsc_mat.assemble()
     r, c = petsc_mat.getLocalSize()
-    return sp.csr_matrix(petsc_mat.getValues(range(r), range(c)))
+    if r <= 0 or c <= 0:
+        raise ValueError(
+            "Jacobian 块是空的（本地尺寸 %d x %d）：几乎肯定是在接触斑建立前"
+            "调了单体路径。延拓期 μ=0（set_mu(None)）时 q ≡ 0、没有 Coulomb "
+            "投影要解，应走交错格式。判据用 has_friction（运行时）而非 "
+            "has_friction_at_build（编译期）。" % (r, c))
+    indptr, indices, data = petsc_mat.getValuesCSR()
+    return sp.csr_matrix((data, indices, indptr), shape=(r, c))
 
 
 def solve_block_newton(u, q, *, fu_form, fq_form, juu, juq, jqu, jqq,
@@ -129,17 +150,39 @@ def solve_block_newton(u, q, *, fu_form, fq_form, juu, juq, jqu, jqq,
         if rn < cfg.tol:
             return BlockNewtonResult(True, it, rn, history, "converged")
 
-        # ---- 拼块 Jacobian ----
-        J = sp.bmat([[_to_csr(assemble_matrix(j_forms[0][0], bcs=[])),
-                      _to_csr(assemble_matrix(j_forms[0][1], bcs=[]))],
-                     [_to_csr(assemble_matrix(j_forms[1][0], bcs=[])),
-                      _to_csr(assemble_matrix(j_forms[1][1], bcs=[]))]], format="lil")
+        # ---- 拼块 Jacobian（**全程 CSR**，续 18 实测）----
+        # ⚠ 不要用 format="lil" 再逐行赋值：粗网格是 92390 x 92390，
+        # lil 的逐行 Python 循环 + 转置会慢到不可用（tiny 上看不出来）。
+        # 改成「先 CSR 拼块，再用稀疏方式把 BC 行替换成单位行」。
+        Juu = _to_csr(assemble_matrix(j_forms[0][0], bcs=[]))
+        Juq = _to_csr(assemble_matrix(j_forms[0][1], bcs=[]))
+        Jqu = _to_csr(assemble_matrix(j_forms[1][0], bcs=[]))
+        Jqq = _to_csr(assemble_matrix(j_forms[1][1], bcs=[]))
+        J = sp.bmat([[Juu, Juq], [Jqu, Jqq]], format="csr")
 
-        # ---- 手工施加 BC：BC 行改成单位行（该 dof 不再更新）----
-        for gd in g_bc:
-            J.rows[gd] = [int(gd)]
-            J.data[gd] = [1.0]
-        Jf = J.tocsr()[free][:, free]
+        # ---- 施加 BC：把 BC 行替换成单位行（全程稀疏）----
+        # ⚠ 不用 lil 逐行赋值（92390 阶上慢到不可用），也不用
+        # ``J.multiply(keep[:,None])``（会生成一个全新的同规模稀疏阵）。
+        # 直接用 CSR 三元组：保留**自由行**的非零元，再叠加 BC 位置的单位元。
+        if g_bc.size:
+            n = n_u + n_q
+            keep_row = np.ones(n, dtype=bool)
+            keep_row[g_bc] = False
+            # 逐元过滤：row_of_entry < n 时保留
+            row_of = np.repeat(np.arange(n), np.diff(J.indptr))
+            sel = keep_row[row_of]
+            data = J.data[sel]
+            indices = J.indices[sel]
+            # 重建 indptr（自由行保留原行元数，BC 行 0 个）
+            counts = np.diff(J.indptr).copy()
+            counts[g_bc] = 0
+            indptr = np.concatenate([[0], np.cumsum(counts)])
+            J = sp.csr_matrix((data, indices, indptr), shape=(n, n))
+            # 叠加 BC 位置的单位元
+            I_bc = sp.csr_matrix(
+                (np.ones(g_bc.size), (g_bc, g_bc)), shape=(n, n))
+            J = (J + I_bc).tocsr()
+        Jf = J[free][:, free]
 
         # ---- 线性求解（只在自由子块上）----
         try:

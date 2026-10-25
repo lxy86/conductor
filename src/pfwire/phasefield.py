@@ -616,12 +616,27 @@ class SolverConfig:
     （68 个接触单元只有 1 个黏着），幅值 8 倍变化 Q 只动 0.06%
     —— 那是续 7 的 blocker A（幅值 vs ``μp/ε_t`` 容量），不是求解器问题。
     """
-    monolithic_tol: float = 1.0e-8
+    monolithic_tol: float = 1.0e-3
     """单体 Newton 的收敛容差（自由 dof 上的残差 2-范数）。
 
-    只在 ``monolithic_friction=True`` 时生效。
-    ⚠ **不是越小越好**：d 的残差会掉到装配舍入地板上，u/q 的残差量级差
-    10 个量级（实测 u 段 1e2、q 段 1e-5），取一个统一的绝对容差会偏向大的一侧。
+    ⚠⚠ **不要按「越小越好」取**（续 18 实测，tiny 网格 15389 dof）：
+
+    ============  =======  ============  ==========  ======
+    tol           迭代数   最终残差      墙钟        结果
+    ============  =======  ============  ==========  ======
+    1e-2          12       7.28e-4       35 s        converged
+    1e-3          12       7.28e-4       33 s        converged
+    1e-4          60       7.04e-4       158 s       max_it
+    1e-6          60       7.04e-4       159 s       max_it
+    1e-8          60       7.04e-4       159 s       max_it
+    ============  =======  ============  ==========  ======
+
+    残差**地板**约 7e-4，而 μp ≈ 1.5e8 ⇒ 相对地板 = **4.6e-12**，
+    物理上早已收敛。绝对容差取到 1e-4 以下**永远达不到**，
+    只是把每个载荷步从 12 次迭代拖到 60 次（慢 5 倍，答案相同）。
+
+    ⇒ 容差应按**相对**量理解：残差 / μp < 1e-10 即够。
+      默认 1e-3 是实测能稳定收敛的最大档，再小就进无效迭代。
     """
     monolithic_max_it: int = 50
     """单体 Newton 的最大迭代数（默认 50）。"""
@@ -1039,7 +1054,17 @@ class PhaseFieldSolver:
         self._ensure_setup()
         if self.config.u_solver == "newton":
             if self.contact and self.contact.has_uzawa():
-                if getattr(self.config, "monolithic_friction", False):
+                # ⚠⚠ **还要判摩擦真的开着**（``has_friction``，运行时 μ > 0）：
+                # 延拓期是「form 里装着切向项但 μ = 0」（``set_mu(None)``），
+                # 那时 q ≡ 0、**没有 Coulomb 投影要解**。单体路径在 μ=0 下
+                # 会去装配一个空 Jacobian（实测 getLocalSize 负数、
+                # ``negative dimensions are not allowed``）—— 因为接触斑
+                # 还没建立，`_contact_cell_dofs` 取到空集。
+                # 判据是 **has_friction（运行时）**，不是
+                # has_friction_at_build（编译期，延拓期仍为 True）。
+                mono = (getattr(self.config, "monolithic_friction", False)
+                        and getattr(self.contact, "has_friction", True))
+                if mono:
                     return self._solve_u_monolithic()
                 return self._solve_u_uzawa()
             self._solve_u_once()
@@ -1053,8 +1078,8 @@ class PhaseFieldSolver:
                 return it, 0
         return max(1, fixed_point_iterations), flips
 
-    def _solve_u_monolithic(self, tol: float = 1.0e-8,
-                            max_it: int = 50) -> tuple[int, int]:
+    def _solve_u_monolithic(self, tol: float | None = None,
+                            max_it: int | None = None) -> tuple[int, int]:
         """**单体** Newton 解 (u, q) 混合系统（D-68 问题 33 续 18）。
 
         与 :meth:`_solve_u_uzawa`（交错格式）的区别：
@@ -1063,15 +1088,30 @@ class PhaseFieldSolver:
             实测 2000 次迭代 dq 恒 0.268 不收敛。
           - 单体：把 (u, q) 当一个系统，用**联立 Jacobian** 一次求解。
             黏着区靠 ``dF_q/du = ε_t·ds/du``（实测 1.20e11，中心差分验证）
-            把 u 钉住，系统非奇异。实测 13 步收敛。
+            把 u 钉住，系统非奇异。实测 12~13 步收敛。
 
-        ⚠ 走 :meth:`pfwire.clamp_contact.ClampContact.solve_monolithic`
-        （手工块 Newton），**不用** dolfinx 的多 form ``NonlinearProblem``
-        （续 17 坑 7 的两个 bug 见该方法 docstring）。
-
-        Returns ``(迭代数, 0)`` —— chi 翻转在 Newton 路径无意义。
+        ⚠ ``bind_monolithic_space`` 在这里**按需调用**（续 18 实测的必要修补）：
+        粗网格 6.6.3 首跑崩在 ``'ClampContact' object has no attribute
+        '_mono_bound'`` —— 生产 case builder 只调了 ``bind_slip_space`` /
+        ``bind_uzawa_space``，没调 ``bind_monolithic_space``。
+        放在这里而不是 case builder：开关是 solver 配置的事，
+        且本方法在解之前就该保证它成立（而不是让 AttributeError 在
+        solve 深处冒出来）。
         """
         assert self.contact is not None and self.contact.has_uzawa()
+
+        # 按需建混合空间（幂等）
+        if hasattr(self.contact, "bind_monolithic_space"):
+            self.contact.bind_monolithic_space(self.V_u)
+        if self.contact.mono_n_u == 0:
+            raise RuntimeError(
+                "bind_monolithic_space 没建起混合空间：检查 ClampContact 是否"
+                "开摩擦且已 bind_uzawa_space")
+
+        if tol is None:
+            tol = getattr(self.config, "monolithic_tol", 1.0e-3)
+        if max_it is None:
+            max_it = getattr(self.config, "monolithic_max_it", 50)
 
         def _elastic_external(v):
             """弹性 − 外载 − 法向接触（不含切向：切向在 F_q 与 q 面力里）。"""

@@ -235,6 +235,14 @@ class ClampContact:
         # 只有开摩擦时才建（mu is not None），否则为 None 避免白占内存。
         self.q: fem.Function | None = None
         self._uzawa_bound = False  # q 空间是否已绑定
+        # ---- 单体 Newton（方向 m）的状态 ----
+        # 在 __init__ 就置好（**不是惰性**）：调用方/测试可能先摸这些属性
+        # 再调 bind_monolithic_space，惰性置会留下 AttributeError 而不是
+        # 一句有意义的话（续 18 实测：粗网格 6.6.3 首跑崩在
+        # `'ClampContact' object has no attribute '_mono_bound'`）。
+        self._mono_bound = False      # bind_monolithic_space 是否被调用过
+        self._mono_n_u = 0            # 混合空间 u 段规模
+        self._mono_n_q = 0            # 混合空间 q 段规模
 
     # ---- 摩擦的运行时接口 ---------------------------------------------
     def bind_slip_space(self, V) -> None:
@@ -293,9 +301,14 @@ class ClampContact:
         ----------
         V : 求解器的位移空间（``Lagrange 1 (2,)``）。必须与 ``u`` 同空间。
         """
+        # ⚠ 先置标志再早退：``_mono_bound`` 表示「bind 已被调用过」，
+        # 不是「混合空间可用」。无摩擦/未绑 Uzawa 时它仍应为 True，
+        # 否则调用方（如 solve_monolithic）会拿 AttributeError 而不是
+        # 一句「这条路不该走」的报错（续 18 实测：粗网格 6.6.3 首跑即崩在这）。
+        self._mono_bound = True
+        self._mono_n_u = 0
+        self._mono_n_q = 0
         if not self.has_friction_at_build or not self._uzawa_bound:
-            return
-        if getattr(self, "_mono_bound", False):
             return
         import numpy as np
         from dolfinx import fem
@@ -305,7 +318,6 @@ class ClampContact:
         #: W 的本地规模（不含 ghost）。u 段在前、q 段在后。
         self._mono_n_u = int(n_u)
         self._mono_n_q = int(n_q)
-        self._mono_bound = True
 
     @property
     def mono_n_u(self) -> int:
@@ -480,7 +492,14 @@ class ClampContact:
         from pfwire.monolithic import BlockNewtonConfig, solve_block_newton
 
         if not self._mono_bound:
-            raise RuntimeError("先调 bind_monolithic_space(V)")
+            raise RuntimeError(
+                "先调 bind_monolithic_space(V)（单体路径的 dof 映射还没建）")
+        if self.mono_n_u == 0 or self.mono_n_q == 0:
+            # bind 被调用过但没建起规模：几乎总是「无摩擦/未绑 Uzawa」
+            raise RuntimeError(
+                "bind_monolithic_space 没建起混合空间（n_u=%d, n_q=%d）："
+                "单体路径只在开摩擦且已 bind_uzawa_space 时有意义"
+                % (self.mono_n_u, self.mono_n_q))
         if self.u_prev is None:
             raise RuntimeError("开摩擦后必须先 bind_slip_space(V)")
         if not self.has_uzawa():
