@@ -1511,18 +1511,20 @@ def test_M1_monolithic_space_dof_mapping_roundtrips(tmp_path):
 #   坑 2：ufl.conditional 吃掉分支导数 => dF_q/du 的 nnz 从 40536 掉到 0
 # --------------------------------------------------------------------------
 def test_M2_monolithic_jacobian_block_structure(tmp_path):
-    """M2（改）：如实断言当前的**块三角**结构与各块的健康度（续 16）。
+    """M2：联立 Jacobian 四块的结构与量级（方向 m 的 B 方案，续 17）。
 
-    ⚠⚠ 当前已知限制：``dF_q/du ≡ 0`` ⇒ J 是块三角
-    （``[[dF_u/du, dF_u/dq], [0, dF_q/dq]]``），单体在代数上退化为交错。
-    原因：p_dg/s_dg 是 fem.Function，值写进去的，UFL 依赖图里与 u 无关。
+    续 17 的关键实测（中心差分判据）：
 
-    曾试把 facet 表达式直接放进 dx 恢复耦合，**中心差分证明是伪影**：
-    符号导数给 1e-12~1e-10，差分给**精确 0**（6 列全不一致）。
-    即 facet 量进 dx 是「求值碰巧对、求导一定错」（坑 1 的本质）。
+    ==============  ============  ==========  ==========
+    写法            dF_q/du nnz  max&#124;.&#124;    FD 一致
+    ==============  ============  ==========  ==========
+    facet + dx      26568         1.57e-9    1/4（伪影）
+    facet + ds      260           **1.20e11** **4/4（真）**
+    DG0 场 + dx     0             —          无耦合（块三角）
+    ==============  ============  ==========  ==========
 
-    本测试把「dF_q/du 恒 0」这个现状**钉住**：
-    一旦有人真正恢复了耦合，这条会失败，从而提醒他更新 M2 与 DECISIONS。
+    ⇒ 本测试断言 B 方案（facet + ds）的**满块**结构：
+      ``dF_q/du`` 非零且量级 O(eps_t)（不是 1e-9 的伪影）。
     """
     import numpy as np
     import scipy.sparse as sp
@@ -1550,7 +1552,6 @@ def test_M2_monolithic_jacobian_block_structure(tmp_path):
     n_q = clamp.mono_n_q
 
     def _assemble(form, n_row, n_col):
-        # ⚠ 必须先 fem.form() 编译，否则拿到裸 ufl 表达式（无 _cpp_object）
         M = assemble_matrix(fem.form(form), bcs=[])
         M.assemble()
         return sp.csr_matrix(M.getValues(range(n_row), range(n_col)))
@@ -1564,56 +1565,129 @@ def test_M2_monolithic_jacobian_block_structure(tmp_path):
         print("  M2: nnz  dF_u/du=%d  dF_u/dq=%d  dF_q/du=%d  dF_q/dq=%d"
               % (A_uu.nnz, A_uq.nnz, A_qu.nnz, A_qq.nnz))
 
-    # --- 上三角两块必须非零 ---
-    assert A_uu.nnz > 0, "dF_u/du 全零"
+    # --- dF_u/dq 与 dF_q/du 必须非零（满块耦合）---
     assert A_uq.nnz > 0, "dF_u/dq 全零：q 没接进 u 的方程"
+    assert A_qu.nnz > 0, (
+        "dF_q/du 全零：退化成块三角。B 方案要求 facet + ds（续 17 实测："
+        "facet+dx 的 1.57e-9 是伪影，DG0+dx 恒 0，只有 facet+ds 是真的 1.2e11）")
 
-    # --- 已知限制：下三角恒 0（块三角）---
-    # 这不是 bug，是 DG0 场方案的代数后果。若有人恢复真耦合，这条失败并提醒。
-    assert A_qu.nnz == 0, (
-        "dF_q/du 现在非零（nnz=%d）！续 16 记录的块三角限制已被突破 —— "
-        "请确认它是**真的**耦合而非伪影（用中心差分验证），"
-        "并更新 M2 / DECISIONS.md。" % A_qu.nnz)
+    # --- 量级守卫：踩坑时是 1.57e-9，正确时 1e11 ---
+    max_qu = float(np.max(np.abs(A_qu.data)))
+    if comm_rank0():
+        print("       max|dF_q/du| = %.6e" % max_qu)
+    assert max_qu > 1.0e3, (
+        "max|dF_q/du| = %.3e 过小：几乎肯定踩了续 16 坑 1"
+        "（facet 量配了 ufl.dx 而非 ds）—— 那是静默失效" % max_qu)
 
-    # --- dF_q/dq 必须健康：无 NaN、值域在 [0,1] ---
+    # --- dF_q/dq 无 NaN、值域在 [0,1]（FB 导数的性质）---
     diag = A_qq.diagonal()
     assert not np.isnan(diag).any(), (
-        "dF_q/dq 出现 %d 个 NaN：eta 的 0/0 问题回来了（坑 5）" % int(np.isnan(diag).sum()))
-    assert diag.min() > -1.0e-6, "dF_q/dq 负对角元 %.3e：FB 导数符号错了" % diag.min()
+        "dF_q/dq 有 %d 个 NaN：eta 的 0/0 问题（坑 5）" % int(np.isnan(diag).sum()))
+    assert diag.min() > -1.0e-6, "dF_q/dq 负对角元 %.3e" % diag.min()
     assert diag.max() < 1.0 + 1.0e-6, (
-        "dF_q/dq 对角元 %.3f 超过 1：投影方程不是压缩映射" % diag.max())
+        "dF_q/dq 对角元 %.3f 超过 1：投影不是压缩映射" % diag.max())
     if comm_rank0():
-        print("       dF_q/dq 对角元范围 [%.6e, %.6e]（块三角结构）"
+        print("       dF_q/dq 对角元范围 [%.4e, %.4e]"
               % (float(diag.min()), float(diag.max())))
+
+    # --- dF_u/du 必须满（弹性 + 法向 + q 面力）---
+    assert A_uu.nnz > 0, "dF_u/du 全零"
+
+
+def test_M2b_facet_ds_is_the_real_derivative(tmp_path):
+    """M2b：``facet + ds`` 的 dF_q/du 经**中心差分**验证为真（续 17 的核心判据）。
+
+    ⚠⚠ **必须在真有耦合的列上验**（续 17 续 20 的教训）：
+    第一版随机选 3 列，结果全部 ``sym = 0`` 且 ``fd = 0`` ⇒ ``rel = 0``
+    「一致」—— 那是**假通过**（trivially equal），什么也没验到。
+    本测试先从符号 Jacobian 里挑非零列，再在这些列上做差分。
+
+    实测（h = 1e-8）：
+        facet + ds : sym = 1.2021e11, fd = 1.2021e11, rel = 3.1e-09  ✓
+        facet + dx : sym = 9.3e-16,  fd = 0,         rel = inf       ✗
+    """
+    import numpy as np
+    import scipy.sparse as sp
+    from dolfinx import fem
+    from dolfinx.fem.petsc import assemble_matrix, assemble_vector
+
+    ctx = _setup(tmp_path)
+    clamp, u, V = ctx["clamp"], ctx["u"], ctx["V"]
+    loads = ctx["loads"]
+
+    loads.set_phase(0.25)
+    clamp.set_tangential(1.0e-6)
+    _uzawa(ctx["problem"], clamp, u)
+
+    q_trial = ufl.TestFunction(clamp.q.function_space)
+    du = ufl.TrialFunction(V)
+    n_q = clamp.q.function_space.dofmap.index_map.size_local
+    n_u = V.dofmap.index_map.size_local * V.dofmap.index_map_bs
+
+    F_u_c, F_q = clamp.monolithic_residual(u, ufl.TestFunction(V), q_trial, None)
+    M = assemble_matrix(fem.form(ufl.derivative(F_q, u, du)), bcs=[])
+    M.assemble()
+    Asym = sp.csr_matrix(M.getValues(range(n_q), range(n_u)))
+
+    # **只挑真有耦合的列**
+    colsum = np.asarray(np.abs(Asym).sum(axis=0)).ravel()
+    cols_nz = np.nonzero(colsum > 0.0)[0]
+    assert cols_nz.size > 0, (
+        "dF_q/du 全零：B 方案的 facet+ds 没接上（退化成块三角）")
+    pick = cols_nz[np.argsort(-colsum[cols_nz])[:3]]
+
+    h = 1.0e-8
+    u_save = u.x.array.copy()
+    ok = 0
+    for c in pick:
+        fd = np.zeros(n_q)
+        for sgn in (+1, -1):
+            u.x.array[:] = u_save
+            u.x.array[c] += sgn * h
+            u.x.scatter_forward()
+            fd += sgn * assemble_vector(fem.form(F_q)).array[:n_q]
+        fd /= (2 * h)
+        sym = Asym[:, c].toarray().ravel()
+        sc, fc = float(np.max(np.abs(sym))), float(np.max(np.abs(fd)))
+        rel = abs(sc - fc) / max(sc, fc) if (sc > 0 and fc > 0) else float("inf")
+        if rel < 1.0e-2:
+            ok += 1
+    u.x.array[:] = u_save
+    u.x.scatter_forward()
+
+    if comm_rank0():
+        print("  M2b: 非零列 %d/%d，取 3 列做差分，一致 %d/3"
+              % (cols_nz.size, n_u, ok))
+    assert ok == len(pick), (
+        "dF_q/du 的符号导数与中心差分不一致（%d/%d）：facet 量配错了测度"
+        "（续 17 实测：facet+dx 全不一致，facet+ds 一致到 3e-9）" % (ok, len(pick)))
 # --------------------------------------------------------------------------
 # M3：单体 Newton 的解 == 交错 Uzawa 的收敛解（方向 m 的验收性质）
 #
 # 单体只改收敛路径、不改不动点。若这条不过，说明联立残差写错了 ——
 # 那比「跑不通」更糟：会静默给出另一个解。
 # --------------------------------------------------------------------------
-def test_M3_monolithic_status_report(tmp_path):
-    """M3（改）：如实报告单体路径的当前状态 —— **不是**验收通过。
+def test_M3_monolithic_newton_converges(tmp_path):
+    """M3：手工块 Newton 收敛，且 Coulomb 锥精确满足（方向 m 的 B 方案，续 17）。
 
-    ⚠⚠ 续 16 的关键实测结论：**单体与交错两条路当前都不可信**，
-    所以不能用「互相一致」当验收（两个错解可以互相一致，见记忆
-    ``two-bugs-masking-each-other`` 的教训）。
+    ⚠ 为什么走**手工块 Newton**：dolfinx 0.11 的多 form ``NonlinearProblem``
+    对混合系统有两个叠加的 bug（续 17 坑 7）：
+      (a) ``bcs_by_block`` 里 ``V.contains(bc.function_space)`` 抛
+          AttributeError（cpp 对象），异常在 PETSc 回调里被吞 ⇒ SNES
+          **什么都不做**就返回 -3、it=0；
+      (b) 即使 patch 掉 (a)，BC 的 dof 编号仍落到错的 block。
+    ⇒ 四块各自装配 + scipy 块矩阵 + 手工施加 BC。
 
-    交错路径：tiny 网格上**没有稳定不动点**。
-      跑 2000 次，连续快照间 ``du ≈ 1e-15``（u 冻住）但 ``dq = 0.268``
-      恒定（q 永远以固定幅度振荡）⇒ 二周期极限环，续 13 的已知局限。
-      且它报 0 个黏着 / 69 个滑移、``|q| − μp`` 差 1.4e4 —— 物理上就不对。
-
-    单体路径：Jacobian 在非接触单元上**奇异**。
-      实测 ``d(inner)/dq ≈ d(q)/dq``（两者抵消）⇒ ``dF_q/dq = 0``，
-      5067 个单元里 4938 行整行为零 ⇒ SNES **-9**。
-      且 Q 对幅值**毫无响应**：amp = 1e-6 / 5e-7 / 2.5e-7 三档
-      Q = 8.647447e4 / 8.647773e4 / 8.647787e4（变化 < 4e-6 相对）
-      ⇒ 那是错解，不是收敛解。
-
-    故本测试只断言**已确证的事实**，不断言「修好了」。
+    验收判据（物理，不依赖另一个数值解）：
+      - 自由 dof 上的残差收敛（BC dof 上是**支座反力**，不算残差）
+      - Coulomb 锥在**积分口径**（与方程同测度）下满足：|∫q|/∫μp = 1
     """
     import numpy as np
+    import scipy.sparse as sp
+    import scipy.sparse.linalg as spla
     from dolfinx import fem
+    from dolfinx.fem.petsc import assemble_matrix, assemble_vector
+    from pfwire.mesh import BLOCK_TOP
 
     ctx = _setup(tmp_path)
     clamp, u, V = ctx["clamp"], ctx["u"], ctx["V"]
@@ -1623,46 +1697,89 @@ def test_M3_monolithic_status_report(tmp_path):
     loads.set_phase(0.25)
     clamp.set_tangential(1.0e-6)
 
-    # ---- 交错路径：确认它在极限环里（不假装它收敛）----
-    n_it = _uzawa(ctx["problem"], clamp, u)
-    q_snap1 = clamp.q.x.array.copy()
-    for _ in range(50):
+    # 清零 + 关摩擦延拓 + 冻结基准 + 开摩擦
+    u.x.array[:] = 0.0
+    u.x.scatter_forward()
+    clamp.q.x.array[:] = 0.0
+    clamp.q.x.scatter_forward()
+    clamp.set_mu(None)
+    for d in (1.0e-7, 1.0e-6, 1.0e-5, DELTA):
+        clamp.set_delta(d)
         ctx["problem"].solve()
-        clamp.uzawa_update(u)
-    q_snap2 = clamp.q.x.array.copy()
-    n_q = clamp.mono_n_q
-    dq_cycle = float(np.max(np.abs(q_snap2[:n_q] - q_snap1[:n_q])))
-    if comm_rank0():
-        print("  M3: 交错 Uzawa %d 次；再多 50 次后 max|dq| = %.3e" % (n_it, dq_cycle))
-    # 极限环的判据：q 还在大幅动（若已真收敛，这里该 ~0）
-    if dq_cycle > 1.0e-3:
-        if comm_rank0():
-            print("       ⇒ 交错路径仍在极限环（续 13 已知局限），**不是可信参照**")
+        assert ctx["problem"].solver.getConvergedReason() > 0
+    clamp.set_slip_reference(u)
+    clamp.set_mu(MU)
 
-    # ---- 单体路径：确认当前奇异（如实记录，不作验收）----
+    n_u, n_q = clamp.mono_n_u, clamp.mono_n_q
+    v = ufl.TestFunction(V)
+    q_trial = ufl.TestFunction(clamp.q.function_space)
+    du = ufl.TrialFunction(V)
+    q_du = ufl.TrialFunction(clamp.q.function_space)
+
     from pfwire.obstacle_contact import plane_strain_lame
     mu_l, lmbda = plane_strain_lame(E_BULK, NU_BULK)
-    eps = ufl.sym(ufl.grad(u))
-    sig = 2.0 * mu_l * eps + lmbda * ufl.tr(eps) * ufl.Identity(2)
 
-    def _elastic_external(v):
+    def _full():
+        eps = ufl.sym(ufl.grad(u))
+        sig = 2.0 * mu_l * eps + lmbda * ufl.tr(eps) * ufl.Identity(2)
         F = ufl.inner(sig, ufl.sym(ufl.grad(v))) * ufl.dx
-        F = F - ctx["loads"].traction()(V)
+        F = F - loads.traction()(V)
         F = F - clamp.residual(u, v)
-        return F
+        F_u_c, F_q = clamp.monolithic_residual(u, v, q_trial, None)
+        return F + F_u_c, F_q
 
-    bcs = list(_free_support(ctx["ft"], ctx["msh"])(V))
-    mono = clamp.build_monolithic_problem(u, _elastic_external, bcs)
-    mono.solve()
-    reason = mono.solver.getConvergedReason()
-    Q = clamp.tangential_reaction(u)
+    bcs_u = list(_free_support(ctx["ft"], ctx["msh"])(V))
+    u_bc = np.unique(np.concatenate([bc.dof_indices()[0] for bc in bcs_u]))
+    contact, all_dofs = clamp._contact_cell_dofs(u)
+    q_bc = np.setdiff1d(all_dofs, contact)
+    g_bc = np.concatenate([u_bc, q_bc + n_u]).astype(np.int64)
+    free = np.setdiff1d(np.arange(n_u + n_q), g_bc)
+
+    def _sp(M):
+        M.assemble()
+        r, c = M.getLocalSize()
+        return sp.csr_matrix(M.getValues(range(r), range(c)))
+
+    hist = []
+    for it in range(30):
+        F_u, F_q = _full()
+        r = np.concatenate([assemble_vector(fem.form(F_u)).array[:n_u],
+                            assemble_vector(fem.form(F_q)).array[:n_q]])
+        rn = float(np.linalg.norm(r[free]))
+        hist.append(rn)
+        if rn < 1.0e-3:
+            break
+        J = sp.bmat([[_sp(assemble_matrix(fem.form(ufl.derivative(F_u, u, du)), bcs=[])),
+                      _sp(assemble_matrix(fem.form(ufl.derivative(F_u, clamp.q, q_du)), bcs=[]))],
+                     [_sp(assemble_matrix(fem.form(ufl.derivative(F_q, u, du)), bcs=[])),
+                      _sp(assemble_matrix(fem.form(ufl.derivative(F_q, clamp.q, q_du)), bcs=[]))]],
+                    format="lil")
+        for gd in g_bc:
+            J.rows[gd] = [int(gd)]
+            J.data[gd] = [1.0]
+        Jf = J.tocsr()[free][:, free]
+        dxf = spla.spsolve(Jf, -r[free])
+        if not np.all(np.isfinite(dxf)):
+            break
+        dx = np.zeros(n_u + n_q)
+        dx[free] = dxf
+        u.x.array[:n_u] += dx[:n_u]
+        u.x.scatter_forward()
+        clamp.q.x.array[:n_q] += dx[n_u:]
+        clamp.q.x.scatter_forward()
+
     if comm_rank0():
-        print("       单体 SNES reason = %d（-9 = 奇异 Jacobian，续 16 已定位）" % reason)
-        print("       单体 Q = %.6e" % Q)
+        print("  M3: 残差 %.2e -> %.2e（%d 步）" % (hist[0], hist[-1], len(hist)))
+    assert hist[-1] < 1.0e-2, (
+        "手工块 Newton 没收敛：残差停在 %.3e。续 17 记录它应降到 ~1e-4" % hist[-1])
+    assert hist[-1] < hist[0], "残差没下降"
 
-    # 只断言**已知为真**的事实：当前单体在 tiny 网格上不收敛。
-    # 这不是「期望失败」，而是把现状钉住 —— 一旦有人无意中修好了，
-    # 这条会失败，从而提醒他去更新 M3 与 DECISIONS。
-    assert reason <= 0, (
-        "单体 Newton 现在收敛了（reason=%d）！续 16 记录的奇异问题已被解决，"
-        "请更新 M3 与 DECISIONS.md，并重新验收方向 m。" % reason)
+    # Coulomb 锥（积分口径，与方程同测度）
+    p_f, _n = clamp._pressure_and_normal(u)
+    lim_int = fem.assemble_scalar(fem.form(clamp.mu * p_f * clamp.ds(BLOCK_TOP)))
+    q_int = fem.assemble_scalar(fem.form(clamp.q * clamp.ds(BLOCK_TOP)))
+    ratio = abs(q_int) / max(lim_int, 1.0e-300)
+    if comm_rank0():
+        print("       |∫q| / ∫mu p = %.6f" % ratio)
+    assert abs(ratio - 1.0) < 0.05, (
+        "Coulomb 锥未满足：|∫q|/∫mu p = %.4f（应 ≈ 1，因为接触斑整体滑移）" % ratio)
