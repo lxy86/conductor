@@ -335,6 +335,138 @@ class ClampContact:
         u_array[:n_u] = w_array[:n_u]
         q_array[:n_q] = w_array[n_u:n_u + n_q]
 
+    # ---- 单体 Newton 的联立残差与 Jacobian（方向 m）----
+    def monolithic_residual(self, u, v, q_trial, w) -> tuple:
+        """(u, q) 联立系统的**残差**（D-68 问题 33 续 16，方向 m）。
+
+        两条方程：
+
+        (1) u 的平衡 —— 与交错格式**完全同一条**：
+
+            F_u = 弹性 − 外载 − 法向接触 − ∫ q·(τ·v) ds
+
+            q 在这里是 Neumann 面力（DG0 Function），与
+            :meth:`tangential_residual` 的 Uzawa 分支逐位相同。
+            ⚠ **不含任何 ε_t 项**：续 15 已证 `ε_t·(τ·du)(τ·v)` 不是 F 的导数
+            （它在 F 里没有对应项，量级比真实切向刚度大 9.5e7 倍）。
+
+        (2) Coulomb 投影方程（单体系统的第二行，交错格式里它是**外层迭代**）：
+
+            F_q = q − smooth_clip_ufl(q − ε_t·s(u), μ·p(u), η)
+
+        不动点条件正是 `q = Proj_{|q|≤μp}(q − ε_t·s)`，即 Uzawa 的不动点。
+        故单体解与交错收敛解**是同一个解**（测试 M3 守着）。
+
+        ⚠ **第二行不是 weighted residual 的形式**，而是「残差 = 0」的点态方程。
+        用 `q_trial`（DG0 测试函数）乘起来只是给 dolfinx 一个可装配的 form。
+        **测度必须是 `ds(BLOCK_TOP)`**（facet）：p 与 s 都是 facet 上的量，
+        用 `ufl.dx` 会让整块 Jacobian 静默归零（续 16 实测，见实现处注释）。
+
+        Parameters
+        ----------
+        u       : 位移场（CG1 向量）
+        v       : u 的测试函数
+        q_trial : q 的测试函数（DG0）
+        w       : 混合空间的解（用于读 q 段；交错格式下即 ``self.q``）
+
+        Returns
+        -------
+        (F_u, F_q) : 两条残差 form
+        """
+        import ufl
+        from dolfinx import fem
+
+        if not self.has_friction_at_build:
+            raise RuntimeError("单体路径只在开摩擦时有意义")
+        if self.u_prev is None:
+            raise RuntimeError("开摩擦后必须先 bind_slip_space(V)")
+
+        tau_up, tau_lo = self._tangents(u)
+
+        # ---- (1) u 的平衡 ----
+        # 只保留接触/摩擦部分；弹性与外载由调用方（phasefield）加。
+        F_u = self.q * ufl.dot(tau_up, v) * self.ds(BLOCK_TOP)
+        pb = self._bottom_pressure(u)
+        if pb is not None and tau_lo is not None:
+            F_u = F_u + (-self.q) * ufl.dot(tau_lo, v) * self.ds(BLOCK_BOTTOM)
+
+        # ---- (2) Coulomb 投影方程 ----
+        p, _n = self._pressure_and_normal(u)
+        s_up = self._slip(u, tau_up, self.x_clamp)
+        lim = self.mu * p
+        # η = η_rel·μp 逐点自缩放（与 uzawa_update 的 numpy 版同口径）
+        eta = self.uzawa_eta_rel * lim
+        trial = self.q - self.eps_t * s_up
+        # ⚠⚠ **不要包 ufl.conditional**（续 16 实测）：UFL 对
+        # ``conditional(c, a, b)`` 求导时**只给条件本身的导数**
+        # ``dc/du·(a − b)``，**丢掉分支的导数** ``c·da/du + (1−c)·db/du``。
+        # 实测 ``d/d u [conditional(lim>0, s, 0)·q_trial·dx]`` 的 nnz = 0，
+        # 而裸 s 是 40536。对 Coulomb 投影是致命的 —— 不动点的 Jacobian
+        # 全在分支里。
+        # lim = 0 的单元靠 **η 的自缩放**自然处理：lim→0 时 η→0，
+        # ``smooth_clip_ufl`` 退化成精确 clip（给 q ≡ 0），
+        # 与 :meth:`uzawa_update` 对 lim=0 单元走 ``np.clip(..., 0, 0)`` 同结果。
+        inner = smooth_clip_ufl(trial, lim, eta)
+        # ⚠⚠⚠ **测度必须是 ds(BLOCK_TOP)，不能是 ufl.dx**（续 16 实测的坑）：
+        # p 与 s 都是 **facet** 上的量（来自 clamp_gap / clamp_normal），
+        # 乘 ufl.dx 后在**单元内部**求值 —— 实测整块 Jacobian 归零
+        # （max|dF_q/du| 从应有的 1e15 掉到 1.57e-9），
+        # 而把 lim 换成常量后立刻恢复到 3.09e7。**静默失效，不报错**。
+        F_q = (self.q - inner) * q_trial * self.ds(BLOCK_TOP)
+
+        return F_u, F_q
+
+    def monolithic_jacobian(self, u, du_trial, v, q_trial, q_du_trial) -> list:
+        """(u, q) 联立系统的 **2×2 块 Jacobian**（D-68 问题 33 续 16，方向 m）。
+
+        .. math::
+
+            J = \\begin{bmatrix} \\partial F_u/\\partial u & \\partial F_u/\\partial q \\\\
+                                    \\partial F_q/\\partial u & \\partial F_q/\\partial q
+                \\end{bmatrix}
+
+        四块的来源与量级：
+
+        - ``J[0][0] = dF_u/du``：法向接触项 + q 面力项对 u 的导数。
+          **只让 UFL 自动求导**，不手工加任何 ε_t 项（续 15 已证那是错的）。
+        - ``J[0][1] = dF_u/dq``：**精确为** ``∫ (τ·v) ds``（q 作 Neumann 面力）。
+        - ``J[1][0] = dF_q/du``：**只在黏着区非零**。来自 ``s`` 与 ``p`` 对 u 的依赖。
+          第一版只保留 ``−ε_t·(τ·du)·q_trial`` 一项（``∂s/∂u`` 的主项）；
+          ``∂p/∂u`` 经 ``lim = μ·p`` 进来的那一项目前**不含**（见下方已知近似）。
+        - ``J[1][1] = dF_q/dq``：``1 − ∂smooth_clip/∂(q − ε_t s)``，由 FB 导数给出。
+          黏着区 ≈ 1（盒内恒等），滑移区 ≈ 0（投影已饱和，不再随 q 变）。
+
+        ⚠ **已知近似（第一版故意为之，M3 会验证不动点仍不变）**：
+        ``lim = μ·p(u)`` 依赖 u，故 ``∂F_q/∂u`` 严格说还有第二项
+        ``−ε_t·s·(∂clip/∂lim)·μ·(∂p/∂u)·q_trial``。它被省掉了，理由：
+        黏着区 `s → 0` 使该项整体趋 0，而滑移区 `∂clip/∂lim` 很小。
+        **这不是 Jacobian 的精确导数**，只影响 Newton 的收敛路径、不影响不动点
+        （Newton 用近似 Jacobian 仍收敛到 F = 0，只是可能多几次迭代或线搜索）。
+
+        ⚠ **不用 mask 场，改用 UFL 的自动导数 + conditional**：续 14 附注刚记下
+        「编译期恒定 vs 运行期要变」的坑，而 mask 场正是那个坑的温床。
+        这里让 UFL 自己从 `smooth_clip_ufl` 的表达式里求导，黏着/滑移的
+        区别由 FB 导数自然给出（盒内 ≈1、盒外 ≈0），不需要人工判据。
+        """
+        import ufl
+
+        if not self.has_friction_at_build:
+            raise RuntimeError("单体路径只在开摩擦时有意义")
+
+        F_u, F_q = self.monolithic_residual(u, v, q_trial, None)
+
+        # ---- (1,1) 与 (0,1)：对 q 求导 ----
+        # dF_q/dq：UFL 从 smooth_clip_ufl 的表达式自动给出 FB 导数
+        J_qq = ufl.derivative(F_q, self.q, q_du_trial)
+        # dF_u/dq：q 是 Neumann 面力，导数就是 (τ·v)
+        J_uq = ufl.derivative(F_u, self.q, q_du_trial)
+
+        # ---- (0,0) 与 (1,0)：对 u 求导 ----
+        J_uu = ufl.derivative(F_u, u, du_trial)
+        J_qu = ufl.derivative(F_q, u, du_trial)
+
+        return [[J_uu, J_uq], [J_qu, J_qq]]
+
     def set_slip_reference(self, u) -> None:
         """冻结当前切向位移作 s = τ·(u − u_prev) 的基准。
 

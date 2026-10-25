@@ -1501,3 +1501,87 @@ def test_M1_monolithic_space_dof_mapping_roundtrips(tmp_path):
 
     if comm_rank0():
         print("       pack/unpack 互逆、u/q 段逐位一致：通过")
+
+
+# --------------------------------------------------------------------------
+# M2：联立 Jacobian 的块结构 + 两个静默失效陷阱的量级守卫（D-68 问题 33 续 16）
+#
+# 这两个坑都是**静默**的（不报错、只给错值），所以必须配量级守卫：
+#   坑 1：F_q 用 ufl.dx 而 p/s 是 facet 量 => dF_q/du 归零（1e15 -> 1.57e-9）
+#   坑 2：ufl.conditional 吃掉分支导数 => dF_q/du 的 nnz 从 40536 掉到 0
+# --------------------------------------------------------------------------
+def test_M2_monolithic_jacobian_block_structure(tmp_path):
+    """M2：四块的结构与非零结构符合设计，且量级在物理范围内。"""
+    import numpy as np
+    import scipy.sparse as sp
+    from dolfinx import fem
+    from dolfinx.fem.petsc import assemble_matrix
+
+    ctx = _setup(tmp_path)
+    clamp, u, V = ctx["clamp"], ctx["u"], ctx["V"]
+    loads = ctx["loads"]
+    clamp.bind_monolithic_space(V)
+
+    loads.set_phase(0.25)
+    clamp.set_tangential(1.0e-6)
+    _uzawa(ctx["problem"], clamp, u)
+
+    v = ufl.TestFunction(V)
+    du = ufl.TrialFunction(V)
+    q_trial = ufl.TestFunction(clamp.q.function_space)
+    q_du = ufl.TrialFunction(clamp.q.function_space)
+
+    blocks = clamp.monolithic_jacobian(u, du, v, q_trial, q_du)
+    assert len(blocks) == 2 and len(blocks[0]) == 2, "J 不是 2x2"
+
+    n_u = clamp.mono_n_u
+    n_q = clamp.mono_n_q
+
+    def _assemble(form, n_row, n_col):
+        # ⚠ 必须先 fem.form() 编译，否则拿到的是裸 ufl 表达式（无 _cpp_object）
+        M = assemble_matrix(fem.form(form), bcs=[])
+        M.assemble()
+        return sp.csr_matrix(M.getValues(range(n_row), range(n_col)))
+
+    A_uu = _assemble(blocks[0][0], n_u, n_u)
+    A_uq = _assemble(blocks[0][1], n_u, n_q)
+    A_qu = _assemble(blocks[1][0], n_q, n_u)
+    A_qq = _assemble(blocks[1][1], n_q, n_q)
+
+    if comm_rank0():
+        print("  M2: nnz  dF_u/du=%d  dF_u/dq=%d  dF_q/du=%d  dF_q/dq=%d"
+              % (A_uu.nnz, A_uq.nnz, A_qu.nnz, A_qq.nnz))
+
+    # --- 四块都必须非零 ---
+    assert A_uu.nnz > 0, "dF_u/du 全零"
+    assert A_uq.nnz > 0, "dF_u/dq 全零：q 没接进 u 的方程"
+    assert A_qu.nnz > 0, (
+        "dF_q/du 全零：踩了续 16 的坑 1（ufl.dx 而非 ds）或坑 2（conditional）")
+    assert A_qq.nnz > 0, "dF_q/dq 全零：Coulomb 投影方程没有 q 导数"
+
+    # --- 坑 1 的量级守卫：dF_q/du 该是 O(eps_t) = 1e15 量级 ---
+    # 实测正确值 ~1e7~1e8（tiny 网格上 ds/du 被单元尺寸压过）；
+    # 而踩坑时是 1.57e-9。用 1e3 作下界：踩坑时必然失败，正确时宽裕通过。
+    max_qu = float(np.max(np.abs(A_qu.data)))
+    if comm_rank0():
+        print("       max|dF_q/du| = %.6e" % max_qu)
+    assert max_qu > 1.0e3, (
+        "max|dF_q/du| = %.3e 过小：几乎肯定踩了续 16 的坑 1（F_q 用了 ufl.dx，"
+        "而 p/s 是 facet 量）——那是静默失效" % max_qu)
+
+    # --- dF_q/dq 的值域：FB 导数在 [0, 1] ---
+    qq = A_qq.diagonal()
+    if comm_rank0():
+        print("       dF_q/dq 对角元范围 [%.6f, %.6f]"
+              % (float(qq.min()), float(qq.max())))
+    assert qq.min() > -1.0e-6, "dF_q/dq 出现负对角元 %.3e：FB 导数符号错了" % qq.min()
+    assert qq.max() < 1.0 + 1.0e-6, (
+        "dF_q/dq 对角元 %.3f 超过 1：投影方程不是压缩映射（会发散）" % qq.max())
+
+    # --- 坑 2 的守卫：黏着区 dF_q/dq 该 ≈ 0（盒内恒等 ⇒ dclip/darg ≈ 1）---
+    # 若踩了 conditional 的坑，dF_q/dq 会整块归零；这里至少要有一些
+    # 落在 (0, 1) 开区间内的元，证明 FB 导数真的在 differentiated。
+    inner = qq[(qq > 1.0e-9) & (qq < 1.0 - 1.0e-9)]
+    if comm_rank0():
+        print("       dF_q/dq 落在 (0,1) 开区间的对角元数 = %d" % inner.size)
+    # 不强制要求一定存在（工况可能全黏着或全滑移），只报数不断言
