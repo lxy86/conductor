@@ -594,6 +594,37 @@ class SolverConfig:
     正反馈增益从 1 降到 omega_u。**不动点不变**（收敛时
     u_solved = u_iter_prev，凸组合不起作用），故不影响解的正确性。
     只在 u_solver='newton' 且 contact.has_uzawa() 时生效。"""
+    monolithic_friction: bool = False
+    """开摩擦时用**单体** Newton 解 (u, q) 混合系统，而非交错 Uzawa（默认 False）。
+
+    出处与实测（D-68 问题 33 续 13~18）：
+    交错格式在**深度黏着**下进二周期极限环（问题 26 续 5），实测 tiny 网格上
+    跑 2000 次迭代、连续快照间 ``du ≈ 1e-15``（u 冻住）但 ``dq = 0.268`` 恒定
+    —— q 永远以固定幅度振荡，不收敛。粗网格 6.6.3 的第一个循环子步因此
+    SNES -5（blocker B）。
+
+    单体格式把 (u, q) 当一个系统、用联立 Jacobian 一次解出：
+    黏着区靠 ``dF_q/du = ε_t·ds/du``（实测 1.20e11，**中心差分验证**）把 u 钉住，
+    系统非奇异；实测 13 步收敛到 8.6e-4，且 Coulomb 锥在积分口径下
+    **精确满足**（|∫q|/∫μp = 1.0000）。
+
+    ⚠ 实现走 :meth:`pfwire.clamp_contact.ClampContact.solve_monolithic`
+    （**手工块 Newton**，见 ``pfwire.monolithic``），不用 dolfinx 的多 form
+    ``NonlinearProblem`` —— 后者有两个叠加的 bug（续 17 坑 7）。
+
+    ⚠ 当前局限：**部分滑移形貌尚未达成**。实测接触斑整体滑移
+    （68 个接触单元只有 1 个黏着），幅值 8 倍变化 Q 只动 0.06%
+    —— 那是续 7 的 blocker A（幅值 vs ``μp/ε_t`` 容量），不是求解器问题。
+    """
+    monolithic_tol: float = 1.0e-8
+    """单体 Newton 的收敛容差（自由 dof 上的残差 2-范数）。
+
+    只在 ``monolithic_friction=True`` 时生效。
+    ⚠ **不是越小越好**：d 的残差会掉到装配舍入地板上，u/q 的残差量级差
+    10 个量级（实测 u 段 1e2、q 段 1e-5），取一个统一的绝对容差会偏向大的一侧。
+    """
+    monolithic_max_it: int = 50
+    """单体 Newton 的最大迭代数（默认 50）。"""
 
     direct_solver_options: dict[str, object] = field(
         default_factory=lambda: {
@@ -1008,6 +1039,8 @@ class PhaseFieldSolver:
         self._ensure_setup()
         if self.config.u_solver == "newton":
             if self.contact and self.contact.has_uzawa():
+                if getattr(self.config, "monolithic_friction", False):
+                    return self._solve_u_monolithic()
                 return self._solve_u_uzawa()
             self._solve_u_once()
             return 1, 0
@@ -1019,6 +1052,50 @@ class PhaseFieldSolver:
             if flips == 0:
                 return it, 0
         return max(1, fixed_point_iterations), flips
+
+    def _solve_u_monolithic(self, tol: float = 1.0e-8,
+                            max_it: int = 50) -> tuple[int, int]:
+        """**单体** Newton 解 (u, q) 混合系统（D-68 问题 33 续 18）。
+
+        与 :meth:`_solve_u_uzawa`（交错格式）的区别：
+          - 交错：外层固定点迭代 q ← Proj(q − ε_t·s)，u 子问题的 Jacobian
+            不含 q 的反馈。**深度黏着下进二周期极限环**（D-68 问题 26 续 5），
+            实测 2000 次迭代 dq 恒 0.268 不收敛。
+          - 单体：把 (u, q) 当一个系统，用**联立 Jacobian** 一次求解。
+            黏着区靠 ``dF_q/du = ε_t·ds/du``（实测 1.20e11，中心差分验证）
+            把 u 钉住，系统非奇异。实测 13 步收敛。
+
+        ⚠ 走 :meth:`pfwire.clamp_contact.ClampContact.solve_monolithic`
+        （手工块 Newton），**不用** dolfinx 的多 form ``NonlinearProblem``
+        （续 17 坑 7 的两个 bug 见该方法 docstring）。
+
+        Returns ``(迭代数, 0)`` —— chi 翻转在 Newton 路径无意义。
+        """
+        assert self.contact is not None and self.contact.has_uzawa()
+
+        def _elastic_external(v):
+            """弹性 − 外载 − 法向接触（不含切向：切向在 F_q 与 q 面力里）。"""
+            F = self._residual_u_form(v)
+            # _residual_u_form 已含 elastic − external_work − contact.residual
+            # − tangential_residual；单体路径要**换成**自己的切向处理，
+            # 故把交错格式的切向项减掉。
+            if getattr(self.contact, "has_friction_at_build", False):
+                F = F + self.contact.tangential_residual(self.u, v)
+            return F
+
+        res = self.contact.solve_monolithic(
+            self.u, _elastic_external, self.bcs_u,
+            tol=tol, max_it=max_it,
+            verbose=getattr(self.config, "log_iterations", False),
+        )
+        self.uzawa_iters = res.iterations
+        self.uzawa_converged = res.converged
+        if not res.converged and self.config.log_iterations:
+            logger.warning(
+                "单体 Newton 未收敛（reason=%s, it=%d, ||F||=%.3e）。"
+                "见 DECISIONS.md D-68 问题 33 续 18。",
+                res.reason, res.iterations, res.residual)
+        return res.iterations, 0
 
     def _solve_u_once(self) -> None:
         self._ensure_setup()

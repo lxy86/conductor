@@ -544,7 +544,12 @@ def build_clamp_case(config_path, comm=None, *, resume: bool = False) -> ClampCa
                        snes_max_it=int(sv.get("snes_max_it_d", 200)),
                        # Uzawa 内循环 u 的欠松弛（方案 h，D-68 问题 33 续 4）：
                        # 默认 1.0 = 不松弛；开摩擦后 u 在 Uzawa 正反馈环里漂移时取 0.3~0.5。
-                       u_relaxation=float(sv.get("u_relaxation", 1.0)))
+                       u_relaxation=float(sv.get("u_relaxation", 1.0)),
+                       # 单体 Newton 解 (u,q) 混合系统（方向 m 的 B 方案，
+                       # D-68 问题 33 续 17/18）。默认 False = 交错 Uzawa。
+                       monolithic_friction=bool(sv.get("monolithic_friction", False)),
+                       monolithic_tol=float(sv.get("monolithic_tol", 1.0e-8)),
+                       monolithic_max_it=int(sv.get("monolithic_max_it", 50)))
 
     def bcs_u(V):
         # 构型由 loading.support 选：simply_supported（两端简支）/ bottom（竖向支撑）

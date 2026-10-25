@@ -445,6 +445,76 @@ class ClampContact:
         )
         return problem
 
+    # ⚠⚠⚠ 上面这个 ``build_monolithic_problem``（dolfinx 多 form 接口）
+    # **不要用** —— 续 17 坑 7 已证它有两个叠加的 bug：
+    #   (a) ``bcs_by_block`` 里 ``V.contains(bc.function_space)`` 对 cpp 对象
+    #       抛 AttributeError，异常在 PETSc 回调里被吞 ⇒ SNES it=0、什么都不做；
+    #   (b) BC 的 dof 编号落到错的 block。
+    # 生产入口是 :meth:`solve_monolithic`（手工块 Newton，见
+    # ``pfwire.monolithic``）。本方法保留仅为记录那条死路的形状。
+
+    def solve_monolithic(self, u, elastic_external_forms, u_bcs,
+                         *, tol: float = 1.0e-8, max_it: int = 50,
+                         verbose: bool = False):
+        """解 (u, q) 混合系统的**生产入口**（手工块 Newton，D-68 问题 33 续 18）。
+
+        Parameters
+        ----------
+        u : 位移场（CG1 向量）。
+        elastic_external_forms : 可调用 ``v -> Form``，返回「弹性 − 外载 − 法向接触」。
+        u_bcs : u 的 DirichletBC 列表（q 的 BC 由本方法内部生成，见下）。
+        tol, max_it, verbose : 传给 :class:`pfwire.monolithic.BlockNewtonConfig`。
+
+        Returns
+        -------
+        :class:`pfwire.monolithic.BlockNewtonResult`
+
+        Notes
+        -----
+        **q 的 BC 内部生成**（B 方案，续 17）：Coulomb 投影方程只在接触面上
+        有定义，故非接触单元的 q 必须钉 0 —— 用 :meth:`contact_cell_bcs`。
+        ⚠ 判据是「单元是否触及 BLOCK_TOP facet」，**不是** ``p_dg > 0``
+        （后者是 cell 平均投影，会把边界相邻但不在边界上的单元误判成接触，
+        实测差 10 个单元 ⇒ 加完 BC 仍有 10 个零行 ⇒ 矩阵奇异）。见坑 6。
+        """
+        from pfwire.monolithic import BlockNewtonConfig, solve_block_newton
+
+        if not self._mono_bound:
+            raise RuntimeError("先调 bind_monolithic_space(V)")
+        if self.u_prev is None:
+            raise RuntimeError("开摩擦后必须先 bind_slip_space(V)")
+        if not self.has_uzawa():
+            raise RuntimeError("单体路径只在 Uzawa 模式（已 bind_uzawa_space）有意义")
+
+        v = ufl.TestFunction(u.function_space)
+        du = ufl.TrialFunction(u.function_space)
+        q_trial = ufl.TestFunction(self.q.function_space)
+        q_du = ufl.TrialFunction(self.q.function_space)
+
+        # ---- 残差 ----
+        F_u = elastic_external_forms(v)
+        F_u_contact, F_q = self.monolithic_residual(u, v, q_trial, None)
+        F_u = F_u + F_u_contact
+
+        # ---- Jacobian 四块（fu_form 必须传完整的 F_u，见 monolithic_jacobian 的 ⚠）----
+        blocks = self.monolithic_jacobian(u, du, v, q_trial, q_du, fu_form=F_u)
+
+        # ---- BC dof（各自编号空间）----
+        u_bc_dofs = np.unique(np.concatenate(
+            [bc.dof_indices()[0] for bc in u_bcs])) if u_bcs else np.array([], dtype=np.int32)
+        contact, all_dofs = self._contact_cell_dofs(u)
+        q_bc_dofs = np.setdiff1d(all_dofs, contact)
+
+        return solve_block_newton(
+            u, self.q,
+            fu_form=F_u, fq_form=F_q,
+            juu=blocks[0][0], juq=blocks[0][1],
+            jqu=blocks[1][0], jqq=blocks[1][1],
+            u_bc_dofs=u_bc_dofs, q_bc_dofs=q_bc_dofs,
+            n_u=self.mono_n_u, n_q=self.mono_n_q,
+            config=BlockNewtonConfig(tol=tol, max_it=max_it, verbose=verbose),
+        )
+
     # ---- 单体 Newton 的联立残差与 Jacobian（方向 m）----
     def _contact_cell_dofs(self, u):
         """**在接触面上**的 DG0 dof 列表（D-68 问题 33 续 17，方向 m 的 B 方案）。
@@ -663,7 +733,8 @@ class ClampContact:
 
         return F_u, F_q
 
-    def monolithic_jacobian(self, u, du_trial, v, q_trial, q_du_trial) -> list:
+    def monolithic_jacobian(self, u, du_trial, v, q_trial, q_du_trial,
+                            fu_form=None):
         """(u, q) 联立系统的 **2×2 块 Jacobian**（D-68 问题 33 续 16，方向 m）。
 
         .. math::
@@ -674,39 +745,45 @@ class ClampContact:
 
         四块的来源与量级：
 
-        - ``J[0][0] = dF_u/du``：法向接触项 + q 面力项对 u 的导数。
-          **只让 UFL 自动求导**，不手工加任何 ε_t 项（续 15 已证那是错的）。
+        - ``J[0][0] = dF_u/du``：**完整** u 残差（弹性 + 外载 + 法向接触 + q 面力）
+          对 u 的导数。**只让 UFL 自动求导**，不手工加任何 ε_t 项
+          （续 15 已证那是错的）。
         - ``J[0][1] = dF_u/dq``：**精确为** ``∫ (τ·v) ds``（q 作 Neumann 面力）。
-        - ``J[1][0] = dF_q/du``：**只在黏着区非零**。来自 ``s`` 与 ``p`` 对 u 的依赖。
-          第一版只保留 ``−ε_t·(τ·du)·q_trial`` 一项（``∂s/∂u`` 的主项）；
-          ``∂p/∂u`` 经 ``lim = μ·p`` 进来的那一项目前**不含**（见下方已知近似）。
+        - ``J[1][0] = dF_q/du``：来自 ``s`` 与 ``p`` 对 u 的依赖。
+          B 方案（facet + ds）实测 1.20e11、中心差分 rel = 3.1e-09。
         - ``J[1][1] = dF_q/dq``：``1 − ∂smooth_clip/∂(q − ε_t s)``，由 FB 导数给出。
-          黏着区 ≈ 1（盒内恒等），滑移区 ≈ 0（投影已饱和，不再随 q 变）。
+          黏着区 ≈ 0（盒内恒等 ⇒ inner ≈ trial）、滑移区 ≈ 1（已饱和）。
 
-        ⚠ **已知近似（第一版故意为之，M3 会验证不动点仍不变）**：
-        ``lim = μ·p(u)`` 依赖 u，故 ``∂F_q/∂u`` 严格说还有第二项
-        ``−ε_t·s·(∂clip/∂lim)·μ·(∂p/∂u)·q_trial``。它被省掉了，理由：
+        ⚠⚠⚠ **``fu_form`` 必须传完整的那条 F_u**（续 18 实测的坑）：
+        本方法内部也能自己算 ``F_u``，但那只是 :meth:`monolithic_residual`
+        返回的**接触部分** —— 不含弹性/外载/法向接触。拿它求导会得到
+        一个 99% 全零的 ``J_uu``（实测 10322 行里 10010 行全零，其中 9994 行
+        不在 BC 里）⇒ 线性系统奇异、SuperLU 分解失败。
+        症状与"忘了给 BC"一模一样，极易误判。**调用方一律显式传 ``fu_form``**。
+
+        ⚠ **已知近似**：``lim = μ·p(u)`` 依赖 u，故 ``∂F_q/∂u`` 严格说还有
+        第二项 ``−ε_t·s·(∂clip/∂lim)·μ·(∂p/∂u)·q_trial``。它被省掉了，理由：
         黏着区 `s → 0` 使该项整体趋 0，而滑移区 `∂clip/∂lim` 很小。
-        **这不是 Jacobian 的精确导数**，只影响 Newton 的收敛路径、不影响不动点
-        （Newton 用近似 Jacobian 仍收敛到 F = 0，只是可能多几次迭代或线搜索）。
-
-        ⚠ **不用 mask 场，改用 UFL 的自动导数 + conditional**：续 14 附注刚记下
-        「编译期恒定 vs 运行期要变」的坑，而 mask 场正是那个坑的温床。
-        这里让 UFL 自己从 `smooth_clip_ufl` 的表达式里求导，黏着/滑移的
-        区别由 FB 导数自然给出（盒内 ≈1、盒外 ≈0），不需要人工判据。
+        **这不是 Jacobian 的精确导数**，只影响 Newton 的收敛路径、不影响不动点。
         """
         import ufl
 
         if not self.has_friction_at_build:
             raise RuntimeError("单体路径只在开摩擦时有意义")
 
-        F_u, F_q = self.monolithic_residual(u, v, q_trial, None)
+        # ⚠ fu_form 未给时**明确报错**，而不是静默退回接触部分
+        # （续 18：那个静默退回让 SuperLU 报奇异，排查方向全错）
+        if fu_form is None:
+            raise RuntimeError(
+                "必须显式传 fu_form（完整的 F_u，含弹性/外载/法向接触）。"
+                "不给会让 J_uu 退化成只有接触部分 —— 实测 10322 行里 10010 行"
+                "全零，线性系统奇异。见续 18。")
+        F_u = fu_form
+        _F_u_contact, F_q = self.monolithic_residual(u, v, q_trial, None)
 
-        # ---- (1,1) 与 (0,1)：对 q 求导 ----
-        # dF_q/dq：UFL 从 smooth_clip_ufl 的表达式自动给出 FB 导数
-        J_qq = ufl.derivative(F_q, self.q, q_du_trial)
-        # dF_u/dq：q 是 Neumann 面力，导数就是 (τ·v)
+        # ---- (0,1) 与 (1,1)：对 q 求导 ----
         J_uq = ufl.derivative(F_u, self.q, q_du_trial)
+        J_qq = ufl.derivative(F_q, self.q, q_du_trial)
 
         # ---- (0,0) 与 (1,0)：对 u 求导 ----
         J_uu = ufl.derivative(F_u, u, du_trial)

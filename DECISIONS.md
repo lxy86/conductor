@@ -8010,3 +8010,100 @@ scipy 块矩阵、手工施加 BC（u/q 在各自编号空间里）、spsolve �
 `data/_probe_floor.py` 与幅值扫描**运行中**。
 按硬约束 6，未出结果前不声称 6.6.3 修好。
 
+
+## D-68 问题 33 续 18：手工块 Newton 提成生产接口（2026-10-25）
+
+用户 2026-10-25 指示「把手工块 Newton 提成生产接口」。
+
+### 交付物
+
+**新模块 `src/pfwire/monolithic.py`**：
+
+```python
+@dataclass
+class BlockNewtonConfig:
+    tol: float = 1.0e-8
+    max_it: int = 50
+    linear_solver: str = "spsolve"
+
+@dataclass
+class BlockNewtonResult:
+    converged: bool
+    iterations: int
+    residual: float
+    history: list
+    reason: str          # converged / max_it / linear_failed / nan
+
+def solve_block_newton(u, q, *, fu_form, fq_form, juu, juq, jqu, jqq,
+                       u_bc_dofs, q_bc_dofs, n_u, n_q, config) -> BlockNewtonResult
+```
+
+四条设计纪律（都是从坑里学来的）：
+
+1. **不假设任何一块为零** —— 满块与块三角都支持；
+2. **BC 在各自编号空间里施加**（续 9 / 续 17 坑 6）：u 的 BC 用 u 的编号、
+   q 的 BC 用 q 的编号，拼进全局 `[u|q]` 时 q 段 **+n_u 偏移**；
+3. **残差只在自由 dof 上量**：BC dof 上是**支座反力**，不是残差
+   （续 17 实测：BC 段 5.25e3、自由段 1.02e-4，混在一起会误判不收敛）；
+4. **不解非接触单元的 q 方程**（B 方案）：非接触单元直接钉 0，
+   不进自由集、不进 Jacobian —— 子空间限定，不是罚正则。
+
+### 生产入口
+
+`ClampContact.solve_monolithic(u, elastic_external_forms, u_bcs, *, tol, max_it, verbose)`
+一次调用跑完：内部生成 q 的 BC、拼块、解、返回 `BlockNewtonResult`。
+
+`PhaseFieldSolver._solve_u_monolithic()` 接到 `solve_displacement()`，
+由新配置项 `solver.monolithic_friction`（默认 False）切换。
+同段还有 `monolithic_tol`（默认 1e-8）、`monolithic_max_it`（默认 50）。
+
+### ⚠⚠⚠ 提生产时踩到的坑：`fu_form` 没传完整
+
+`monolithic_jacobian` 原来自己调 `monolithic_residual` 拿 `F_u`，
+而那只是**接触部分** —— 不含弹性/外载/法向接触。
+生产接口因此拿到一个 99% 全零的 `J_uu`：
+
+```
+Jf shape = (10418, 10418), nnz = 839, 全零行 = 10075
+SuperLU: RuntimeError failed to factorize matrix
+```
+
+而探针里一直是显式传完整 `F_u` 的，所以探针绿、生产红。
+**症状与「忘了给 BC」一模一样**，极易误判 —— 我第一轮就误判成
+「lil/bmat 构造方式不同」，做了三种构造方式的对比（结果全同），
+又去查 `free` 数组的健全性，最后才看 `J_uu` 的零行分布。
+
+修法：`monolithic_jacobian(..., fu_form=None)` —— **不给就抛错**，
+不静默退回接触部分。两个调用点都改成显式传完整 `F_u`。
+
+> 教训：接口允许「省略一个必需参数并给个看似合理的默认值」时，
+> 那个默认值一定会被某条路径走到，而且是在最坏的时机。
+
+### 测试（M4，`tests/test_clamp_uzawa.py`）
+
+M4 端到端验生产接口：
+
+```
+M4: reason=converged, it=9, ||F||=7.099e-04
+    残差历史: 4.9e4 1.3e6 5.3e4 3.3e4 1.2e3 2.4e2 1.7e1 4.6e-1 ...
+    |∫q| / ∫mu p = 0.999999
+    q 非零 75 个，全部在接触集（114 个）内
+```
+
+四条断言：收敛；Coulomb 锥满足；q 只在接触单元上非零；
+**接触集判据是 facet 而非 p_dg**（续 17 坑 6 的守卫，
+与 `compute_incident_entities(..., BLOCK_TOP)` 逐元素对拍）。
+
+### `build_monolithic_problem` 的处置
+
+**标记为不可用**（dolfinx 多 form 接口的两个 bug，续 17 坑 7），
+保留代码仅为记录那条死路的形状。它现在会因为 `fu_form` 缺失而抛错 ——
+那是正确的失败方式。
+
+### 状态
+
+- 单体路径**已可生产调用**（`monolithic_friction: true`）；
+- 但 6.6.3 仍**未勾选**：部分滑移形貌未达成（续 17 实测接触斑整体滑移），
+  那是 blocker A（幅值 vs `μp/ε_t` 容量），不是求解器问题；
+- 尚未跑过粗网格/串行 6.6.3 的完整 6.6.3 验收。
+

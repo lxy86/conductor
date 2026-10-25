@@ -1545,7 +1545,19 @@ def test_M2_monolithic_jacobian_block_structure(tmp_path):
     q_trial = ufl.TestFunction(clamp.q.function_space)
     q_du = ufl.TrialFunction(clamp.q.function_space)
 
-    blocks = clamp.monolithic_jacobian(u, du, v, q_trial, q_du)
+    # ⚠ fu_form 必须传**完整**的 F_u（续 18）：只给接触部分会让 J_uu
+    # 99% 全零、系统奇异。这里按 _setup 同源的方式补全弹性/外载/法向。
+    from pfwire.obstacle_contact import plane_strain_lame
+    mu_l, lmbda = plane_strain_lame(E_BULK, NU_BULK)
+    eps = ufl.sym(ufl.grad(u))
+    sig = 2.0 * mu_l * eps + lmbda * ufl.tr(eps) * ufl.Identity(2)
+    F_u_full = ufl.inner(sig, ufl.sym(ufl.grad(v))) * ufl.dx
+    F_u_full = F_u_full - loads.traction()(V)
+    F_u_full = F_u_full - clamp.residual(u, v)
+    _F_u_contact, _F_q = clamp.monolithic_residual(u, v, q_trial, None)
+    F_u_full = F_u_full + _F_u_contact
+
+    blocks = clamp.monolithic_jacobian(u, du, v, q_trial, q_du, fu_form=F_u_full)
     assert len(blocks) == 2 and len(blocks[0]) == 2, "J 不是 2x2"
 
     n_u = clamp.mono_n_u
@@ -1783,3 +1795,91 @@ def test_M3_monolithic_newton_converges(tmp_path):
         print("       |∫q| / ∫mu p = %.6f" % ratio)
     assert abs(ratio - 1.0) < 0.05, (
         "Coulomb 锥未满足：|∫q|/∫mu p = %.4f（应 ≈ 1，因为接触斑整体滑移）" % ratio)
+
+
+# --------------------------------------------------------------------------
+# M4：生产接口 solve_monolithic 的端到端验证（D-68 问题 33 续 18）
+# --------------------------------------------------------------------------
+def test_M4_production_solve_monolithic_end_to_end(tmp_path):
+    """M4：``solve_monolithic`` 一次调用跑通，且 Coulomb 锥满足。"""
+    import numpy as np
+    from dolfinx import fem
+    from pfwire.obstacle_contact import plane_strain_lame
+
+    ctx = _setup(tmp_path)
+    clamp, u, V = ctx["clamp"], ctx["u"], ctx["V"]
+    loads = ctx["loads"]
+    clamp.bind_monolithic_space(V)
+
+    loads.set_phase(0.25)
+    clamp.set_tangential(1.0e-6)
+
+    # 清零 + 关摩擦延拓 + 冻结基准 + 开摩擦
+    u.x.array[:] = 0.0
+    u.x.scatter_forward()
+    clamp.q.x.array[:] = 0.0
+    clamp.q.x.scatter_forward()
+    clamp.set_mu(None)
+    for d in (1.0e-7, 1.0e-6, 1.0e-5, DELTA):
+        clamp.set_delta(d)
+        ctx["problem"].solve()
+        assert ctx["problem"].solver.getConvergedReason() > 0, "延拓不收敛"
+    clamp.set_slip_reference(u)
+    clamp.set_mu(MU)
+
+    mu_l, lmbda = plane_strain_lame(E_BULK, NU_BULK)
+    eps = ufl.sym(ufl.grad(u))
+    sig = 2.0 * mu_l * eps + lmbda * ufl.tr(eps) * ufl.Identity(2)
+
+    def _elastic(v):
+        F = ufl.inner(sig, ufl.sym(ufl.grad(v))) * ufl.dx
+        F = F - loads.traction()(V)
+        F = F - clamp.residual(u, v)
+        return F
+
+    bcs = list(_free_support(ctx["ft"], ctx["msh"])(V))
+
+    # ---- 生产接口：一次调用 ----
+    res = clamp.solve_monolithic(u, _elastic, bcs, tol=1.0e-3, max_it=30)
+    if comm_rank0():
+        print("  M4: reason=%s, it=%d, ||F||=%.3e"
+              % (res.reason, res.iterations, res.residual))
+        print("      残差历史: " + " ".join("%.1e" % h for h in res.history[:8]))
+
+    assert res.converged, "生产接口没收敛（reason=%s）" % res.reason
+    assert res.iterations >= 1, "迭代数为 0：什么都没做"
+
+    # ---- Coulomb 锥（积分口径，与方程同测度）----
+    p_f, _n = clamp._pressure_and_normal(u)
+    lim_int = fem.assemble_scalar(fem.form(clamp.mu * p_f * clamp.ds(2)))
+    q_int = fem.assemble_scalar(fem.form(clamp.q * clamp.ds(2)))
+    ratio = abs(q_int) / max(lim_int, 1.0e-300)
+    if comm_rank0():
+        print("      |∫q| / ∫mu p = %.6f" % ratio)
+    assert abs(ratio - 1.0) < 0.05, (
+        "Coulomb 锥未满足：|∫q|/∫mu p = %.4f（应 ≈ 1）" % ratio)
+
+    # ---- q 只在接触单元上非零（B 方案的子空间限定）----
+    n_q = clamp.q.function_space.dofmap.index_map.size_local
+    qa = clamp.q.x.array[:n_q]
+    contact, all_dofs = clamp._contact_cell_dofs(u)
+    nz = np.nonzero(qa != 0.0)[0]
+    assert np.all(np.isin(nz, contact)), (
+        "q 在非接触单元上非零（%d 个中的 %d 个）：B 方案的子空间限定没生效"
+        % (nz.size, int((~np.isin(nz, contact)).sum())))
+    if comm_rank0():
+        print("      q 非零 %d 个，全部在接触集（%d 个）内" % (nz.size, contact.size))
+
+    # ---- 接触集判据是 facet 而非 p_dg（续 17 坑 6 的守卫）----
+    from pfwire.mesh import BLOCK_TOP
+    from dolfinx.mesh import compute_incident_entities
+    msh = ctx["msh"]
+    tdim = msh.topology.dim
+    cells_top = compute_incident_entities(msh.topology,
+                                          clamp.facet_tags.find(BLOCK_TOP),
+                                          tdim - 1, tdim)
+    n_owned = msh.topology.index_map(tdim).size_local
+    cells_top = np.sort(cells_top[cells_top < n_owned])
+    assert np.array_equal(np.sort(contact), cells_top), (
+        "接触集不等于「触及 BLOCK_TOP facet 的单元」：判据退回了 p_dg"
+        "（续 17 坑 6，会留 10 个奇异行）")
