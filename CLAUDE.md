@@ -58,6 +58,17 @@ cd /root/pf-wire   # 指向 C:\Users\Administrator\Desktop\疲劳寿命 的 ASCI
    上体穿过下体，**不报错**。接触验证脚本一律串行（约 15 分钟）。另外上游的 `create_*_mesh` /
    `convert_mesh` 内部自带 rank-0 守卫和 COMM_WORLD Barrier，**必须全体 rank 调用**，
    包进 `if rank == 0` 会死锁（D-51）。
+   ⚠⚠ **`psi+` 的 DG-2 采样在并行下不可信**（D-68 问题 33 续 11，2026-10-25 实测）：
+   同一 config、同一相位（`clamp_fretting_coarse_mu0`，phase 0.25）下 ——
+   | 跑法 | `max|psi+|` | `max|p|` |
+   | 串行 | 7.06e5（α_T 的 **4.0 倍**） | 1.44 σ_y |
+   | `mpirun -n 6` | 1.02e10（α_T 的 **57933 倍**） | — |
+   而 `u` 与 `δ` 同量级/逐位相同（`max|ux|` 4.74e-5 vs 7.10e-5、δ 逐位相同），
+   故**不是**接触罚伪影、不是网格离散误差、不是 `u` 跑飞。三个并行探针
+   都崩在 `state.sample_psi_plus()`（`fem.Expression` 插值到 DG-2）处
+   （`MPI_Abort(59)`），串行下同一调用完全正常。
+   **⇒ 6.6.3 的验收在串行结果上判**（`bash scripts/run_663_serial.sh`）。
+   并行路径在此问题查清前不作为依据。
 6. **并行下造临时目录，路径必须 rank 0 生成后 bcast**（D-68 问题 30 续）。
    `tempfile.mkdtemp()` / `TemporaryDirectory()` 每 rank 一个不同目录，而 adios4dolfinx
    的 `.bp` 写入是按 `COMM_WORLD` 的**集合操作** —— 路径不一致直接死锁（不报错、只白等）。
