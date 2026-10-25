@@ -89,6 +89,21 @@ cd /root/pf-wire   # 指向 C:\Users\Administrator\Desktop\疲劳寿命 的 ASCI
    正确做法：脚本写到项目里（Windows 侧可见的那个 ASCII 软链），再用
    `wsl -d Ubuntu-26 bash -lc 'bash /root/pf-wire/data/_sweep_omega.sh'` 跑。
 
+8. **不要往求解器方法里插代码做诊断 —— 插桩会污染被测对象**（D-68 问题 33 续 13）。
+   2026-10-25 实证：给 `ClampContact.uzawa_update` 插打印（环境变量控制），
+   报告 `mu.value=0.0`、`lim|max=0`、`contact=0`，我据此追了**五轮**假说
+   （传参 bug / pycache 缓存 / 模块影子 / 补丁落点 / 两个实例），全部否掉。
+   最后用**零插桩**探针（公开 API + 与源码逐行同源的公式在外部复算）
+   拿到真相：`mu.value` 全程 0.7、`lim|max = 1.63e8`、`contact = 839`，
+   且外部复算的 `q_new` 与真实 `uzawa_update` 的 `max|q|` **逐位一致**。
+   ⇒ 插桩报告的一切都是假象。
+   最可能机理：插桩代码里的 `import` / 文件 IO 触发 Python GC，而 PETSc 对象的
+   `__del__` 与 `mpi_jit` 的 `comm.bcast` 不同步（与陷阱 6 的 GC 死锁同源，
+   只是这版**不死锁、而是让被插桩的方法读到错值**，更难发现）。
+   **正确做法**：定位数值问题用零插桩探针 ——
+   调公开 API 拿到状态，再在**探针里**复算源码的公式并与真实调用结果对照。
+   真要在源码里插，先用 `gc.disable()` 包住（`tests/conftest.py` 已有先例）。
+
 
 ## 工作流
 - 每个子任务：先给出函数签名和测试意图 → 用户确认 → 实现 → `pytest -q` → 汇报
