@@ -335,7 +335,41 @@ class ClampContact:
         u_array[:n_u] = w_array[:n_u]
         q_array[:n_q] = w_array[n_u:n_u + n_q]
 
-    def build_monolithic_problem(self, u, elastic_external_forms, bcs):
+    def contact_cell_bcs(self, u):
+        """非接触单元 q 的 DirichletBC 列表（D-68 问题 33 续 17，方向 m 的 B 方案）。
+
+        Coulomb 投影方程只在接触面上有定义（facet 量配 facet 测度，
+        见 :meth:`monolithic_residual` 的注释）。若不约束非接触单元的 q，
+        全域线性系统有 ~4953 行整行为零 ⇒ 奇异 ⇒ SNES 0 迭代 -3。
+
+        B 方案：把那些 q **钉死为 0**。这在数学上正是 Coulomb 的本意 ——
+        非接触面上没有摩擦牵引。与 :meth:`uzawa_update` 对 lim=0 单元走
+        ``np.clip(..., 0, 0)`` 得 ``q ≡ 0`` 是**同一件事**，
+        只是这里用空间投影（DirichletBC）而非 form 分支。
+
+        ⚠ 这是**每个载荷步都要重建**的：接触斑随 u 变化。
+        ⚠ 用空间投影而非 ``ufl.conditional``：后者会吃掉分支导数
+        （续 16 坑 2，实测 nnz 从 40536 掉到 0）。
+        """
+        import numpy as np
+        from dolfinx import fem
+
+        if not self.has_friction_at_build:
+            return []
+        if not self._uzawa_bound:
+            return []
+
+        contact, all_dofs = self._contact_cell_dofs(u)
+        free_mask = np.ones(all_dofs.size, dtype=bool)
+        free_mask[contact] = False
+        pinned = all_dofs[free_mask]
+        if pinned.size == 0:
+            return []
+        zero = fem.Function(self.q.function_space)
+        return [fem.dirichletbc(zero, pinned)]
+
+    def build_monolithic_problem(self, u, elastic_external_forms, bcs,
+                                 q_bcs=None):
         """建 (u, q) 的**单体** ``NonlinearProblem``（D-68 问题 33 续 16，方向 m）。
 
         Parameters
@@ -343,12 +377,14 @@ class ClampContact:
         u : 位移场（CG1 向量）。**它同时是混合系统的第一个未知量**。
         elastic_external_forms : 可调用 ``v -> Form``，返回「弹性 − 外载 − 法向接触」
             那一部分（由 ``phasefield`` 提供，因为弹性/塑性项在那里）。
-        bcs : u 的 DirichletBC 列表。q **没有**边界条件（DG0、全域自由）。
+        bcs : u 的 DirichletBC 列表。
+        q_bcs : q 的 DirichletBC 列表。**B 方案必给**
+            （:meth:`contact_cell_bcs`：把非接触单元的 q 钉 0）。
+            不给则全域系统奇异（SNES 0 迭代 -3，续 16 实测）。
 
         Returns
         -------
-        ``(problem, w)`` —— ``w`` 是混合空间的解（一个 ``fem.Function`` 向量），
-        ``problem`` 是可直接 ``.solve()`` 的 ``NonlinearProblem``。
+        ``problem`` —— 可直接 ``.solve()`` 的 ``NonlinearProblem``。
 
         ⚠ **q 的方程没有加权残差的形式**，所以不能用 ``fem.form`` 的常规装配路径
         之外的任何东西 —— 这里两条残差都是普通 form，``NonlinearProblem`` 的
@@ -364,6 +400,11 @@ class ClampContact:
             raise RuntimeError("先调 bind_monolithic_space(V)")
         if self.u_prev is None:
             raise RuntimeError("开摩擦后必须先 bind_slip_space(V)")
+        if q_bcs is None:
+            # 不静默：奇异会以 -3 的形式出现，而真因是"没给 q_bcs"
+            raise RuntimeError(
+                "必须给 q_bcs（contact_cell_bcs 的结果）：Coulomb 投影方程只在"
+                "接触面上有定义，不约束非接触单元的 q 会让全域系统奇异")
 
         v = ufl.TestFunction(u.function_space)
         du = ufl.TrialFunction(u.function_space)
@@ -378,11 +419,18 @@ class ClampContact:
         blocks = self.monolithic_jacobian(u, du, v, q_trial, q_du)
 
         # 混合系统的未知量列表：[u, q]（NonlinearProblem 的 Sequence 接口）
+        # ⚠⚠ **bcs 必须是扁平列表**（续 17 实测）：dolfinx 0.11 的
+        # ``NonlinearProblem`` 对混合系统期望 ``bcs`` 是**一个**平铺列表，
+        # 每个 BC 靠自己的 ``function_space`` 归位。
+        # 给嵌套的 ``[bcs_u, bcs_q]`` 会让 PETSc 抛 **error code 101**
+        # （实测：嵌套 → 101；扁平 → 正常进入迭代）。
+        # ⚠ 这与 ``F``/``J`` 的嵌套要求**不一致** —— 那两处要 Sequence。
+        flat_bcs = list(bcs) + list(q_bcs)
         problem = NonlinearProblem(
             [F_u, F_q],
             [u, self.q],
             J=blocks,
-            bcs=bcs,
+            bcs=flat_bcs,
             petsc_options_prefix="pfwire_mono_",
             petsc_options={
                 "snes_type": "newtonls",
@@ -398,6 +446,70 @@ class ClampContact:
         return problem
 
     # ---- 单体 Newton 的联立残差与 Jacobian（方向 m）----
+    def _contact_cell_dofs(self, u):
+        """**在接触面上**的 DG0 dof 列表（D-68 问题 33 续 17，方向 m 的 B 方案）。
+
+        为什么需要（续 16/17 的实测结论）：Coulomb 投影方程
+
+            F_q = (q − smooth_clip_ufl(q − ε_t·s, μ·p, η))·q_trial·ds(BLOCK_TOP)
+
+        **只在接触面上有定义**。两种测度选择的实测对比（中心差分判据）：
+
+        ==============  ============  ==========  ==========
+        写法            dF_q/du nnz  max|.|      FD 一致
+        ==============  ============  ==========  ==========
+        facet + dx      26568         1.57e-9    1/4（伪影）
+        facet + ds      260           **1.20e11** **4/4（真）**
+        ==============  ============  ==========  ==========
+
+        ⇒ **facet 量必须配 facet 测度**。`facet + dx` 是「求值碰巧对、
+        求导一定错」（续 16 坑 1 的本质）；`facet + ds` 的 `dF_q/du` 是真的。
+
+        但 `facet + ds` 的代价：5067 个 DG0 单元里只有 114 个有方程，
+        其余 4953 行整行为零 ⇒ **全域线性系统奇异**（SNES 0 迭代 -3）。
+
+        **B 方案的处方**：不把方程写到全域，而是把 q 的**自由度**限制在
+        接触单元上 —— 给非接触单元的 q 钉 DirichletBC（值 0）。
+        这样奇异行对应的未知量本就被约束住，系统恢复非奇异，
+        且 `dF_q/du` 保持**真实**（1.20e11，不是 1.57e-9 的伪影）。
+
+        ⚠⚠⚠ **判据必须是「单元是否触及 BLOCK_TOP facet」，不能是 ``p_dg > 0``**
+        （续 17 实测的坑）：``p_dg`` 是 **cell 平均投影**（从边界 CG1 节点
+        取平均），于是与边界**相邻但不在边界上**的单元也会得到 ``p_dg > 0``。
+        实测两种判据差 10 个单元：
+
+            触及 BLOCK_TOP facet : 114 个  ← **正确**（与 ds 的积分域一致）
+            p_dg > 0             :  71 个
+            交集                 :  61 个
+            p_dg>0 但不在边界上   :  10 个  ← 这些既无方程又没被钉 ⇒ 奇异
+
+        用错判据时加完 BC 仍有 **10 个零行**，SuperLU 报
+        ``Matrix is exactly singular``、dx 全 NaN。改用 facet 判据后零行 = 0。
+
+        ⚠ 这与续 16 的坑 2（`ufl.conditional` 吃导数）**不矛盾**：
+        这里用的是**空间投影**（DirichletBC 消除自由度），
+        不是 form 里的 conditional 分支。
+
+        ⚠ 这是**有状态**的：接触斑随载荷步变化，故每次都要重新取 dof。
+
+        Returns
+        -------
+        ``(contact_dofs, all_dofs)`` —— 两个 numpy int32 数组（owned 段）。
+        """
+        import numpy as np
+        from dolfinx.mesh import compute_incident_entities
+        from pfwire.mesh import BLOCK_TOP
+
+        msh = self.mesh
+        tdim = msh.topology.dim
+        top_facets = self.facet_tags.find(BLOCK_TOP)
+        cells = compute_incident_entities(msh.topology, top_facets, tdim - 1, tdim)
+        n_owned = msh.topology.index_map(tdim).size_local
+        cells = np.sort(cells[cells < n_owned])
+        all_dofs = np.arange(self.q.function_space.dofmap.index_map.size_local,
+                             dtype=np.int32)
+        return cells.astype(np.int32), all_dofs
+
     def _slip_and_pressure_dg(self, u, tau_up):
         """把滑移 s 与压力 p 采成 **DG0 的 UFL 场**（D-68 问题 33 续 16）。
 
@@ -526,49 +638,28 @@ class ClampContact:
             F_u = F_u + (-self.q) * ufl.dot(tau_lo, v) * self.ds(BLOCK_BOTTOM)
 
         # ---- (2) Coulomb 投影方程 ----
-        # p 与 s 采成 **DG0 场**，与 uzawa_update 完全同口径（续 16 的处方 d）。
-        # 这样每个单元都有方程 ⇒ 全域线性系统不再奇异。
-        p_dg, s_dg = self._slip_and_pressure_dg(u, tau_up)
-
-        lim = self.mu * p_dg
-        # η = η_rel·μp 逐单元自缩放（与 uzawa_update 的 numpy 版同口径）。
-        # 非接触单元 p_dg = 0 ⇒ lim = 0 ⇒ η = 0 ⇒ smooth_clip_ufl 退化成
-        # 精确 clip(·, 0, 0) ≡ 0 ⇒ F_q = q − 0 = q ⇒ 解 q ≡ 0。
-        # 与 uzawa_update 对 lim=0 单元走 np.clip(..., 0, 0) **完全一致**。
+        # ⚠⚠⚠ **必须用 facet 表达式 + facet 测度**（续 17 实测，B 方案的基础）：
+        #   facet + ds : dF_q/du max = 1.20e11、FD 4/4 一致  ⇒ **真导数**
+        #   facet + dx : dF_q/du max = 1.57e-9、FD 1/4 一致  ⇒ 伪影
+        #   DG0 场+dx  : dF_q/du ≡ 0                      ⇒ 块三角（退化成交错）
+        # facet 量（p 来自 clamp_gap、s 来自 τ·(u−u_prev)）**必须配 facet 测度**，
+        # 这是 facet 量的定义域决定的，不是风格选择。
         #
-        # ⚠⚠⚠ **η 必须加一个绝对下限**（续 16 实测的第三个坑）：
-        # 非接触单元上 q = p = s = lim = η = **全是 0**，于是
-        # ``d(sqrt(g²+η²))/dq`` 在 g=η=0 处是 **0/0 ⇒ NaN**。
-        # 实测 5067 个单元里 4938 个对角元是 NaN ⇒ 线性系统直接崩
-        # （SNES 0 迭代 -3，比 -5/-9 更难查：solver 只报"没收敛"）。
-        # 加下限后 NaN → 0，且**残差逐位不变**（实测相对差 0.000e+00），
-        # 因为 η 的下限只作用在 lim=0 的非接触单元上，而那些单元
-        # F_q = q − 0 = q ⇒ q ≡ 0，Jacobian 在那里取什么值都不影响解。
+        # 代价：F_q 只在接触面上有定义 ⇒ 5067 个 DG0 单元里只有 ~114 个有方程，
+        # 其余行整行为零 ⇒ 全域系统奇异。
+        # 处方（B）：调用方给**非接触单元的 q 钉 DirichletBC(0)**，
+        # 见 :meth:`contact_cell_bcs` 与 :meth:`_contact_cell_dofs`。
+        p, _n = self._pressure_and_normal(u)
+        s_up = self._slip(u, tau_up, self.x_clamp)
+        lim = self.mu * p
+        # η = η_rel·μp 逐点自缩放（与 uzawa_update 的 numpy 版同口径）。
         eta = ufl.max_value(self.uzawa_eta_rel * lim, ufl.as_ufl(1.0e-30))
-        trial = self.q - self.eps_t * s_dg
-        # ⚠⚠ **不包 ufl.conditional**（续 16 实测的坑 2）：UFL 对
-        # ``conditional(c, a, b)`` 求导时**只给条件本身的导数**
-        # ``dc/du·(a − b)``，**丢掉分支的导数** ``c·da/du + (1−c)·db/du``。
-        # 实测 ``d/d u [conditional(lim>0, s, 0)·q_trial·dx]`` 的 nnz = 0，
-        # 而裸 s 是 40536。对 Coulomb 投影是致命的 —— 不动点的 Jacobian
-        # 全在分支里。lim = 0 靠 η 的自缩放处理，不需要 conditional。
+        trial = self.q - self.eps_t * s_up
+        # ⚠⚠ **不包 ufl.conditional**（续 16 坑 2）：UFL 对
+        # ``conditional(c, a, b)`` 求导时**只给条件本身的导数**，丢掉分支导数。
+        # 实测 nnz 从 40536 掉到 0。非接触单元靠 DirichletBC 处理，不用 conditional。
         inner = smooth_clip_ufl(trial, lim, eta)
-        # ⚠ 测度是 **ufl.dx**（全域）：q 是全域 DG0 场，必须在每个单元上
-        # 都有方程，否则 98% 的行整行为零 ⇒ 系统奇异 ⇒ SNES 0 迭代 -3
-        # （续 16 实测的坑 3，见 docstring）。
-        #
-        # ⚠⚠⚠ **代价：dF_q/du 恒为 0**（续 16 实测的坑 5，**已知限制**）。
-        # p_dg/s_dg 是 fem.Function，其值由 interpolate + projector 算出来后
-        # **写进去**的，在 UFL 的依赖图里与 u 无关 ⇒ J 的下三角为 0
-        # ⇒ 单体退化成**块三角**（代数上等价于交错：先由第二行解 q，
-        # 再代入第一行解 u）。
-        #
-        # 曾试过把 facet 表达式（p_f/s_f）直接放进 dx 以恢复耦合，
-        # **实测那是伪影**：UFL 符号导数给 1e-12~1e-10，而中心差分给
-        # **精确 0**（6 列全部不一致）。即 facet 量进 dx 是
-        # 「**求值碰巧对、求导一定错**」—— 这正是坑 1 的本质。
-        # 故不采用；诚实地留块三角，并在 M2 中断言这个已知限制。
-        F_q = (self.q - inner) * q_trial * ufl.dx
+        F_q = (self.q - inner) * q_trial * self.ds(BLOCK_TOP)
 
         return F_u, F_q
 
