@@ -187,6 +187,17 @@ class ClampContact:
         self.has_friction_at_build = mu is not None
         if mu is not None and float(mu) <= 0.0:
             raise ValueError("给了 mu 就必须为正（要关摩擦请传 None），收到 %r" % (mu,))
+        # ---- 切向 Jacobian 的**运行时**开关（0/1，D-68 问题 33 续 14 修）----
+        # u 的 Newton form 在装配时**只编译一次**，而标准加载序列是「先关摩擦
+        # 压法向（延拓期）、再开摩擦推切向」：延拓期 μ = 0、q ≡ 0、x_clamp = 0，
+        # 切向刚度为 0。若在编译期按 μ 判，项会被永久编译成 0，set_mu 之后再开
+        # 摩擦也拿不回来；若在编译期无条件装，延拓期就白扛 ε_t ≈ 1.4e16 的
+        # 条件数（实测续 14：延拓期直接 SNES -5，而续 13 延拓期完全正常）。
+        # 故用一个 Constant 在**运行时**开关：μ > 0 时置 1，μ = 0 时置 0。
+        # form 结构恒定，与 delta / mu 同机制（D-16 的纪律）。
+        self._tang_jac_gate = fem.Constant(mesh, 0.0)
+        if self.has_friction:
+            self._tang_jac_gate.value = 1.0
         # 切向滑移基准 u_prev：只在接触面上有意义，但为了能整场插值/存取，
         # 建在与 u 同构的空间上（调用方用 set_slip_reference 冻结）。
         self.u_prev = None       # fem.Function(V)，惰性建（要 V，构造时还没有）
@@ -266,6 +277,11 @@ class ClampContact:
         """运行时切 μ。``None`` 或 0 = 关摩擦（只改 Constant.value，不重建 form）。"""
         self.mu.value = 0.0 if mu is None else float(mu)
         self.has_friction = mu is not None and float(mu) > 0.0
+        # 切向 Jacobian 的运行时开关跟着切（续 14）：μ = 0 时 q ≡ 0，
+        # 切向刚度必须是 0，否则延拓期白扛 ε_t ≈ 1.4e16 的条件数（SNES -5）。
+        # 用 Constant 而不是 Python bool：form 只编译一次，Python bool 在编译后
+        # 不再被读（那正是第一版只判 has_friction_at_build 的原因）。
+        self._tang_jac_gate.value = 1.0 if self.has_friction else 0.0
         # 重新开摩擦时让 θ 与残差历史重新起跑（_uzawa_theta0 的解析估计依赖 δ，
         # 而关摩擦期间 δ 可能变过）。q 场也清零：关摩擦期间 q ≡ 0 已被
         # uzawa_update 强制（lim = μp = 0 → 精确 clip），这里显式声明意图。
@@ -379,12 +395,20 @@ class ClampContact:
         参数 ε_t 的本体 —— 它本就是切向罚刚度（``penalty_tangential_stiffness``），
         只是原来的实现把它只用在乘子更新里、没进 Jacobian。
 
-        ⚠ **量级警告**：ε_t ≈ 1.38e16 Pa/m 是个巨大的数。加进 Jacobian 会显著
-        恶化矩阵条件数，可能把 -5 变成 -9（Jacobian 奇异）。若发生，**按原样
-        报告、不调参**（硬约束 6）—— D-68 问题 28 续 2 已记过同类现象。
+        ⚠⚠ **必须在 μ 实际启用时才非零**（2026-10-25 修）：第一版只判
+        ``has_friction_at_build``，而延拓期是「form 里装着切向项但 μ = 0」
+        （``set_mu(None)``，见 :meth:`tangential_residual` 的说明）——
+        那时 q ≡ 0、**不该有任何切向刚度**。第一版却无条件加了
+        ε_t·(τ·du)(τ·v)，结果**延拓期就 SNES -5**（续 13 时延拓期完全正常），
+        比不加更糟。
 
-        ⚠ **不动点不变**：本项只改 Newton 的收敛路径，不改 F 的零点。
-        收敛后解仍满足 F = 0，q 的饱和值由 Coulomb 锥决定而非 Jacobian。
+        这里的开关是 **Constant 而非 Python bool**：u 的 Newton form 只编译
+        一次（续 14 的接线在 ``_build_u_problem`` 里），而加载序列是「先关摩擦
+        延拓、再开摩擦推切向」。用 Python bool 判会永久二选一 ——
+        判 ``has_friction_at_build`` 则延拓期白扛 ε_t（-5），
+        判运行时 ``has_friction`` 则开摩擦后拿不回来（恒零）。
+        故用 ``self._tang_jac_gate``（``set_mu`` 同步置 0/1）乘在整项上：
+        form 结构恒定，值随 μ 走，与 ``delta`` / ``mu`` 同机制（D-16）。
         """
         if not self.has_friction_at_build:
             return ufl.as_ufl(0.0)
@@ -400,7 +424,7 @@ class ClampContact:
         if tau_lo is not None and self._bottom_pressure(u) is not None:
             form = form + self.eps_t * ufl.dot(tau_lo, du_trial) \
                 * ufl.dot(tau_lo, v) * self.ds(BLOCK_BOTTOM)
-        return form
+        return self._tang_jac_gate * form
 
     def tangential_reaction(self, u) -> float:
         """总切向力 Q = ∫ q τ_x ds（N/m，单位厚度），上侧 + 下侧。

@@ -7659,3 +7659,70 @@ self._u_problem = NonlinearProblem(F, self.u, J=J, ...)
 若方向 f 有效，应能看到 Uzawa 内循环收敛、循环步被接受、driver 继续推进。
 按硬约束 6，未出结果前不声称修好。
 
+
+## D-68 问题 33 续 14 附注：方向 f 第一版让**延拓期**就 SNES -5（2026-10-25 修）
+
+### 现场
+
+续 14 装上切向 Jacobian 后重跑串行 6.6.3，**比续 13 更早崩**：
+崩点从 `explicit_cycle` 第一个子步的 it=5 挪到 `find_working_delta` → `_ramp_to`
+（纯法向延拓期），而续 13 时延拓期完全正常。
+
+### 根因：编译期标志 vs 运行期状态
+
+u 的 Newton form 在 `_build_u_problem` 里**只编译一次**。
+第一版的 `tangential_jacobian` 判 `has_friction_at_build` —— 那是**编译期**标志，
+延拓期仍为 True（切向项必须在 form 里，延拓后才能开摩擦）。
+于是延拓期装上了 `ε_t·(τ·du)(τ·v)`，而延拓期 μ = 0（`set_mu(None)`）、
+q ≡ 0、x_clamp = 0 —— **切向刚度本该是 0**。
+白扛 ε_t ≈ 1.38e16 Pa/m 的条件数 ⇒ SNES -5。
+
+**两个方向的错法都会失败**，这是本条的核心：
+
+| 判据 | 结果 |
+|---|---|
+| 编译期 `has_friction_at_build`（第一版） | 延拓期白扛 ε_t ⇒ -5 |
+| 运行期 Python bool `has_friction` | form 在延拓期编译成恒零，`set_mu` 之后开摩擦**拿不回来**（方向 f 静默失效） |
+
+### 处方：Constant 门
+
+```python
+# 构造时
+self._tang_jac_gate = fem.Constant(mesh, 0.0)
+if self.has_friction:
+    self._tang_jac_gate.value = 1.0
+# set_mu 里同步
+self._tang_jac_gate.value = 1.0 if self.has_friction else 0.0
+# tangential_jacobian 末尾
+return self._tang_jac_gate * form
+```
+
+form **结构恒定**（编译一次），值随 μ 走 —— 与 `delta` / `mu` 同机制（D-16 的纪律）。
+
+### 测试 U21（`tests/test_clamp_uzawa.py`，20 项全绿）
+
+**同一条 form** 反复装配、只切 `set_mu`（正是生产的时序）：
+
+```
+U21: μ=0 → 0.000e+00,  μ=0.7 → 1.401e+14,  再 μ=0 → 0.000e+00
+```
+
+三条断言：μ=0 时**精确** 0（不是小）、μ>0 时非零、再 μ=0 时又精确 0
+（证明是「随 μ 走」而非「一次性」）。
+
+### 教训
+
+「运行时开关」不能只在 Python 层想当然 —— UFL form 编译一次之后，
+Python 层的 bool 就再也不被读了。凡是**编译期恒定、运行期要变**的量，
+都得走 `fem.Constant`。这不是新知识，但方向 f 是第一次在 Jacobian 上踩到。
+
+### 待验证
+
+串行 6.6.3 重跑（修好后）**进行中**。
+按硬约束 6，未出结果前不声称方向 f 有效。
+
+⚠ 附：第一次「重跑」是空跑 —— `nohup ... &` 从 Git Bash 起，shell 退出时
+WSL 把整个进程组收了，log 的 mtime 停在 13:51（旧那次崩溃），
+而修复是 14:04 落的盘。看到 `=== 结束 ===` 就以为跑完了，其实**新代码
+一次都没被执行**。判据：log 里必须有比源码 mtime 更新的开始行。
+

@@ -1248,3 +1248,54 @@ def test_U20_assembling_jacobian_does_not_change_residual(tmp_path):
         print("  U20: 残差范数 = %.6e（装配 J 前后差 %.3e）" % (norm_before, diff))
     assert diff < 1.0e-12 * max(norm_before, 1.0e-300), (
         "装配 J 之后残差变了（%.3e）：J 的装配污染了 F" % diff)
+
+
+# --------------------------------------------------------------------------
+# U21：切向 Jacobian 的**运行时**开关（D-68 问题 33 续 14 修）
+#
+# 延拓期 μ = 0、q ≡ 0 ⇒ 切向刚度必须为 0。
+# 只判编译期的 has_friction_at_build 会让延拓期白扛 ε_t（SNES -5）；
+# 只判运行期的 Python bool 会让项在延拓期被永久编译成 0（开摩擦后拿不回来）。
+# 所以必须是 Constant 门：form 结构恒定，值随 set_mu 走。
+# --------------------------------------------------------------------------
+def test_U21_tangential_jacobian_gate_follows_mu(tmp_path):
+    """U21：切向 Jacobian 随 ``set_mu`` 开关 —— μ = 0 时精确为 0。
+
+    这条守的是续 14 的回归。**同一条 form** 反复装配（不重建、不重新编译），
+    只有 ``set_mu`` 在切 —— 正是生产里的时序。
+    """
+    import numpy as np
+    from dolfinx import fem
+    from dolfinx.fem.petsc import assemble_matrix
+
+    ctx = _setup(tmp_path)
+    clamp, u = ctx["clamp"], ctx["u"]
+    V = ctx["V"]
+
+    # 装一次 form，之后只切 set_mu（不重建 form）
+    du = ufl.TrialFunction(V)
+    v = ufl.TestFunction(V)
+    form = fem.form(clamp.tangential_jacobian(u, du, v))
+
+    def _fro():
+        M = assemble_matrix(form, bcs=[])
+        M.assemble()
+        n = M.getSize()[0]
+        return float(np.abs(M.getValues(range(n), range(n))).sum())
+
+    # 1) 关摩擦（延拓期）：必须精确 0
+    clamp.set_mu(None)
+    f0 = _fro()
+    # 2) 开摩擦：必须非零
+    clamp.set_mu(MU)
+    f1 = _fro()
+    # 3) 再关回去：必须又精确 0（证明是「随 μ 走」而不是「一次性」）
+    clamp.set_mu(None)
+    f2 = _fro()
+
+    if comm_rank0():
+        print("  U21: μ=0 → %.3e,  μ=%g → %.3e,  再 μ=0 → %.3e"
+              % (f0, MU, f1, f2))
+    assert f0 == 0.0, "μ = 0 时切向 Jacobian 非零（%.3e）：延拓期白扛 ε_t" % f0
+    assert f1 > 0.0, "μ > 0 时切向 Jacobian 全零：方向 f 没接上"
+    assert f2 == 0.0, "再关摩擦后 Jacobian 没归零（%.3e）：开关不是随 μ 走的" % f2
