@@ -1139,3 +1139,112 @@ def test_U18_u_relaxation_config_validation_and_wiring():
     assert "omega < 1.0" in src_solver, (
         "_solve_u_uzawa 缺 omega < 1.0 的分支")
 
+
+
+# --------------------------------------------------------------------------
+# U19-U20：切向面力线性化进 u 的 Jacobian（方向 f，D-68 问题 33 续 13）
+#
+# 背景：Uzawa 模式下切向牵引 q·τ·v 里 q 是 DG0 Function、不依赖 u，
+# ufl.derivative(F, u) 给出的切向刚度为 0。实测（续 13，串行）：
+#   it=4 时 843 个接触单元全部 |q| = μp（q_new|max 恰等于 lim|max），
+#   it=5 即 u 的 Newton SNES -5 —— 巨大面力 + 零切向刚度。
+# 处方：补 ε_t·(τ·du)(τ·v) 进 Jacobian（Uzawa 迭代参数的本体）。
+# --------------------------------------------------------------------------
+def test_U19_tangential_jacobian_is_symmetric_and_linear_in_eps_t(tmp_path):
+    """U19：``tangential_jacobian`` 的三条性质 —— 非零 / 对称 / 线性于 ε_t。
+
+    对称性不是装饰：切向刚度必须是自伴的双线性型，否则 Newton 的线性系统
+    非对称、MUMPS 虽能解但收敛性没有保证（且物理上不对）。
+    """
+    import numpy as np
+    import scipy.sparse as sp
+    from dolfinx import fem
+    from dolfinx.fem.petsc import assemble_matrix
+
+    ctx = _setup(tmp_path)
+    clamp, u = ctx["clamp"], ctx["u"]
+    clamp.set_mu(MU)
+    ctx["loads"].set_phase(0.25)
+    clamp.set_tangential(1.0e-6)
+    _uzawa(ctx["problem"], clamp, u)
+
+    V = ctx["V"]
+    du = ufl.TrialFunction(V)
+    v = ufl.TestFunction(V)
+
+    def _assemble():
+        form = fem.form(clamp.tangential_jacobian(u, du, v))
+        M = assemble_matrix(form, bcs=[])
+        M.assemble()
+        n = M.getSize()[0]
+        return sp.csr_matrix(M.getValues(range(n), range(n)))
+
+    A = _assemble()
+    nz = int(A.nnz)
+    if comm_rank0():
+        print("  U19: J 的 nnz = %d" % nz)
+    assert nz > 0, "Uzawa 模式下切向 Jacobian 全零：方向 f 没接上"
+
+    # 对称性：只比非显式零的元素
+    scale = float(np.max(np.abs(A.data))) if A.data.size else 1.0
+    D = (A - A.T)
+    rel_sym = (float(np.max(np.abs(D.data))) / max(scale, 1.0e-300)) \
+        if D.nnz else 0.0
+    if comm_rank0():
+        print("       对称性相对偏差 = %.3e" % rel_sym)
+    assert rel_sym < 1.0e-12, (
+        "切向 Jacobian 不对称（相对偏差 %.3e）：自伴性被破坏" % rel_sym)
+
+    # 线性于 eps_t：加倍后元素应同比缩放
+    eps0 = clamp.eps_t
+    try:
+        clamp.eps_t = 2.0 * eps0
+        A2 = _assemble()
+    finally:
+        clamp.eps_t = eps0
+    assert A.data.size == A2.data.size, (
+        "换 ε_t 后非零结构变了（%d vs %d）：J 不该随 ε_t 改变稀疏结构"
+        % (A.data.size, A2.data.size))
+    ratio = A2.data / A.data
+    if comm_rank0():
+        print("       ε_t 加倍后元素比 = %.6f（应为 2）" % float(ratio[0]))
+    assert np.allclose(ratio, 2.0, rtol=1.0e-12), (
+        "J 不线性于 ε_t：换 ε_t 后元素没按比例缩放")
+
+
+def test_U20_assembling_jacobian_does_not_change_residual(tmp_path):
+    """U20：装配切向 Jacobian **不污染残差** —— 前后 F(u) 逐位相同。
+
+    这条守的是「J 只进 Newton 的线性系统、不进残差」。若实现不小心让 J 的
+    装配改动了 u 或 q 的状态，残差就会变 —— 那意味着收敛判据判的是另一个问题。
+    """
+    from dolfinx import fem
+    from dolfinx.fem.petsc import assemble_matrix
+
+    ctx = _setup(tmp_path)
+    clamp, u, prob = ctx["clamp"], ctx["u"], ctx["problem"]
+    clamp.set_mu(MU)
+    ctx["loads"].set_phase(0.25)
+    clamp.set_tangential(1.0e-6)
+    _uzawa(prob, clamp, u)
+
+    F_form = fem.form(prob.F)
+    r_before = fem.assemble_vector(F_form)
+    # dolfinx 的 Vector 没有 .norm()；取数组算 L2
+    import numpy as _np
+    norm_before = float(_np.linalg.norm(r_before.array))
+
+    # 装配 J（应只读状态、不改状态）
+    v = ufl.TestFunction(ctx["V"])
+    du = ufl.TrialFunction(ctx["V"])
+    J_form = fem.form(clamp.tangential_jacobian(u, du, v))
+    M = assemble_matrix(J_form, bcs=[])
+    M.assemble()
+
+    r_after = fem.assemble_vector(F_form)
+    diff = abs(float(_np.linalg.norm(r_after.array)) - norm_before)
+
+    if comm_rank0():
+        print("  U20: 残差范数 = %.6e（装配 J 前后差 %.3e）" % (norm_before, diff))
+    assert diff < 1.0e-12 * max(norm_before, 1.0e-300), (
+        "装配 J 之后残差变了（%.3e）：J 的装配污染了 F" % diff)

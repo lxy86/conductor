@@ -836,9 +836,21 @@ class PhaseFieldSolver:
             )
         else:
             F = self._residual_u_form(v)
+            # Jacobian：默认让 UFL 对 F 自动求导。**但切向项要手工补**
+            # （方向 f，D-68 问题 33 续 13）：Uzawa 模式下切向牵引 q·τ·v 里
+            # q 是 DG0 Function、不依赖 u，自动求导给出的切向刚度为 0 ——
+            # q 饱和到 Coulomb 容量后 Newton 面对巨大面力却毫无切向刚度，
+            # 必然 -5/-9。补上 ε_t·(τ·du)(τ·v)（Uzawa 迭代参数的本体）。
+            u_trial = ufl.TrialFunction(self.V_u)
+            J = ufl.derivative(F, self.u, u_trial)
+            if (self.contact is not None
+                    and getattr(self.contact, "has_friction_at_build", False)
+                    and getattr(self.contact, "has_uzawa", lambda: False)()):
+                J = J + self.contact.tangential_jacobian(self.u, u_trial, v)
             self._u_problem = NonlinearProblem(
                 F,
                 self.u,
+                J=J,
                 bcs=self.bcs_u,
                 petsc_options_prefix="pfwire_u_newton_",
                 petsc_options={

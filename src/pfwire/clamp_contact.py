@@ -361,6 +361,47 @@ class ClampContact:
             form = form + q_lo * ufl.dot(tau_lo, v) * self.ds(BLOCK_BOTTOM)
         return form
 
+    def tangential_jacobian(self, u, du_trial, v) -> ufl.Form:
+        """Uzawa 模式下切向牵引对 u 的 Jacobian 贡献：ε_t·(τ·du)(τ·v)·ds（方向 f）。
+
+        出处：Uzawa/ALM 的标准做法 —— 乘子项对偶变量的导数要进 Jacobian
+        （Fortin & Glowinski 1983, *Augmented Lagrangian Methods*, §3；
+         本项目的 ALM 实现见 D-68 问题 26）。
+
+        **为什么需要**（D-68 问题 33 续 13）：切向项 ``q·τ·v`` 里 q 是 DG0
+        Function、**不依赖 u**，故 ``ufl.derivative(F, u)`` 自动求导给出的
+        切向刚度为 0。后果是 Uzawa 迭代中 q 一旦饱和到 Coulomb 容量
+        （实测 it=4 时 843 个接触单元全部 ``|q| = μp``、``q_new|max`` 恰好
+        等于 ``lim|max``），下一步 Newton 面对 843 个单元的**巨大面力却毫无
+        切向刚度**，必然 SNES -5/-9。
+
+        **加的是什么**：切向的「弹性」刚度 ε_t·(τ·du)(τ·v)。这是 Uzawa 迭代
+        参数 ε_t 的本体 —— 它本就是切向罚刚度（``penalty_tangential_stiffness``），
+        只是原来的实现把它只用在乘子更新里、没进 Jacobian。
+
+        ⚠ **量级警告**：ε_t ≈ 1.38e16 Pa/m 是个巨大的数。加进 Jacobian 会显著
+        恶化矩阵条件数，可能把 -5 变成 -9（Jacobian 奇异）。若发生，**按原样
+        报告、不调参**（硬约束 6）—— D-68 问题 28 续 2 已记过同类现象。
+
+        ⚠ **不动点不变**：本项只改 Newton 的收敛路径，不改 F 的零点。
+        收敛后解仍满足 F = 0，q 的饱和值由 Coulomb 锥决定而非 Jacobian。
+        """
+        if not self.has_friction_at_build:
+            return ufl.as_ufl(0.0)
+        if self.u_prev is None:
+            raise RuntimeError(
+                "开摩擦后必须先 bind_slip_space(V)（切向滑移基准场还没建）")
+
+        tau_up, tau_lo = self._tangents(u)
+        # τ·du 即切向滑移的线性化（忽略 dτ/du 的二阶项：τ 是接触面法向的
+        # 旋转 90°，dτ/du ~ O(δ/a) ≪ 1，而 ε_t 项本身已是主导）。
+        form = self.eps_t * ufl.dot(tau_up, du_trial) * ufl.dot(tau_up, v) \
+            * self.ds(BLOCK_TOP)
+        if tau_lo is not None and self._bottom_pressure(u) is not None:
+            form = form + self.eps_t * ufl.dot(tau_lo, du_trial) \
+                * ufl.dot(tau_lo, v) * self.ds(BLOCK_BOTTOM)
+        return form
+
     def tangential_reaction(self, u) -> float:
         """总切向力 Q = ∫ q τ_x ds（N/m，单位厚度），上侧 + 下侧。
 

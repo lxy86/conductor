@@ -7583,3 +7583,79 @@ D-68 问题 30 续 / `tests/conftest.py` 的 `gc.disable()`）。
 面对 843 个单元的饱和面力而 -5 —— 这是 Jacobian 缺切向项的直接后果，
 机理清楚、改动明确。**待确认。**
 
+
+## D-68 问题 33 续 14：方向 f 实现 —— 切向面力线性化进 u 的 Jacobian（2026-10-25）
+
+用户批准方向 f。
+
+### 机理（续 13 的干净数据）
+
+Uzawa 模式下切向牵引 `q·τ·v` 里 `q` 是 **DG0 Function、不依赖 u**，
+故 `ufl.derivative(F, u)` 自动求导给出的切向刚度为 **0**。后果：
+
+```
+it=4 时 843 个接触单元全部 |q| = μp（q_new|max 恰等于 lim|max = 2.3364e8）
+it=5 u 的 Newton SNES -5   ← 巨大面力 + 零切向刚度
+```
+
+### 处方
+
+补 ε_t·(τ·du)(τ·v)·ds 进 Jacobian。出处：Uzawa/ALM 的标准做法 ——
+乘子项对偶变量的导数要进 Jacobian（Fortin & Glowinski 1983,
+*Augmented Lagrangian Methods* §3；本项目的 ALM 实现见 D-68 问题 26）。
+
+ε_t 本就是切向罚刚度（`penalty_tangential_stiffness` = κ_t E/h），
+原实现只把它用在乘子更新里、没进 Jacobian。
+
+### 实现
+
+`src/pfwire/clamp_contact.py` 新增 `tangential_jacobian(u, du_trial, v)`：
+
+```python
+form = self.eps_t * ufl.dot(tau_up, du_trial) * ufl.dot(tau_up, v) \\
+    * self.ds(BLOCK_TOP)
+# 对称挤压时下侧同项
+```
+
+（忽略 `dτ/du` 的二阶项：τ 是接触面法向旋转 90°，`dτ/du ~ O(δ/a) ≪ 1`，
+而 ε_t 项本身已是主导。）
+
+`src/pfwire/phasefield.py:_build_u_problem`（Newton 分支）接线：
+
+```python
+u_trial = ufl.TrialFunction(self.V_u)
+J = ufl.derivative(F, self.u, u_trial)
+if contact and has_friction_at_build and has_uzawa():
+    J = J + self.contact.tangential_jacobian(self.u, u_trial, v)
+self._u_problem = NonlinearProblem(F, self.u, J=J, ...)
+```
+
+**只在 Uzawa 模式下补**（罚函数模式的切向项本就含 ε_t，自动求导已覆盖）。
+
+### 测试（`tests/test_clamp_uzawa.py` 新增 U19/U20，19 项全绿）
+
+- **U19** `tangential_jacobian` 的三条性质：
+  1. **非零**（nnz > 0，防「方向 f 没接上」）；
+  2. **对称**（相对偏差 < 1e-12）—— 切向刚度必须是自伴双线性型，
+     否则 Newton 线性系统非对称、MUMPS 能解但收敛性无保证；
+  3. **线性于 ε_t**（加倍后元素同比缩放，rtol 1e-12）。
+- **U20** 装配 J **不污染残差**：装配前后 `F(u)` 的 L2 范数差 < 1e-12 相对。
+  守的是「J 只进 Newton 线性系统、不进残差」—— 若 J 的装配改动了 u/q 状态，
+  收敛判据判的就是另一个问题。
+
+### 已知风险（实现时已声明）
+
+ε_t ≈ 1.38e16 Pa/m 是巨大数，加进 Jacobian 会显著恶化条件数，
+**可能把 -5 变成 -9**（Jacobian 奇异）。D-68 问题 28 续 2 已记过同类现象
+（切 basic 线搜索也没用、同点位报 -9）。若发生，**按原样报告、不调参**（硬约束 6）。
+
+另：**不动点不变** —— J 只改 Newton 收敛路径，不改 F 的零点；
+收敛后解仍满足 F = 0，q 的饱和值由 Coulomb 锥决定而非 Jacobian。
+
+### 待验证
+
+串行 6.6.3 重跑（`bash scripts/run_663_serial.sh`）**进行中**。
+判据：续 13 止步于 `explicit_cycle` 第一个子步的 it=5（SNES -5）；
+若方向 f 有效，应能看到 Uzawa 内循环收敛、循环步被接受、driver 继续推进。
+按硬约束 6，未出结果前不声称修好。
+
