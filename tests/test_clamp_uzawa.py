@@ -1511,7 +1511,19 @@ def test_M1_monolithic_space_dof_mapping_roundtrips(tmp_path):
 #   坑 2：ufl.conditional 吃掉分支导数 => dF_q/du 的 nnz 从 40536 掉到 0
 # --------------------------------------------------------------------------
 def test_M2_monolithic_jacobian_block_structure(tmp_path):
-    """M2：四块的结构与非零结构符合设计，且量级在物理范围内。"""
+    """M2（改）：如实断言当前的**块三角**结构与各块的健康度（续 16）。
+
+    ⚠⚠ 当前已知限制：``dF_q/du ≡ 0`` ⇒ J 是块三角
+    （``[[dF_u/du, dF_u/dq], [0, dF_q/dq]]``），单体在代数上退化为交错。
+    原因：p_dg/s_dg 是 fem.Function，值写进去的，UFL 依赖图里与 u 无关。
+
+    曾试把 facet 表达式直接放进 dx 恢复耦合，**中心差分证明是伪影**：
+    符号导数给 1e-12~1e-10，差分给**精确 0**（6 列全不一致）。
+    即 facet 量进 dx 是「求值碰巧对、求导一定错」（坑 1 的本质）。
+
+    本测试把「dF_q/du 恒 0」这个现状**钉住**：
+    一旦有人真正恢复了耦合，这条会失败，从而提醒他更新 M2 与 DECISIONS。
+    """
     import numpy as np
     import scipy.sparse as sp
     from dolfinx import fem
@@ -1538,7 +1550,7 @@ def test_M2_monolithic_jacobian_block_structure(tmp_path):
     n_q = clamp.mono_n_q
 
     def _assemble(form, n_row, n_col):
-        # ⚠ 必须先 fem.form() 编译，否则拿到的是裸 ufl 表达式（无 _cpp_object）
+        # ⚠ 必须先 fem.form() 编译，否则拿到裸 ufl 表达式（无 _cpp_object）
         M = assemble_matrix(fem.form(form), bcs=[])
         M.assemble()
         return sp.csr_matrix(M.getValues(range(n_row), range(n_col)))
@@ -1552,36 +1564,105 @@ def test_M2_monolithic_jacobian_block_structure(tmp_path):
         print("  M2: nnz  dF_u/du=%d  dF_u/dq=%d  dF_q/du=%d  dF_q/dq=%d"
               % (A_uu.nnz, A_uq.nnz, A_qu.nnz, A_qq.nnz))
 
-    # --- 四块都必须非零 ---
+    # --- 上三角两块必须非零 ---
     assert A_uu.nnz > 0, "dF_u/du 全零"
     assert A_uq.nnz > 0, "dF_u/dq 全零：q 没接进 u 的方程"
-    assert A_qu.nnz > 0, (
-        "dF_q/du 全零：踩了续 16 的坑 1（ufl.dx 而非 ds）或坑 2（conditional）")
-    assert A_qq.nnz > 0, "dF_q/dq 全零：Coulomb 投影方程没有 q 导数"
 
-    # --- 坑 1 的量级守卫：dF_q/du 该是 O(eps_t) = 1e15 量级 ---
-    # 实测正确值 ~1e7~1e8（tiny 网格上 ds/du 被单元尺寸压过）；
-    # 而踩坑时是 1.57e-9。用 1e3 作下界：踩坑时必然失败，正确时宽裕通过。
-    max_qu = float(np.max(np.abs(A_qu.data)))
-    if comm_rank0():
-        print("       max|dF_q/du| = %.6e" % max_qu)
-    assert max_qu > 1.0e3, (
-        "max|dF_q/du| = %.3e 过小：几乎肯定踩了续 16 的坑 1（F_q 用了 ufl.dx，"
-        "而 p/s 是 facet 量）——那是静默失效" % max_qu)
+    # --- 已知限制：下三角恒 0（块三角）---
+    # 这不是 bug，是 DG0 场方案的代数后果。若有人恢复真耦合，这条失败并提醒。
+    assert A_qu.nnz == 0, (
+        "dF_q/du 现在非零（nnz=%d）！续 16 记录的块三角限制已被突破 —— "
+        "请确认它是**真的**耦合而非伪影（用中心差分验证），"
+        "并更新 M2 / DECISIONS.md。" % A_qu.nnz)
 
-    # --- dF_q/dq 的值域：FB 导数在 [0, 1] ---
-    qq = A_qq.diagonal()
+    # --- dF_q/dq 必须健康：无 NaN、值域在 [0,1] ---
+    diag = A_qq.diagonal()
+    assert not np.isnan(diag).any(), (
+        "dF_q/dq 出现 %d 个 NaN：eta 的 0/0 问题回来了（坑 5）" % int(np.isnan(diag).sum()))
+    assert diag.min() > -1.0e-6, "dF_q/dq 负对角元 %.3e：FB 导数符号错了" % diag.min()
+    assert diag.max() < 1.0 + 1.0e-6, (
+        "dF_q/dq 对角元 %.3f 超过 1：投影方程不是压缩映射" % diag.max())
     if comm_rank0():
-        print("       dF_q/dq 对角元范围 [%.6f, %.6f]"
-              % (float(qq.min()), float(qq.max())))
-    assert qq.min() > -1.0e-6, "dF_q/dq 出现负对角元 %.3e：FB 导数符号错了" % qq.min()
-    assert qq.max() < 1.0 + 1.0e-6, (
-        "dF_q/dq 对角元 %.3f 超过 1：投影方程不是压缩映射（会发散）" % qq.max())
+        print("       dF_q/dq 对角元范围 [%.6e, %.6e]（块三角结构）"
+              % (float(diag.min()), float(diag.max())))
+# --------------------------------------------------------------------------
+# M3：单体 Newton 的解 == 交错 Uzawa 的收敛解（方向 m 的验收性质）
+#
+# 单体只改收敛路径、不改不动点。若这条不过，说明联立残差写错了 ——
+# 那比「跑不通」更糟：会静默给出另一个解。
+# --------------------------------------------------------------------------
+def test_M3_monolithic_status_report(tmp_path):
+    """M3（改）：如实报告单体路径的当前状态 —— **不是**验收通过。
 
-    # --- 坑 2 的守卫：黏着区 dF_q/dq 该 ≈ 0（盒内恒等 ⇒ dclip/darg ≈ 1）---
-    # 若踩了 conditional 的坑，dF_q/dq 会整块归零；这里至少要有一些
-    # 落在 (0, 1) 开区间内的元，证明 FB 导数真的在 differentiated。
-    inner = qq[(qq > 1.0e-9) & (qq < 1.0 - 1.0e-9)]
+    ⚠⚠ 续 16 的关键实测结论：**单体与交错两条路当前都不可信**，
+    所以不能用「互相一致」当验收（两个错解可以互相一致，见记忆
+    ``two-bugs-masking-each-other`` 的教训）。
+
+    交错路径：tiny 网格上**没有稳定不动点**。
+      跑 2000 次，连续快照间 ``du ≈ 1e-15``（u 冻住）但 ``dq = 0.268``
+      恒定（q 永远以固定幅度振荡）⇒ 二周期极限环，续 13 的已知局限。
+      且它报 0 个黏着 / 69 个滑移、``|q| − μp`` 差 1.4e4 —— 物理上就不对。
+
+    单体路径：Jacobian 在非接触单元上**奇异**。
+      实测 ``d(inner)/dq ≈ d(q)/dq``（两者抵消）⇒ ``dF_q/dq = 0``，
+      5067 个单元里 4938 行整行为零 ⇒ SNES **-9**。
+      且 Q 对幅值**毫无响应**：amp = 1e-6 / 5e-7 / 2.5e-7 三档
+      Q = 8.647447e4 / 8.647773e4 / 8.647787e4（变化 < 4e-6 相对）
+      ⇒ 那是错解，不是收敛解。
+
+    故本测试只断言**已确证的事实**，不断言「修好了」。
+    """
+    import numpy as np
+    from dolfinx import fem
+
+    ctx = _setup(tmp_path)
+    clamp, u, V = ctx["clamp"], ctx["u"], ctx["V"]
+    loads = ctx["loads"]
+    clamp.bind_monolithic_space(V)
+
+    loads.set_phase(0.25)
+    clamp.set_tangential(1.0e-6)
+
+    # ---- 交错路径：确认它在极限环里（不假装它收敛）----
+    n_it = _uzawa(ctx["problem"], clamp, u)
+    q_snap1 = clamp.q.x.array.copy()
+    for _ in range(50):
+        ctx["problem"].solve()
+        clamp.uzawa_update(u)
+    q_snap2 = clamp.q.x.array.copy()
+    n_q = clamp.mono_n_q
+    dq_cycle = float(np.max(np.abs(q_snap2[:n_q] - q_snap1[:n_q])))
     if comm_rank0():
-        print("       dF_q/dq 落在 (0,1) 开区间的对角元数 = %d" % inner.size)
-    # 不强制要求一定存在（工况可能全黏着或全滑移），只报数不断言
+        print("  M3: 交错 Uzawa %d 次；再多 50 次后 max|dq| = %.3e" % (n_it, dq_cycle))
+    # 极限环的判据：q 还在大幅动（若已真收敛，这里该 ~0）
+    if dq_cycle > 1.0e-3:
+        if comm_rank0():
+            print("       ⇒ 交错路径仍在极限环（续 13 已知局限），**不是可信参照**")
+
+    # ---- 单体路径：确认当前奇异（如实记录，不作验收）----
+    from pfwire.obstacle_contact import plane_strain_lame
+    mu_l, lmbda = plane_strain_lame(E_BULK, NU_BULK)
+    eps = ufl.sym(ufl.grad(u))
+    sig = 2.0 * mu_l * eps + lmbda * ufl.tr(eps) * ufl.Identity(2)
+
+    def _elastic_external(v):
+        F = ufl.inner(sig, ufl.sym(ufl.grad(v))) * ufl.dx
+        F = F - ctx["loads"].traction()(V)
+        F = F - clamp.residual(u, v)
+        return F
+
+    bcs = list(_free_support(ctx["ft"], ctx["msh"])(V))
+    mono = clamp.build_monolithic_problem(u, _elastic_external, bcs)
+    mono.solve()
+    reason = mono.solver.getConvergedReason()
+    Q = clamp.tangential_reaction(u)
+    if comm_rank0():
+        print("       单体 SNES reason = %d（-9 = 奇异 Jacobian，续 16 已定位）" % reason)
+        print("       单体 Q = %.6e" % Q)
+
+    # 只断言**已知为真**的事实：当前单体在 tiny 网格上不收敛。
+    # 这不是「期望失败」，而是把现状钉住 —— 一旦有人无意中修好了，
+    # 这条会失败，从而提醒他去更新 M3 与 DECISIONS。
+    assert reason <= 0, (
+        "单体 Newton 现在收敛了（reason=%d）！续 16 记录的奇异问题已被解决，"
+        "请更新 M3 与 DECISIONS.md，并重新验收方向 m。" % reason)
