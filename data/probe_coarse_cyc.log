@@ -1,0 +1,83 @@
+装配粗网格工况…
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.00951429s, CPU 0.00708s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Simple recombination completed (Wall 0.202547s, CPU 0.202267s): 6435 quads, 1580 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.749057, min Q = 0.271581
+Info    : Done meshing 2D (Wall 0.482101s, CPU 0.478304s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.626657
+Info    : Done meshing order 2 (Wall 0.0690863s, CPU 0.06579s)
+Info    : Done refining mesh (Wall 0.0848852s, CPU 0.079997s)
+Info    : 30955 nodes 31432 elements
+  单元数 30480
+延拓到 δ* = 2.725266e-05 …
+  W = 1.748442e+06（目标 1.75e6）
+
+  phase  conv  it  max|u|      max|q|      max|alpha_bar|
+  0.00   True   0  7.126e-05  0.000e+00  0.000e+00
+  0.05   False 50  2.882e+00  5.811e+13  0.000e+00
+  ⚠⚠ 该相位**未收敛**但 solve_displacement 正常返回 —— H1 成立
+
+重跑相位 0.05 拿残差历史（verbose=True）…
+  block-newton it  0 : ||F_free|| = 2.883600e+12
+  block-newton it  1 : ||F_free|| = 1.762785e+12
+  block-newton it  2 : ||F_free|| = 2.340521e+12
+  block-newton it  3 : ||F_free|| = 1.226139e+13
+  block-newton it  4 : ||F_free|| = 1.456296e+14
+  block-newton it  5 : ||F_free|| = 3.498870e+12
+  block-newton it  6 : ||F_free|| = 2.354380e+12
+  block-newton it  7 : ||F_free|| = 7.097178e+13
+  block-newton it  8 : ||F_free|| = 6.416858e+12
+  block-newton it  9 : ||F_free|| = 1.592013e+15
+  block-newton it 10 : ||F_free|| = 9.890197e+14
+  block-newton it 11 : ||F_free|| = 4.761728e+12
+  block-newton it 12 : ||F_free|| = 2.837209e+13
+  block-newton it 13 : ||F_free|| = 4.348477e+12
+  block-newton it 14 : ||F_free|| = 2.419798e+13
+  block-newton it 15 : ||F_free|| = 2.646186e+13
+  block-newton it 16 : ||F_free|| = 1.380594e+12
+  block-newton it 17 : ||F_free|| = 1.119750e+12
+  block-newton it 18 : ||F_free|| = 7.273661e+11
+  block-newton it 19 : ||F_free|| = 3.250452e+12
+  block-newton it 20 : ||F_free|| = 4.307626e+12
+  block-newton it 21 : ||F_free|| = 2.670623e+12
+  block-newton it 22 : ||F_free|| = 3.388347e+12
+  block-newton it 23 : ||F_free|| = 5.388677e+12
+  block-newton it 24 : ||F_free|| = 1.697817e+12
+  block-newton it 25 : ||F_free|| = 1.880798e+12
+  block-newton it 26 : ||F_free|| = 4.079151e+11
+  block-newton it 27 : ||F_free|| = 4.835323e+12
+  block-newton it 28 : ||F_free|| = 2.046968e+14
+  block-newton it 29 : ||F_free|| = 3.369724e+12
+  block-newton it 30 : ||F_free|| = 1.308504e+13
+  block-newton it 31 : ||F_free|| = 4.566423e+13
+  block-newton it 32 : ||F_free|| = 1.489939e+12
+  block-newton it 33 : ||F_free|| = 2.211223e+12
+  block-newton it 34 : ||F_free|| = 1.810224e+12
+  block-newton it 35 : ||F_free|| = 7.289815e+12
+  block-newton it 36 : ||F_free|| = 2.428770e+12
+  block-newton it 37 : ||F_free|| = 6.958471e+13
+  block-newton it 38 : ||F_free|| = 3.145374e+12
+  block-newton it 39 : ||F_free|| = 2.712846e+12
+  block-newton it 40 : ||F_free|| = 1.172853e+12
+  block-newton it 41 : ||F_free|| = 1.272106e+12
+  block-newton it 42 : ||F_free|| = 1.407289e+12
+  block-newton it 43 : ||F_free|| = 2.859177e+12
+  block-newton it 44 : ||F_free|| = 8.120817e+11
+  block-newton it 45 : ||F_free|| = 1.698269e+12
+  block-newton it 46 : ||F_free|| = 1.244618e+12
+  block-newton it 47 : ||F_free|| = 7.210738e+11
+  block-newton it 48 : ||F_free|| = 6.116444e+12
+  block-newton it 49 : ||F_free|| = 3.391527e+12
+  ⇒ converged=False reason=max_it it=50 ||F||=3.3915e+12

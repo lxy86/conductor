@@ -1,0 +1,31 @@
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0105898s, CPU 0.007692s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Simple recombination completed (Wall 0.199016s, CPU 0.198993s): 6435 quads, 1580 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.749057, min Q = 0.271581
+Info    : Done meshing 2D (Wall 0.461501s, CPU 0.451499s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.626657
+Info    : Done meshing order 2 (Wall 0.0728169s, CPU 0.069387s)
+Info    : Done refining mesh (Wall 0.100408s, CPU 0.088599s)
+Info    : 30955 nodes 31432 elements
+n_u=61910 n_q=30480  BC(u)=12  BC(q)=29660  自由=62718
+||F_free|| = 4.9860e+04（u 段 1.017e+04，q 段 4.881e+04）
+  eps=1e-04 全部   : |FD|=4.0868e+04 |J·d|=4.0868e+04  rel=6.155e-04
+  eps=1e-04 u 段  : |FD|=4.0803e+04 |J·d|=4.0803e+04  rel=6.164e-04
+  eps=1e-04 q 段  : |FD|=2.2987e+03 |J·d|=2.2988e+03  rel=9.100e-05
+
+  eps=1e-06 全部   : |FD|=3.8412e+02 |J·d|=3.8412e+02  rel=6.241e-06
+  eps=1e-06 u 段  : |FD|=3.8336e+02 |J·d|=3.8336e+02  rel=6.250e-06
+  eps=1e-06 q 段  : |FD|=2.4203e+01 |J·d|=2.4203e+01  rel=3.520e-06
+

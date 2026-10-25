@@ -1,0 +1,41 @@
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0110251s, CPU 0.008319s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Simple recombination completed (Wall 0.20309s, CPU 0.196788s): 6435 quads, 1580 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.749057, min Q = 0.271581
+Info    : Done meshing 2D (Wall 0.471751s, CPU 0.446541s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.626657
+Info    : Done meshing order 2 (Wall 0.0713117s, CPU 0.068244s)
+Info    : Done refining mesh (Wall 0.0880021s, CPU 0.082591s)
+Info    : 30955 nodes 31432 elements
+=== 延拓末（相位 0）===
+  max|u| = 7.1255e-05  max|q| = 0.0000e+00  u_prev 已冻结
+=== 相位 0.05：M/M_a = 0.3090, x_clamp = 3.0902e-08 m ===
+  ||F_free|| = 4.9860e+04
+  Jf 对角范围：[9.9863e-06, 3.5224e+12]
+  ||dx_free|| = 6.6463e+09
+    ||dx_u|| = 1.1317e-02  （u 量级 7.9932e-03 ⇒ 倍数 1.416e+00）
+    max|dx_u| = 2.9661e-04  max|dx_q| = 3.6533e+09
+  全步后 ||F_free|| = 1.5337e+08（Newton 预测 0，放大 3.076e+03 倍）
+  全步后 max|u| = 2.9191e-04  max|q| = 3.6533e+09
+
+  沿 Newton 方向扫步长（判线性区半径）:
+    θ=1e-06 : ||F||/||F0|| = 1.0000e+00  （线性区，应为 1-θ）
+    θ=1e-05 : ||F||/||F0|| = 9.9999e-01  （线性区，应为 1-θ）
+    θ=1e-04 : ||F||/||F0|| = 9.9987e-01  （线性区，应为 1-θ）
+    θ=1e-03 : ||F||/||F0|| = 9.5474e-01  （线性区，应为 1-θ）
+    θ=1e-02 : ||F||/||F0|| = 1.2702e+00  
+    θ=1e-01 : ||F||/||F0|| = 1.4666e+01  
+    θ=5e-01 : ||F||/||F0|| = 1.7689e+02  
+    θ=1e+00 : ||F||/||F0|| = 3.0760e+03  

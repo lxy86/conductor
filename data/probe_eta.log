@@ -1,0 +1,41 @@
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.010882s, CPU 0.008064s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Simple recombination completed (Wall 0.200954s, CPU 0.198123s): 6435 quads, 1580 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.749057, min Q = 0.271581
+Info    : Done meshing 2D (Wall 0.500039s, CPU 0.469213s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.626657
+Info    : Done meshing order 2 (Wall 0.0763883s, CPU 0.071092s)
+Info    : Done refining mesh (Wall 0.0983283s, CPU 0.08982s)
+Info    : 30955 nodes 31432 elements
+=== (1) η 光滑化地板的解析预测 ===
+    uzawa_eta_rel = 0.0500（η = 0.0500·μp）
+    F_q = 0 要求 g + √(g²+η²) = 0，只有 η=0 才有解
+    ⇒ 单点残差下界 ≈ η/2 = 0.0250·μp
+
+=== (2) Armijo 块 Newton 走到地板 ===
+    converged=False it=40 ||F_free||=4.8714e+04
+    u 段 1.4532e+04 / q 段 4.6496e+04
+    max|u|=7.1712e-05  max|q|=8.4722e+07
+    残差历史：4.99e+04 4.91e+04 4.89e+04 4.89e+04 4.89e+04 4.89e+04 4.89e+04 4.89e+04
+
+=== (3) 该状态是不是 Uzawa 的不动点（q 改了多少）===
+    uzawa_update 的 rel_change = 9.7074e-01
+    max|Δq| = 2.4943e+07（相对 max|q|=8.472e+07 是 2.944e-01）
+    ⇒ 不是不动点，两者解不同（需进一步查）
+
+=== (4) 改 η（只改光滑化，不动点与 η 无关）看地板 ===
+    eta_rel=0.0500 : converged=False it=25 ||F||=4.5194e+04  max|q|=8.2500e+07
+    eta_rel=0.0050 : converged=False it=25 ||F||=4.5003e+04  max|q|=7.8219e+07
+    eta_rel=0.0005 : converged=False it=25 ||F||=4.4977e+04  max|q|=7.7439e+07

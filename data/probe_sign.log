@@ -1,0 +1,51 @@
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0128488s, CPU 0.009497s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Simple recombination completed (Wall 0.215132s, CPU 0.211563s): 6435 quads, 1580 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.749057, min Q = 0.271581
+Info    : Done meshing 2D (Wall 0.487273s, CPU 0.478171s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.626657
+Info    : Done meshing order 2 (Wall 0.0709986s, CPU 0.067916s)
+Info    : Done refining mesh (Wall 0.0872368s, CPU 0.07987s)
+Info    : 30955 nodes 31432 elements
+走到卡住状态（Armijo，40 步上限）…
+   it  0 ||F||=4.9860e+04
+   it  5 ||F||=3.8658e+04
+   it 10 ||F||=3.8601e+04
+   it 15 ||F||=3.8517e+04
+   it 20 ||F||=3.8516e+04
+   it 25 ||F||=3.8514e+04
+   it 30 ||F||=3.8458e+04
+   it 35 ||F||=3.8454e+04
+
+=== 卡住状态的逐单元符号结构 ===
+  接触单元 839 个（p_dg>0）
+    max|q|=1.4224e+08  max|s|=2.3374e-07  max(lim)=1.7330e+08
+    sign(q)==sign(s) 的单元：188 / 839（**应为 0：摩擦必须反抗滑移**）
+    sign(q)!=sign(s) 的单元：539
+    s==0 的单元：0
+    逐单元残差 rho：max=1.7327e+08  中位=1.5354e+08  和=9.8573e+10
+    残差最大的 8 个单元：
+      q            s            lim          mu p         rho          sign(q)*sign(s)
+      +0.0000e+00 +7.7647e-08 +1.7330e+08 +1.7330e+08 +1.7327e+08 +0
+      +0.0000e+00 +1.0541e-07 +1.6642e+08 +1.6642e+08 +1.6641e+08 +0
+      +0.0000e+00 -2.2997e-07 +1.6311e+08 +1.6311e+08 +1.6310e+08 +0
+      +1.2731e+06 -2.2315e-07 +1.6326e+08 +1.6326e+08 +1.6198e+08 -1
+      +0.0000e+00 -1.0966e-07 +1.6182e+08 +1.6182e+08 +1.6180e+08 +0
+      +2.2107e+06 -2.2412e-07 +1.6400e+08 +1.6400e+08 +1.6178e+08 -1
+      +5.5704e+06 +2.1444e-08 +1.5629e+08 +1.5629e+08 +1.6174e+08 +1
+      +1.3621e+06 -2.2239e-07 +1.6303e+08 +1.6303e+08 +1.6166e+08 -1
+
+  eps_t = 1.3800e+16, 1/eps_t = 7.2464e-17（s 每 1/eps_t 就把 q 推到盒外）
+  典型 s 使 eps_t*s = 2.0437e+08 vs lim = 1.5887e+08（倍数 1.286e+00）

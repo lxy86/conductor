@@ -1,0 +1,64 @@
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0111858s, CPU 0.008341s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Simple recombination completed (Wall 0.236773s, CPU 0.220868s): 6435 quads, 1580 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.749057, min Q = 0.271581
+Info    : Done meshing 2D (Wall 0.527576s, CPU 0.493855s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.626657
+Info    : Done meshing order 2 (Wall 0.0735382s, CPU 0.06684s)
+Info    : Done refining mesh (Wall 0.0910912s, CPU 0.082291s)
+Info    : 30955 nodes 31432 elements
+||F_free|| = 4.9860e+04
+=== (1) 各块对角量级（1e-5 的主元在哪一块）===
+    Juu  : min=3.053e+10 p1=5.187e+10 中位=1.068e+11 p99=1.934e+11 max=3.522e+12  零元=0/61910
+    Juq  : 全零
+    Jqu  : 全零
+    Jqq  : min=9.986e-06 p1=9.986e-06 中位=9.986e-06 p99=3.746e-04 max=3.746e-04  零元=29660/30480
+    Jqq 对角里 <1e-3 的个数：30480 / 30480
+    （接触单元 820 个、非接触 29660 个；非接触的 q 被 BC 钉 0）
+
+=== (2) Armijo 回溯线搜索（标准全局化，c1=1e-4）===
+    回溯  0 : θ=1.000e+00  ||F||/||F0|| = 2.1056e+05  
+    回溯  1 : θ=5.000e-01  ||F||/||F0|| = 3.0717e+04  
+    回溯  2 : θ=2.500e-01  ||F||/||F0|| = 1.5173e+03  
+    回溯  3 : θ=1.250e-01  ||F||/||F0|| = 5.8705e+01  
+    回溯  4 : θ=6.250e-02  ||F||/||F0|| = 8.6942e+00  
+    回溯  5 : θ=3.125e-02  ||F||/||F0|| = 2.9247e+00  
+    回溯  6 : θ=1.562e-02  ||F||/||F0|| = 1.2042e+00  
+    回溯  7 : θ=7.812e-03  ||F||/||F0|| = 1.0386e+00  
+    回溯  8 : θ=3.906e-03  ||F||/||F0|| = 1.0053e+00  
+    回溯  9 : θ=1.953e-03  ||F||/||F0|| = 9.9395e-01  ← 接受
+    ⇒ Armijo 成功（θ=1.953e-03, ||F||=4.9559e+04）
+
+  用该 θ 连走 20 步（固定步长，看能否一路降下去）：
+    it  0 : ||F|| = 4.9860e+04  max|u|=7.126e-05  max|q|=0.000e+00
+    it  1 : ||F|| = 4.9559e+04  max|u|=7.157e-05  max|q|=4.494e+06
+    it  2 : ||F|| = 4.9433e+04  max|u|=7.157e-05  max|q|=7.340e+07
+    it  3 : ||F|| = 4.9433e+04  max|u|=7.157e-05  max|q|=7.340e+07
+    it  4 : ||F|| = 4.8378e+04  max|u|=7.160e-05  max|q|=1.105e+08
+    it  5 : ||F|| = 4.8319e+04  max|u|=7.160e-05  max|q|=1.274e+08
+    it  6 : ||F|| = 4.8316e+04  max|u|=7.160e-05  max|q|=1.273e+08
+    it  7 : ||F|| = 4.8316e+04  max|u|=7.160e-05  max|q|=1.273e+08
+    it  8 : ||F|| = 4.8314e+04  max|u|=7.160e-05  max|q|=1.274e+08
+    it  9 : ||F|| = 4.8314e+04  max|u|=7.160e-05  max|q|=1.276e+08
+    it 10 : ||F|| = 4.8314e+04  max|u|=7.160e-05  max|q|=1.276e+08
+    it 11 : ||F|| = 4.8314e+04  max|u|=7.160e-05  max|q|=1.276e+08
+    it 12 : ||F|| = 4.8274e+04  max|u|=7.159e-05  max|q|=1.361e+08
+    it 13 : ||F|| = 4.8274e+04  max|u|=7.159e-05  max|q|=1.361e+08
+    it 14 : ||F|| = 4.8274e+04  max|u|=7.159e-05  max|q|=1.360e+08
+    it 15 : ||F|| = 4.8274e+04  max|u|=7.159e-05  max|q|=1.360e+08
+    it 16 : ||F|| = 4.8273e+04  max|u|=7.159e-05  max|q|=1.358e+08
+    it 17 : ||F|| = 4.8273e+04  max|u|=7.159e-05  max|q|=1.358e+08
+    it 18 : ||F|| = 4.8273e+04  max|u|=7.159e-05  max|q|=1.358e+08
+    it 19 : ||F|| = 4.8273e+04  max|u|=7.159e-05  max|q|=1.358e+08
