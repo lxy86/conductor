@@ -1299,3 +1299,205 @@ def test_U21_tangential_jacobian_gate_follows_mu(tmp_path):
     assert f0 == 0.0, "μ = 0 时切向 Jacobian 非零（%.3e）：延拓期白扛 ε_t" % f0
     assert f1 > 0.0, "μ > 0 时切向 Jacobian 全零：方向 f 没接上"
     assert f2 == 0.0, "再关摩擦后 Jacobian 没归零（%.3e）：开关不是随 μ 走的" % f2
+
+
+# --------------------------------------------------------------------------
+# U21：切向 Jacobian 的**运行时**开关（D-68 问题 33 续 14 修）
+#
+# 延拓期 μ = 0、q ≡ 0 ⇒ 切向刚度必须为 0。
+# 只判编译期的 has_friction_at_build 会让延拓期白扛 ε_t（SNES -5）；
+# 只判运行期的 Python bool 会让项在延拓期被永久编译成 0（开摩擦后拿不回来）。
+# 所以必须是 Constant 门：form 结构恒定，值随 set_mu 走。
+# --------------------------------------------------------------------------
+def test_U21_tangential_jacobian_gate_follows_mu(tmp_path):
+    """U21：切向 Jacobian 随 ``set_mu`` 开关 —— μ = 0 时精确为 0。
+
+    这条守的是续 14 的回归。**同一条 form** 反复装配（不重建、不重新编译），
+    只有 ``set_mu`` 在切 —— 正是生产里的时序。
+    """
+    import numpy as np
+    from dolfinx import fem
+    from dolfinx.fem.petsc import assemble_matrix
+
+    ctx = _setup(tmp_path)
+    clamp, u = ctx["clamp"], ctx["u"]
+    V = ctx["V"]
+
+    # 装一次 form，之后只切 set_mu（不重建 form）
+    du = ufl.TrialFunction(V)
+    v = ufl.TestFunction(V)
+    form = fem.form(clamp.tangential_jacobian(u, du, v))
+
+    def _fro():
+        M = assemble_matrix(form, bcs=[])
+        M.assemble()
+        n = M.getSize()[0]
+        return float(np.abs(M.getValues(range(n), range(n))).sum())
+
+    # 1) 关摩擦（延拓期）：必须精确 0
+    clamp.set_mu(None)
+    f0 = _fro()
+    # 2) 开摩擦：必须非零
+    clamp.set_mu(MU)
+    f1 = _fro()
+    # 3) 再关回去：必须又精确 0（证明是「随 μ 走」而不是「一次性」）
+    clamp.set_mu(None)
+    f2 = _fro()
+
+    if comm_rank0():
+        print("  U21: μ=0 → %.3e,  μ=%g → %.3e,  再 μ=0 → %.3e"
+              % (f0, MU, f1, f2))
+    assert f0 == 0.0, "μ = 0 时切向 Jacobian 非零（%.3e）：延拓期白扛 ε_t" % f0
+    assert f1 > 0.0, "μ > 0 时切向 Jacobian 全零：方向 f 没接上"
+    assert f2 == 0.0, "再关摩擦后 Jacobian 没归零（%.3e）：开关不是随 μ 走的" % f2
+
+
+# ==========================================================================
+# M1-M4：方向 m —— 单体 Newton 求 (u,q) 联立 Jacobian（D-68 问题 33 续 16）
+#
+# 背景（续 15 的证伪结论）：
+#   blocker B 不是「u 的 Jacobian 缺切向项」—— 零插桩探针实测冻住 q 只解 u，
+#   SNESConvergedReason = 4（收敛）。病根在 (u,q) 的交错耦合：q 一步跳到
+#   Coulomb 容量，下一步 u 面对巨大面力。
+# 处方：把 (u,q) 当一个系统，用单体 Newton 求真正的联立 Jacobian。
+#
+# ⚠ 方向 f 的代码（tangential_jacobian + U19/U20/U21）**故意留着不删**
+#   （用户 2026-10-25 拍板）：留作有测试的对照，直到 M3 证明单体路径跑通。
+# ==========================================================================
+
+# --------------------------------------------------------------------------
+# M4：smooth_clip_ufl 与 numpy 版逐点一致
+#
+# 这条是方向 m 的地基守卫：单体 Newton 的 Coulomb 投影方程要用 UFL 版，
+# 而 Uzawa 迭代用 numpy 版。两个版本差一个符号/一处 abs，联立解与
+# 交错解就会分叉 —— 那种 bug 不会报错，只会让 M3 的「不动点不变」悄悄失败。
+# --------------------------------------------------------------------------
+def test_M4_smooth_clip_ufl_matches_numpy_pointwise():
+    """M4：``smooth_clip_ufl`` 与 :func:`smooth_clip` 在随机输入上逐点一致。
+
+    覆盖三个区间：盒内（|x| < lim）、盒面附近（|x| ≈ lim，偏差最大处）、
+    盒外（|x| > lim）。盒面附近是 FB 光滑化偏差 O(η²/(4u)) 最大的地方，
+    必须覆盖。
+    """
+    import numpy as np
+    import ufl
+    from dolfinx import fem
+    from pfwire.clamp_contact import smooth_clip, smooth_clip_ufl
+
+    msh = None  # 占位：下面自建一个够大的 DG0 网格
+    from dolfinx.mesh import create_unit_square
+    from mpi4py import MPI
+    m = create_unit_square(MPI.COMM_WORLD, 30, 30)
+    Vs = fem.functionspace(m, ("DG", 0))
+    # ⚠ DG0 的 x.array 含 ghost（CLAUDE.md 陷阱 6）：size_local 之外还有
+    # ghost 槽，故数据点数必须按 **owned 数**生成，不能反过来猜。
+    n = Vs.dofmap.index_map.size_local
+    assert n > 600, "网格太小：owned %d" % n
+
+    rng = np.random.default_rng(12345)
+    # 三组等量：盒内（|x| < lim）/ 盒面附近（|x| ≈ lim，FB 偏差最大处）/ 盒外
+    k = n // 3
+    x_np = np.concatenate([
+        rng.uniform(-0.9, 0.9, k),
+        rng.uniform(0.98, 1.02, k),
+        rng.uniform(1.1, 5.0, k),
+        rng.uniform(-0.9, 0.9, n - 3 * k),      # 补齐到 n
+    ])
+    lim_np = np.full(n, 1.0)
+    eta_np = np.full(n, 0.05)
+
+    want = smooth_clip(x_np, lim_np, eta_np)
+
+    x = fem.Function(Vs)
+    lim = fem.Function(Vs)
+    eta = fem.Function(Vs)
+    x.x.array[:n] = x_np
+    lim.x.array[:n] = lim_np
+    eta.x.array[:n] = eta_np
+    x.x.scatter_forward()
+    lim.x.scatter_forward()
+    eta.x.scatter_forward()
+    expr = fem.Expression(smooth_clip_ufl(x, lim, eta), Vs.element.interpolation_points)
+    got = fem.Function(Vs)
+    got.interpolate(expr)
+
+    # 比对同样只切 owned 段（ghost 段是相邻 rank 的副本，不属本 rank）
+    got_a = got.x.array[:n]
+    want_a = want[:n]
+
+    rel = np.max(np.abs(got_a - want_a)) / max(np.max(np.abs(want_a)), 1.0e-300)
+    if comm_rank0():
+        print("  M4: 最大相对差 = %.3e（%d 点）" % (rel, n))
+    assert rel < 1.0e-12, (
+        "smooth_clip_ufl 与 numpy 版不一致（最大相对差 %.3e）："
+        "联立解会与交错解分叉" % rel)
+
+    # 不超限（盒外也不许越过 Coulomb 锥）
+    over = float(np.max(np.abs(got_a) - lim.x.array[:n]))
+    if comm_rank0():
+        print("      盒外最大超出量 = %.3e（应 <= 0 或 O(eta)）" % over)
+    assert over <= eta_np[0] + 1.0e-12, (
+        "smooth_clip_ufl 超出 Coulomb 锥 %.3e > eta：锥被违反" % over)
+
+
+# --------------------------------------------------------------------------
+# M1：混合空间 (u, q) 的 dof 映射逐位一致
+#
+# 这是续 9（end_bcs 编号空间错配）的同型守卫。那次的事故形态：
+# 用 Vy 子空间的编号去索引 V 的坐标行 -> 0/41 个底部 dof 落到底边上 ->
+# 单点约束打在网格内部 -> 应力奇异 -> d 假饱和。**只在并行下暴露**
+# （错点随分区变），所以当时查了很久。
+#
+# 混合空间的风险同型：W 的 dof 段切错，u 与 q 就会互相串味。
+# --------------------------------------------------------------------------
+def test_M1_monolithic_space_dof_mapping_roundtrips(tmp_path):
+    """M1：``pack_w`` / ``unpack_w`` 互逆，且 u/q 段与各自场逐位一致。"""
+    import numpy as np
+
+    ctx = _setup(tmp_path)
+    clamp, u, V = ctx["clamp"], ctx["u"], ctx["V"]
+    clamp.bind_monolithic_space(V)
+
+    n_u = clamp.mono_n_u
+    n_q = clamp.mono_n_q
+    if comm_rank0():
+        print("  M1: n_u = %d, n_q = %d, 合计 = %d" % (n_u, n_q, n_u + n_q))
+
+    # 规模必须与两个空间的 owned 规模对得上
+    bs = V.dofmap.index_map_bs
+    assert n_u == V.dofmap.index_map.size_local * bs, (
+        "u 段规模 %d != V owned %d x bs %d" % (n_u, V.dofmap.index_map.size_local, bs))
+    assert n_q == clamp.q.function_space.dofmap.index_map.size_local, (
+        "q 段规模 %d != Q owned %d"
+        % (n_q, clamp.q.function_space.dofmap.index_map.size_local))
+
+    # 造非平凡数据（全 1 / 全 2 太容易蒙对：错位后仍可能自洽）
+    rng = np.random.default_rng(7)
+    u_test = rng.standard_normal(u.x.array.size)
+    q_test = rng.standard_normal(clamp.q.x.array.size)
+    u_ref = u_test.copy()
+    q_ref = q_test.copy()
+
+    w = np.zeros(n_u + n_q)
+    clamp.pack_w(w, u_test, q_test)
+
+    # pack 之后 u/q 段必须分别等于原场（逐位）
+    assert np.array_equal(w[:n_u], u_ref[:n_u]), (
+        "u 段与 u 场不一致：混合空间 dof 映射错了（续 9 同型）")
+    assert np.array_equal(w[n_u:n_u + n_q], q_ref[:n_q]), (
+        "q 段与 q 场不一致：混合空间 dof 映射错了（续 9 同型）")
+
+    # unpack 回两个新数组，必须逐位还原
+    u_back = np.zeros_like(u_test)
+    q_back = np.zeros_like(q_test)
+    clamp.unpack_w(w, u_back, q_back)
+    assert np.array_equal(u_back[:n_u], u_ref[:n_u]), "unpack 的 u 段没还原"
+    assert np.array_equal(q_back[:n_q], q_ref[:n_q]), "unpack 的 q 段没还原"
+
+    # 反向再 pack 一次，w 必须逐位不变（互逆性）
+    w2 = np.zeros(n_u + n_q)
+    clamp.pack_w(w2, u_back, q_back)
+    assert np.array_equal(w, w2), "pack/unpack 不互逆"
+
+    if comm_rank0():
+        print("       pack/unpack 互逆、u/q 段逐位一致：通过")

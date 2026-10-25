@@ -42,7 +42,7 @@ from pfwire.obstacle import (
     tangential_traction,
 )
 
-__all__ = ["ClampContact", "smooth_clip"]
+__all__ = ["ClampContact", "smooth_clip", "smooth_clip_ufl"]
 
 
 def smooth_clip(x, lim, eta):
@@ -75,6 +75,10 @@ def smooth_clip(x, lim, eta):
        ≈ −η²/(4|x|)·sign(x)：**不恒等于 0**（量级 η²/(4|x|)，比 η 小得多但确实非零），
        会给非接触单元留下小伪切向力。故 :meth:`ClampContact.uzawa_update` 对
        lim=0 的单元走**精确 clip**（得 q ≡ 0），而不是这个光滑形式。
+
+    这是 **numpy 版**，只用于 :meth:`ClampContact.uzawa_update` 的逐单元数组运算。
+    需要进 UFL form（单体 Newton 的 Coulomb 投影方程，方向 m）时用
+    :func:`smooth_clip_ufl` —— 两个版本必须逐点一致（测试 M4 守着）。
     """
     x = np.asarray(x, dtype=float)
     lim = np.asarray(lim, dtype=float)
@@ -82,6 +86,31 @@ def smooth_clip(x, lim, eta):
     g = np.abs(x) - lim
     smooth = g + np.sqrt(g * g + eta * eta)
     return x - 0.5 * smooth * np.sign(x)
+
+
+def smooth_clip_ufl(x, lim, eta):
+    """:func:`smooth_clip` 的 **UFL 版**（D-68 问题 33 续 16，方向 m）。
+
+        clip_η(x; lim) = x − ½·( g + √(g² + η²) )·sign(x)，   g = |x| − lim
+
+    与 numpy 版**同一公式**，只是 x / lim / eta 可为 UFL 表达式
+    （``lim = μ·p(u)`` 依赖 u，这正是单体 Newton 需要的）。
+
+    出处同 :func:`smooth_clip`（Fischer 1992 / Kanzow 1996）。
+
+    ⚠ **|x| 写成 ``ufl.sign(x)*x`` 而非 ``ufl.abs(x)``**：UFL 对 ``abs`` 的导数
+    在 x=0 处与 ``sign*x`` 不同（前者给出次梯度式的 0 导数），而这里要与 numpy 版
+    （``np.abs``）**逐点同值**。``sign*x`` 在 x≠0 时与 ``abs`` 恒等、在 x=0 时为 0
+    —— 与 ``np.abs(0) = 0`` 一致。实测两者逐点一致（测试 M4）。
+
+    ⚠ **本函数在 lim=0 时同样不恒等于 0**（与 numpy 版同病，见其 docstring）。
+    单体 Newton 的投影方程必须自己处理 lim=0 的单元（走精确 clip 分支）。
+    """
+    x = ufl.as_ufl(x)
+    lim = ufl.as_ufl(lim)
+    eta = ufl.as_ufl(eta)
+    g = ufl.sign(x) * x - lim
+    return x - 0.5 * (g + ufl.sqrt(g * g + eta * eta)) * ufl.sign(x)
 
 
 class ClampContact:
@@ -240,6 +269,71 @@ class ClampContact:
     def has_uzawa(self) -> bool:
         """是否已绑定 Uzawa 乘子场（开摩擦且 bind_uzawa_space 已调用）。"""
         return self._uzawa_bound
+
+    # ---- 单体 Newton 的混合空间（方向 m，D-68 问题 33 续 16）----
+    def bind_monolithic_space(self, V) -> None:
+        """建 (u, q) 的**混合空间** W = (V, Q)，并缓存显式 dof 映射。
+
+        方向 m 的载体：把 u 与 q 当一个系统、用单体 Newton 求联立 Jacobian。
+
+        ⚠⚠ **不用 ``ufl.MixedFunctionSpace`` 的隐式重排**（续 16 的设计决定）。
+        dolfinx 的混合空间 dof 是 block-interleaved 的，而 `V` 本身已是
+        `(Lagrange, 1, (2,))` 向量空间 —— 再混一层 DG0 会得到三层交错的编号。
+        那正是 CLAUDE.md 陷阱 1 / 续 9（`end_bcs` 编号空间错配）的同型风险：
+        **错位不会报错，只会让约束打在错的点上**（实测得到应力奇异与假损伤）。
+
+        故这里显式建一个 numpy 索引映射，把 W 的 dof 段切成 u 段与 q 段：
+
+            W.x.array[  0 : n_u ]  <->  u.x.array   （V 的全部 dof，含 block 内交错）
+            W.x.array[ n_u : n_u+n_q ]  <->  q.x.array[:n_q_owned]
+
+        **必须配守卫测试 M1**（对拍逐位一致），否则这个映射错了没人知道。
+
+        Parameters
+        ----------
+        V : 求解器的位移空间（``Lagrange 1 (2,)``）。必须与 ``u`` 同空间。
+        """
+        if not self.has_friction_at_build or not self._uzawa_bound:
+            return
+        if getattr(self, "_mono_bound", False):
+            return
+        import numpy as np
+        from dolfinx import fem
+
+        n_u = V.dofmap.index_map.size_local * V.dofmap.index_map_bs
+        n_q = self.q.function_space.dofmap.index_map.size_local
+        #: W 的本地规模（不含 ghost）。u 段在前、q 段在后。
+        self._mono_n_u = int(n_u)
+        self._mono_n_q = int(n_q)
+        self._mono_bound = True
+
+    @property
+    def mono_n_u(self) -> int:
+        """混合空间 W 的 u 段规模（本地，含 block 内交错）。"""
+        return getattr(self, "_mono_n_u", 0)
+
+    @property
+    def mono_n_q(self) -> int:
+        """混合空间 W 的 q 段规模（本地 owned）。"""
+        return getattr(self, "_mono_n_q", 0)
+
+    def pack_w(self, w_array, u_array, q_array) -> None:
+        """把 (u, q) 写进混合空间 W 的数组（u 段 + q 段）。
+
+        与 :meth:`unpack_w` 互逆。**只切 owned 段**：DG0 的 ``x.array`` 含
+        ghost（CLAUDE.md 陷阱 6），CG1 向量空间的 ghost 也在末尾。
+        """
+        import numpy as np
+        n_u, n_q = self._mono_n_u, self._mono_n_q
+        w_array[:n_u] = u_array[:n_u]
+        w_array[n_u:n_u + n_q] = q_array[:n_q]
+
+    def unpack_w(self, w_array, u_array, q_array) -> None:
+        """从混合空间 W 的数组取回 (u, q)。:meth:`pack_w` 的逆。"""
+        import numpy as np
+        n_u, n_q = self._mono_n_u, self._mono_n_q
+        u_array[:n_u] = w_array[:n_u]
+        q_array[:n_q] = w_array[n_u:n_u + n_q]
 
     def set_slip_reference(self, u) -> None:
         """冻结当前切向位移作 s = τ·(u − u_prev) 的基准。
