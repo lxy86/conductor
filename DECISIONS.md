@@ -8522,3 +8522,40 @@ def test_shell_scripts_do_not_hardcode_home_paths():
 - 代码侧：路径自适应已改、LF 已验、测试已加，但**因无 pytest 环境未能实跑**
   （只在 Windows Python 下静态模拟了测试逻辑，结果 PASS）。
   **这一点必须如实记下：新测试是「写好了但没跑过」。**
+
+### 补记（2026-10-26）：本机硬件与原机器不同，`-n` 策略未定
+
+接手后 `lscpu` / `free` 实测：
+
+| | 原机器 | 本机 |
+|---|---|---|
+| CPU | Xeon E5-1650 v4 | **Xeon Gold 5218R @ 2.10 GHz** |
+| 物理核 | 6 | **20**（`nproc` 报 40 = 超线程数） |
+| 内存 | 47 GB | **31 GB** |
+| 拓扑 | 1 socket | 1 socket / 20 core / 2 thread / 1 NUMA |
+
+**CLAUDE.md 与 HANDOFF 里「6 物理核 / 47 GB」「单工况 `-n 6`」全部是本机不适用的
+历史值**，已在这两份文件里改成「两台机器对照表 + 本机需重测」。
+
+⚠ **本机的 `-n` 尚未测过。** 20 物理核下 `-n 6` 只用掉 30% 的机器；
+合理起点 `-n 20`，但按 D-21 的教训**必须先扫一遍墙钟**再定，
+**绝不要超过 20**（40 逻辑核 = 超订，会重现「不报错只白等」的塌方）。
+
+这条不是可选项：6.6.3 虽走串行，但 Phase 2 的 sweep 依赖 `-n` 选择，
+用错会白等几十倍时间且**不报错**。
+
+### 附：网络修好后的验收脚本
+
+`data/_after_netfix.sh`（未入库，脚手架）把 HANDOFF §7 的第 2~6 步串成一条：
+
+```
+0. DNS 自检（eth0 没好就停）
+1. scripts/setup_env.sh
+2. 版本对拍（dolfinx/basix/petsc4py/adios4dolfinx + abi3 + PETSc real）
+3. pytest tests/test_env.py
+4. pytest tests/test_solver_failure_surfaces.py
+5. 全量基线（期望 632 收集 / 6 failed）
+```
+
+已 `bash -n` 验过语法，且在**当前无网状态**下实跑：正确停在步骤 0 并打印
+`ip link show`（只有 lo），退出码 2。⇒ 脚本的自检逻辑是有效的。
