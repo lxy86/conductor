@@ -6,9 +6,9 @@
 # 不适合当快速回归。这两个文件与 x_amplitude 无关（grep 无命中），
 # 留待单独跑。
 set -u
-source /root/miniforge3/etc/profile.d/conda.sh
-conda activate pf-wire || exit 1
-cd /root/pf-wire || exit 1
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
+conda activate "${PFWIRE_ENV:-pf-wire}" || exit 1
+cd "$PFWIRE_HOME" || exit 1
 export OMP_NUM_THREADS=1
 echo "=== pytest: Uzawa / 接触 / 载荷 ==="
 timeout 900 mpirun -n 6 python -m pytest tests/test_clamp_uzawa.py \

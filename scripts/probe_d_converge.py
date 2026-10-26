@@ -14,7 +14,7 @@ from mpi4py import MPI
 
 from pfwire.clamp_case import build_clamp_case, find_working_delta
 
-base = yaml.safe_load(pathlib.Path("/root/pf-wire/configs/clamp_base_c.yaml").read_text(encoding="utf-8"))
+base = yaml.safe_load(pathlib.Path(__file__).resolve().parents[1] / "configs" / "clamp_base_c.yaml".read_text(encoding="utf-8"))
 a_c = 2.917e-3
 raw = yaml.safe_load(yaml.safe_dump(base))
 raw["mesh"] = {

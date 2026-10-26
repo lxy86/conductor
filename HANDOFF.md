@@ -88,15 +88,24 @@ python -c 'import dolfinx_contact; print(dolfinx_contact.__file__)'
 
 ### 1.3 WSL 侧要重建的 ASCII 软链接
 
-项目路径含中文（`C:\Users\<用户名>\Desktop\疲劳寿命`），
-**WSL 里一律走 ASCII 软链接** `/root/pf-wire`：
+项目路径含中文（旧机器 `C:\Users\Administrator\Desktop\疲劳寿命`，
+本机 `D:\疲劳寿命`），**WSL 里一律走 ASCII 软链接**：
 
 ```bash
-ln -sfn /mnt/c/Users/<用户名>/Desktop/疲劳寿命 /root/pf-wire
+ln -sfn "/mnt/d/疲劳寿命" "$HOME/pf-wire"
 ```
 
-⚠ **`<用户名>` 要换成新机器上的实际用户名**。
-CLAUDE.md 里所有命令都假设 `/root/pf-wire` 存在，**不建就全部跑不了**。
+⚠ **`scripts/*.sh` 已不再硬编码 `/root/pf-wire`**（2026-10-26 改）：
+统一 source `scripts/_env.sh`，按 `$PFWIRE_HOME` / `conda info --base` /
+常见安装位置三级定位。所以**软链不是必须的**，但保留它有两个好处：
+路径短、且与历史文档一致。真正必须的是 `scripts/_env.sh` 能找到 conda。
+
+若 conda 不在 `$HOME/miniforge3`，用环境变量显式指定：
+
+```bash
+export PFWIRE_CONDA_BASE=/path/to/conda
+export PFWIRE_HOME=/mnt/d/疲劳寿命     # 想绕开软链时
+```
 
 ### 1.4 验收环境
 
@@ -133,30 +142,32 @@ pytest tests/test_env.py -q          # 必须全绿（含 PETSc real 变体断�
 ### 2.1 现状
 
 ```
-分支     master（唯一分支）
-提交数   191
-remote   **无**（git remote -v 为空）
+分支     master
+remote   origin = https://github.com/lxy86/conductor.git   （2026-10-26 确认已同步）
 ```
 
-**没有远程仓库 = 仓库只存在于这台机器的 `C:\...\疲劳寿命\.git`（27 MB）。**
-硬盘坏了就全没了。
+**远程库已建好并同步**（提交 `5251112`，即「公开前准备」那次）。
+旧版 HANDOFF 写的「无 remote、硬盘坏了全没了」**已过时**。
 
-### 2.2 推荐做法（二选一）
+⚠ 远程还有一条 `main` 分支（`ceb38cd`），与 `master` 不同 ——
+本项目的工作分支是 **`master`**，别误推到 `main`。
 
-**方案 A：先建远程，再在新机器 clone（推荐）**
+### 2.2 换机器做法
+
+**远程已就绪，新机器直接 clone 即可**：
 
 ```bash
-# 旧机器：推到私有仓库（GitHub/Gitee/自建均可）
-git remote add origin <你的私有仓库地址>
-git push -u origin master
+git clone https://github.com/lxy86/conductor.git
+cd conductor
+git checkout master          # 工作分支是 master，不是 main
 ```
 
-新机器上 `git clone` 即可，`DECISIONS.md` 的全部历史都在。
+`DECISIONS.md` 的全部历史都在里面。仓库里的 `scripts/`、`tests/`、
+`configs/` 都是自包含的；只有 `.ext/asimov-contact` 需要 `setup_env.sh` 重新拉。
 
-**方案 B：整个目录拷贝**
-
-直接拷 `C:\Users\<用户名>\Desktop\疲劳寿命` 整个目录（含 `.git`）。
+**如果没网或不想走远程**：直接拷整个目录（含 `.git`）。
 ⚠ 若走 U 盘/FAT32，注意中文文件名与 2 GB 单文件限制。
+`data/**/*.bp/` 有 ~1.9 GB 且可重算，不必拷。
 
 ### 2.3 搬什么、不搬什么
 
@@ -185,17 +196,20 @@ data/_probe_sign.py        data/_probe_fail_fast.py
 
 ### 2.4 工作区里未提交的东西
 
+**2026-10-26 接手时实测**（旧版 HANDOFF 记的 4 项里已少 2 项）：
+
 ```
 M data/fretting_base/config.yaml    （max_iter 300→2000、加 initial_tilt_depth_over_a）
-M data/fretting_base/result.json    （-8901 行，看起来是被截断/重写过）
-?? configs/clamp_base_c_coarse.yaml （未跟踪；DECISIONS 引用它作「无摩擦基线」）
-?? _probe_nitsche/                  （Nitsche 预研残留）
+M data/fretting_base/result.json    （-8901 行，status 仍是 "running"）
 ```
 
-⚠ **`data/fretting_base/result.json` 这个改动要留意**：删了 8901 行、
-`status` 还是 `"running"`，像是某次运行中途写的。**换机器前先决定
-是提交还是 `git checkout --` 丢弃**，别把它带成「已知状态」。
-它属于旧的 `fretting_base` 工况，与当前 6.6.3 无关。
+`configs/clamp_base_c_coarse.yaml` 与 `_probe_nitsche/` **已不存在** ——
+旧 HANDOFF 的那两行是过时记录，别再去找。
+
+⚠ **`data/fretting_base/result.json` 这个改动仍未处理**：删了 8901 行、
+`status` 是 `"running"`，是某次运行中途写的。**需要用户决定**
+是提交还是 `git checkout --` 丢弃。它属于旧的 `fretting_base` 工况，
+与当前 6.6.3 无关，不影响 6.6.3 的验收。
 
 ---
 
@@ -391,10 +405,10 @@ test_I3_reaction_is_reproducible
 按顺序做完，确认「无缝衔接」：
 
 ```bash
-# 1. 环境
-wsl -d Ubuntu-26
-source /root/miniforge3/etc/profile.d/conda.sh && conda activate pf-wire
-cd /root/pf-wire
+# 1. 环境（发行版名先确认，别假设 Ubuntu-26；见 §1.3）
+wsl -l -v
+wsl -d <真名>
+source scripts/_env.sh && conda activate "${PFWIRE_ENV:-pf-wire}" && cd "$PFWIRE_HOME"
 
 # 2. 版本对拍（必须与 §1.1 一致）
 python -c "import dolfinx, petsc4py, numpy, scipy, adios4dolfinx, basix
@@ -417,17 +431,46 @@ pytest tests/ -q --ignore=tests/test_fretting.py \
                 --ignore=tests/test_clamp_case.py
 
 # 7. git 状态
-git log --oneline -3        # 应看到 f187dfa / f6170b3
+git log --oneline -3        # 应看到 5251112 起（含 f187dfa / 27b4429）
 git status                  # 应只有 §2.4 那几个未提交项
 ```
 
 **全部对上 = 衔接完成。** 然后回到 §5，等用户决定 (b) 还是 (c)。
+
+### 7.1 本机（2026-10-26）实际卡在哪
+
+接手时环境**没建起来**，原因不是版本冲突，是 **WSL 的网络栈坏了**：
+
+```
+$ ip link show          →  只有 lo，没有 eth0
+$ getent hosts github.com →  空
+$ conda env create ...  →  NameResolutionError: conda.anaconda.org
+```
+
+Windows 宿主侧网络正常（`git ls-remote origin` 成功、`git clone` 可行），
+**只有 WSL 里没网**。`wsl --shutdown` + 重启试过两次，`eth0` 仍不出现。
+这是 WSL 宿主的 HNS 虚拟交换机问题，**需要管理员权限**修：
+
+```powershell
+# 管理员 PowerShell
+wsl --shutdown
+Get-NetAdapter | Where-Object Name -like "*WSL*" | Restart-NetAdapter
+# 或：重启 Hyper-V 主机计算服务
+Restart-Service hns
+```
+
+**在 eth0 恢复前，本清单第 2~6 步全部做不了**（装不了包、跑不了 pytest）。
+第 1 步与第 7 步可以做。
 
 ---
 
 ## 8. 一句话给新会话
 
 > 6.6.3 卡在「单体 Newton 在滑移态没有根」，已排除 Jacobian / η / 并行 / 方向 f
-> 四个方向（都有实测）。失败处理刚修好（`f187dfa`），现在会明确失败而不是
+> 四个方向（都有实测）。失败处理已修好（`f187dfa`），现在会明确失败而不是
 > 吐出 `alpha_bar = 3.29e31` 的假结果。**下一步是换 `F_q` 的表述或回交错，
 > 等用户拍板。动手前先读 `DECISIONS.md` 的 D-68 问题 33 续 13~20。**
+>
+> **2026-10-26 接手时**：环境没建起来（WSL 无网，见 §7.1），
+> 代码与远程库都是好的。这轮做了「换机器路径自适应」：
+> `scripts/*.sh` 不再硬编码 `/root`，统一 `scripts/_env.sh`。

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # test_clamp_contact.py 与 test_clamp_loads.py 在 mpirun -n 6 下的表现。
 set -u
-source /root/miniforge3/etc/profile.d/conda.sh
-conda activate pf-wire || exit 1
-cd /root/pf-wire || exit 1
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
+conda activate "${PFWIRE_ENV:-pf-wire}" || exit 1
+cd "$PFWIRE_HOME" || exit 1
 export OMP_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
 

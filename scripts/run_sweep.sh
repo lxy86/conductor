@@ -10,14 +10,14 @@
 #    不依赖谁盯着终端，也不依赖哪个会话还活着；
 #  * **不静默失败**：工况跑完立刻核对 result.json 的状态，不是终态就大声报。
 set -u
-source /root/miniforge3/etc/profile.d/conda.sh
-conda activate pf-wire
-cd /root/pf-wire
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
+conda activate "${PFWIRE_ENV:-pf-wire}" || exit 1
+cd "$PFWIRE_HOME" || exit 1
 export OMP_NUM_THREADS=1
 
 NP=${NP:-6}                 # 一核一 rank，见 CLAUDE.md：绝不要 -n 12
 MAX_RETRY=${MAX_RETRY:-3}
-EVENTS=${EVENTS:-/root/pf-wire/data/_sweep_events.log}
+EVENTS=${EVENTS:-$PFWIRE_HOME/data/_sweep_events.log}
 ONLY=${ONLY:-}              # 只跑某个工况（调试用）
 
 say () { echo "[$(date -u +%m-%d\ %H:%M:%S)] $*" | tee -a "$EVENTS"; }

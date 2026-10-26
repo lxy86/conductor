@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
 # 6.6.3 完整验证：粗网格 + 阻尼 Uzawa + 子步失败接入 ΔN 减半重试。
 #
-# 用法（WSL2 Ubuntu-26）：
+# 用法（WSL2）：
 #   bash scripts/run_663.sh            # 前台跑（会占用终端）
-#   nohup bash scripts/run_663.sh > /root/pf-wire/data/_run663.log 2>&1 &
+#   nohup bash scripts/run_663.sh > "$PFWIRE_HOME/data/_run663.log" 2>&1 &
 #
 # 为什么写成脚本：多行命令经 `wsl -d ... -e bash -c "..."` 传递时换行会被
 # 折叠成空格，`#` 注释会把后面的内容整行吃掉 —— 实测 2026-10-21 试了三次
 # 都是起了个空 shell、什么都没跑（ps 里只剩 bash，无 mpirun/python）。
 set -u
 
-CONDA=/root/miniforge3/etc/profile.d/conda.sh
-# shellcheck disable=SC1090
-source "$CONDA"
-conda activate pf-wire || exit 1
-
-cd /root/pf-wire || exit 1
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
+conda activate "${PFWIRE_ENV:-pf-wire}" || exit 1
+cd "$PFWIRE_HOME" || exit 1
 
 echo "=== 6.6.3 验证开始 $(date -Is) ==="
 echo "host: $(hostname)  nproc=$(nproc)  OMP_NUM_THREADS=${OMP_NUM_THREADS:-unset}"

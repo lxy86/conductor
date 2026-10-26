@@ -14,13 +14,32 @@
 下一步是换 `F_q` 的表述或回交错，**等用户拍板**。
 
 ## 环境
-WSL2 `Ubuntu-26` 里的 conda 环境 `pf-wire`，dolfinx **0.11.0**（real PETSc）。
-所有命令在此环境运行：
+WSL2 里的 conda 环境 `pf-wire`，dolfinx **0.11.0**（real PETSc）。
+所有命令在此环境运行。
+
+⚠ **发行版名与路径随机器变，不要照抄**。历史上两台机器：
+
+| | 旧机器（2026-10 前） | 本机（2026-10-26 接手） |
+|---|---|---|
+| WSL 发行版 | `Ubuntu-26` | `Ubuntu` |
+| 用户 / conda | `root` / `/root/miniforge3` | `code` / `/home/code/miniforge3` |
+| 项目 ASCII 软链 | `/root/pf-wire` | `/home/code/pf-wire` → `/mnt/d/疲劳寿命` |
+
+先确认再跑：
 
 ```bash
-wsl -d Ubuntu-26
-source /root/miniforge3/etc/profile.d/conda.sh && conda activate pf-wire
-cd /root/pf-wire   # 指向 C:\Users\Administrator\Desktop\疲劳寿命 的 ASCII 软链接
+wsl -l -v                      # 看发行版真名（别假设 Ubuntu-26）
+wsl -d <真名>
+```
+
+进入环境**不要再手写 `source .../conda.sh && cd /root/pf-wire`** ——
+`scripts/*.sh` 已统一 source `scripts/_env.sh`，它按
+`$PFWIRE_CONDA_BASE` → `conda info --base` → 常见安装位置三级定位 conda，
+按 `$PFWIRE_HOME` → 本文件上两级目录定位仓库根。
+手工会话里同样可以用：
+
+```bash
+source scripts/_env.sh && conda activate "${PFWIRE_ENV:-pf-wire}" && cd "$PFWIRE_HOME"
 ```
 
 建/更新环境用 `bash scripts/setup_env.sh`，**不要**裸跑 `conda env create`

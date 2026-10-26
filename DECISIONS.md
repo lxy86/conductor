@@ -8406,3 +8406,119 @@ SNES reason=-6）`）。那是交错切向路径的既有问题，与本节无�
   这是**正确**的行为（硬约束 6），但寿命仍未算出来。
 - 下一步仍待用户决定：(b) 换 `F_q` 的互补条件表述使滑移态有根，
   或 (c) 放弃单体回交错（但续 13 的 blocker B 会回来）。
+
+## D-69 换机器接手：环境没建起来（WSL 无网）+ `scripts/` 路径自适应（2026-10-26）
+
+用户 2026-10-26 指示「接手这个项目」。本节记录接手时实际看到的状态，
+以及本轮唯一落地的代码改动。**技术卡点没有变化**（仍是 D-68 问题 33 续 20 的
+「等 (b)/(c) 拍板」），本轮**没有推进 6.6.3**。
+
+### 现场（与 HANDOFF 的偏差）
+
+按 `HANDOFF.md` 的验收清单逐条走，发现 5 处偏差：
+
+| HANDOFF 写的 | 实测 | 处理 |
+|---|---|---|
+| WSL 发行版 `Ubuntu-26` | `wsl -l -v` 只有 **`Ubuntu`** | 已改进 CLAUDE.md/HANDOFF：先 `wsl -l -v` 再跑 |
+| 用户 `root`、conda `/root/miniforge3` | 用户 **`code`**、conda **`/home/code/miniforge3`** | 同上 |
+| 项目软链 `/root/pf-wire` → `C:\Users\Administrator\Desktop\疲劳寿命` | 实际项目在 **`D:\疲劳寿命`**（`/mnt/d/疲劳寿命`） | 新建 `/home/code/pf-wire` 软链 |
+| `git remote` **为空**，「仓库只存在于这台机器」 | **远程已建并同步**：`origin = github.com/lxy86/conductor`，`origin/master = 5251112` | 已改 HANDOFF §2.1/§2.2 |
+| `?? configs/clamp_base_c_coarse.yaml`、`?? _probe_nitsche/` | **两者都不存在** | 已改 HANDOFF §2.4 |
+
+`data/fretting_base/result.json` 的截断改动（-8901 行、`status: "running"`）
+**仍在**，未处理 —— 需要用户决定提交还是丢弃，与 6.6.3 无关。
+
+### 真 blocker：WSL 网络栈坏了（不是版本问题）
+
+```
+$ ip link show              →  只有 lo，**没有 eth0**
+$ getent hosts github.com   →  空
+$ ping 223.5.5.5            →  Network is unreachable
+$ cat /etc/resolv.conf      →  No such file
+```
+
+于是 `bash scripts/setup_env.sh` 在第一步 `conda env create` 就死在
+`NameResolutionError: conda.anaconda.org`。换阿里云/PyPI 镜像同样解析不了
+（**不是镜像问题，是 DNS 全挂**）。
+
+关键对照：**Windows 宿主侧网络是好的** —— 同一时刻 `git ls-remote origin`
+成功、`git fetch` 正常。所以问题在 WSL 的虚拟网卡，不在宿主网卡。
+
+已尝试且**无效**：`wsl --shutdown` 两次 + 重启（`eth0` 仍不出现）。
+根因是 WSL 宿主的 HNS 虚拟交换机，**需要管理员权限**修：
+
+```powershell
+# 管理员 PowerShell
+wsl --shutdown
+Restart-Service hns
+# 或 Get-NetAdapter | ? Name -like "*WSL*" | Restart-NetAdapter
+```
+
+⇒ **本机在 eth0 恢复前，验收清单第 2~6 步全部做不了**（装不了包、
+跑不了 pytest）。这属于环境问题，不是代码问题。
+
+### 本轮唯一改动：`scripts/` 不再硬编码 `/root`
+
+**问题**：25 个 `scripts/*.sh` 各自写
+
+```bash
+source /root/miniforge3/etc/profile.d/conda.sh
+conda activate pf-wire || exit 1
+cd /root/pf-wire || exit 1
+```
+
+换机器后**25 个脚本全部 `cd` 失败**，而报错还是
+`cd: $'/root/pf-wire\r': No such file or directory` 这种看不出根因的形态
+（CRLF 一旦混进来，见 `tests/test_repo_hygiene.py` 的 docstring）。
+
+**改法**：新增 `scripts/_env.sh`，按三级定位：
+
+| 变量 | 优先级 |
+|---|---|
+| `$PFWIRE_HOME` | 显式指定项目根 |
+| `$PFWIRE_CONDA_BASE` | 显式指定 conda 根 |
+| `conda info --base` | conda 在 PATH 时 |
+| `$HOME/miniforge3`、`/opt/conda`、`/root/miniforge3` … | 兜底枚举 |
+
+25 个脚本的 4 行 boilerplate 统一换成：
+
+```bash
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
+conda activate "${PFWIRE_ENV:-pf-wire}" || exit 1
+cd "$PFWIRE_HOME" || exit 1
+```
+
+`scripts/probe_d_converge.py` 里硬编码的
+`pathlib.Path("/root/pf-wire/configs/clamp_base_c.yaml")` 改成
+`pathlib.Path(__file__).resolve().parents[1] / "configs" / ...`。
+
+**回归测试**（`tests/test_repo_hygiene.py` 新增 1 项）：
+
+```python
+def test_shell_scripts_do_not_hardcode_home_paths():
+    """scripts/*.sh 不得硬编码 /root/ 路径。"""
+```
+
+⚠ **范围只含 `scripts/`，不含 `data/_*.sh`**。后者是「用一次就扔」的探针
+脚手架（`.gitignore` 里 `data/_*.py`/`data/_*.log` 同理，CLAUDE.md 陷阱 10），
+本来就不随仓库走 —— 而且有 **200+ 个**硬编码 `/root`，逐个改造的收益
+远小于维护成本。第一版测试误把 `data/*.sh` 也扫了，一次报出 200+ 条，
+已收窄范围。
+
+### 踩到的坑（本轮，两次都是自己的批量替换造成的）
+
+1. **`old_cd → new_block` 的替换把 `conda activate` 插到了 `source` 之前**。
+   原脚本顺序是 `source conda` → `conda activate` → `cd`；我只替换了
+   `cd` 那一行，于是 `conda activate` 出现在 `source _env.sh` 之前，
+   **而 `conda` 这时还没进 PATH**。25 个脚本全中，靠一个顺序审计脚本查出来。
+   ⇒ 教训：**批量替换后要按「语义顺序」审计，不能只看 diff 没有 `/root` 就收工**。
+2. **第一次只替换了 `source` 那行、漏了 `conda activate pf-wire`**（环境名
+   仍是硬编码）。补了一遍。
+
+### 状态
+
+- 6.6.3 **未推进**，仍等用户拍板 (b)/(c)。
+- 环境**未建起来**（WSL 无网，需管理员修 HNS）。
+- 代码侧：路径自适应已改、LF 已验、测试已加，但**因无 pytest 环境未能实跑**
+  （只在 Windows Python 下静态模拟了测试逻辑，结果 PASS）。
+  **这一点必须如实记下：新测试是「写好了但没跑过」。**

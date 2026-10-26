@@ -10,9 +10,9 @@
 #
 # 代价：串行慢。不设单工况耗时上限（CLAUDE.md D-4，用户 2026-09-09 指示）。
 set -u
-source /root/miniforge3/etc/profile.d/conda.sh
-conda activate pf-wire || exit 1
-cd /root/pf-wire || exit 1
+source "$(dirname "${BASH_SOURCE[0]}")/_env.sh"
+conda activate "${PFWIRE_ENV:-pf-wire}" || exit 1
+cd "$PFWIRE_HOME" || exit 1
 export OMP_NUM_THREADS=1
 
 CONFIG=${1:-configs/clamp_fretting_coarse.yaml}
@@ -21,7 +21,7 @@ import yaml,sys
 print(yaml.safe_load(open('$CONFIG'))['output']['dir'])
 ")
 rm -rf "$OUT"
-LOG=/root/pf-wire/data/_run663_serial.log
+LOG="$PFWIRE_HOME/data/_run663_serial.log"
 : > "$LOG"
 echo "=== 6.6.3 串行开始 $(date -Is) config=$CONFIG ===" | tee -a "$LOG"
 # 不加 timeout：串行慢，且 D-4 明确不设单工况耗时上限。
