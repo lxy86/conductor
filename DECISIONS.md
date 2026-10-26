@@ -7791,7 +7791,11 @@ Newton 用这种 J，搜索方向不是 F 的下降方向 —— 这正好解释
 
 ### 对 blocker B 的判断（未修）
 
--5 是 `SNES_DIVERGED_LINE_SEARCH`：线搜索失败，即 Newton 方向不好。
+-5 是 `SNES_DIVERGED_MAX_IT`：**跑满迭代上限**，不是线搜索失败。
+⚠ **原文误记为 `SNES_DIVERGED_LINE_SEARCH`（那是 -6）**，2026-10-26 用
+`petsc4py` 核实后更正（见续 22）。当时的现场数据仍成立，但「跑满 200 次」
+这一事实本身就说明 **Newton 是在原地不动、而不是方向不好** ——
+这与续 22 查到的「假弹簧让残差停在 4763 不降」一致。
 续 13 的现场（it=4 时 843 个接触单元全部 `|q| = μp`、it=5 -5）说明：
 **错的是 Uzawa 的「交错」格式本身** —— q 一步跳到 Coulomb 容量，
 下一步 u 面对巨大面力；而 u 子问题的 Jacobian **本来就是对的**。
@@ -8813,3 +8817,126 @@ Newton 永远到不了。
 
 ⚠ 本轮还**清理了三个结论已被推翻的探针**（`_probe_fb_full.py` 等，
 它们基于续 19 的错误符号前提），未入库。
+
+## D-68 问题 33 续 22：**三条路线的共同前提被推翻** —— 失败点在 u 块，且第一层是方向 f 遗留的假弹簧（2026-10-26）
+
+用户要求「先讨论 (b) 的三条方向（η=0 半光滑 / 乘子残差 / 回交错），把方案定下来再动手」。
+讨论前先做了一轮**零插桩实测**（只调生产 API，不改源码），结果**否掉了这三条路线的共同前提**。
+
+### 三条路线的隐含前提
+
+续 21 把 (b) 定向为「让 `F_q = 0` 有根」，三条路全部在改**单体 `F_q` 的表述**。
+它们共同的隐含前提是：**失败点在 q 块**。
+
+### 实测 1：交错 Uzawa 在同一相位也失败（复现续 13 的 blocker B）
+
+`data/_probe_eta_stag.py`（config 里 `monolithic_friction: false`，其余同 6.6.3）：
+
+```
+相位 0.00（prime 起点）...   ✅ ok
+求解相位 0.05 ...            ❌ RuntimeError: u 的 Newton 求解未收敛：SNESConvergedReason=-5
+```
+
+⚠ **探针忠实度**：第一版跳过 `explicit_cycle` 的相位 0 prime 步骤，直接跳到 0.05，
+报的是**假失败**（u_prev / 滑移基准停在延拓末，不是 6.6.3 实际走过的路径）。
+补上 prime 后相位 0 通过、0.05 失败。**结论以后一版为准。**
+
+### 实测 2：q 冻结为 0 时，**u 自己**就失败 —— 失败与摩擦力无关
+
+`data/_probe_u_block.py`：开摩擦、相位 0 解一次（对照），再在相位 0.05
+只调 `solver._solve_u_once()`（= 交错循环的第一步，**q 尚未更新、恒为 0**）。
+
+```
+[phase 0.00] reason=4   it=1    fnorm=2.9017e-04   rtol=1.0e-10 atol=1.0e-06 max_it=200
+[phase 0.05] reason=-5  it=200  fnorm=4.7631e+03   rtol=1.0e-10 atol=1.0e-06 max_it=200
+```
+
+⇒ **相位 0 只需 1 次迭代**（残差本来就 ~0），相位 0.05 需要 Newton 真走时才崩，
+且崩在 **q 还没被碰过的地方**。
+
+**`-5` 的定义已用 petsc4py 核实**（`data/_probe_reason.py`）：
+`DIVERGED_MAX_IT = -5`，`DIVERGED_LINE_SEARCH = -6`。
+⚠ **续 15 把 `-5` 记成「`SNES_DIVERGED_LINE_SEARCH`」是错的**，本节更正。
+
+### 实测 3：第一层病因 = 方向 f 遗留的假弹簧
+
+续 15 已用**形式判据**证伪方向 f：Uzawa 模式 `F` 的切向项是 `-q·(τ·v)·ds`，
+其 u-导数只有 `-q·(dτ/du[du])·v`；而 `tangential_jacobian` 往 `J` 里加的
+`ε_t·(τ·du)(τ·v)` 在 `F` 里**没有对应项**，量级是真导数的 **9.5e7 倍**。
+
+但那份代码**一直留在 `_build_u_problem` 的 Newton 分支里**，只由
+`_tang_jac_gate`（`fem.Constant`，`set_mu` 同步置 0/1）控制。
+开摩擦后门 = 1.0 ⇒ 每次 u 的 Newton 都带着这根一亿倍的假弹簧。
+
+`data/_probe_gate.py`（同一状态、同一相位，只改门的**数值**；`fem.Constant`
+改值不是插桩 —— 不在方法体内、不触发 import/IO）：
+
+| `_tang_jac_gate` | SNES reason | 迭代 | fnorm |
+|---|---|---|---|
+| **1.0**（现状） | `-5` | **200（跑满）** | 4763 不降 |
+| **0.0**（关掉） | **`4` = CONVERGED_SNORM_RELATIVE** | **4** | **2.94e-04** |
+
+⇒ 续 15 的形式判据**得到数值实证**。
+
+### 实测 4：单体路径**不受**假弹簧污染 —— 两个病是独立的
+
+`monolithic_jacobian` 的 `J_uu = ufl.derivative(F_u, u, du_trial)`，
+而 `F_u` 只含「弹性 − 外载 − 法向接触 + 切向乘子项」，**不含**方向 f 那一项。
+⇒ 单体的失败（续 21 的 `F_q` 残差地板）与交错的 `-5`（假弹簧 + blocker B）
+是**两个独立的病**，不能用一个处方治。
+
+### 实测 5：假弹簧只是**第一层** —— 关掉它后仍失败
+
+`data/_probe_gate_cycle.py`，`gate=0.0`，跑**完整** `explicit_cycle`
+（相位 0 prime → 各子步，q 逐步更新）：
+
+```
+❌ ExplicitCycleFailed（phase=0.05）
+   cause: RuntimeError: u 的 Newton 求解未收敛：SNESConvergedReason=-5
+   uzawa_iters=2  uzawa_converged=True
+```
+
+Uzawa **第 2 轮**（q 已非零、u 面对非零切向面力）仍 `-5`。
+这才是续 13 的 blocker B 本体，**与三条改 `F_q` 的路线正交**。
+
+### 对 (b) 的重新定向
+
+| 路线 | 状态 |
+|---|---|
+| 1. η→0 + 半光滑 | **前提不成立**：它改的是 `F_q`，而交错的失败发生在 q 更新之前 |
+| 2. 乘子 λ 残差 | 同上；且续 21 已记「两层 FB 光滑化同样带回地板」，改表述绕不开 |
+| 3. 回交错 | **已在交错上**（`monolithic_friction: false` 就是交错），它卡的是 u 块，不是 q 块 |
+
+⇒ **三条路线都不能单独解决 6.6.3**。真正要动的顺序是：
+
+1. **撤/默认关闭方向 f 的假弹簧**（`_tang_jac_gate` 默认 0，或删掉
+   `tangential_jacobian` 的接线）。这是**独立于三条路线**的一步，
+   机理清楚（续 15 形式判据 + 本节实测）、改动明确，且能让交错的
+   第一处失败消失。⚠ 续 15 记「用户 2026-10-25 明确方向 f 代码先留着不删，
+   留作对照」—— **保留代码、默认关门**是与那条指示兼容的做法。
+2. **再追第二层**：为什么 q 非零后 u 的 Newton 在相位 0.05 发散。
+   续 13 的干净数据显示「it=4 时 843 个接触单元全部 `|q| = μp`、
+   it=5 崩」—— 但那是**假弹簧在场**时测的，**需要重测**：
+   假弹簧关掉后 q 的饱和进程可能完全不同。
+3. 单体路线的 `F_q` 地板（续 21）**仍待解**，但它现在是**第二优先**：
+   先让交错路径能跑，才知道 6.6.3 的物理结果长什么样。
+
+⚠ **本轮未改任何源码**（硬约束 6）。以上是**实测结论**，方向仍待用户拍板。
+
+### 顺带发现的配置缺陷
+
+`configs/clamp_fretting_coarse.yaml` 的 `solver.snes_max_it: 60`（注释说「给 u 的」）
+**是死配置**：`clamp_case.py:544` 只读 `sv["snes_max_it_d"]`（缺省 200），
+u 与 d 共用这一个字段，故 u 实际拿到 **200**。不影响本节结论
+（fnorm 卡在 4763 不动，多给迭代也不会收敛），但注释与实际不符，易误导。
+
+### 新增探针（零插桩，均需 `git add -f` 入库）
+
+| 文件 | 作用 |
+|---|---|
+| `data/_probe_u_block.py` | q 冻结为 0，单独解 u：证明失败在 u 块 |
+| `data/_probe_gate.py` | 假弹簧门 1.0 vs 0.0 对照（本节核心表） |
+| `data/_probe_gate_cycle.py` | gate=0 下跑完整 `explicit_cycle`：第二层仍在 |
+| `data/_probe_eta_stag.py` | 交错路径相位 0.05 复现（含 prime 忠实度修正） |
+| `data/_probe_reason.py` | 打印 PETSc `SNESConvergedReason` 真实定义 |
+| `data/_run_u_block.sh` / `_run_gate.sh` / `_run_gate_cycle.sh` / `_run_eta_stag.sh` | 对应跑法 |

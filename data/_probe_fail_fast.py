@@ -21,7 +21,7 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, "/root/pf-wire")
+# pfwire 由 `pip install -e .` 装好（scripts/setup_env.sh），无需手工加 path
 
 DELTA_STAR = 2.7252659701799572e-05
 AMP = 1.0e-07
