@@ -88,14 +88,14 @@ python -c 'import dolfinx_contact; print(dolfinx_contact.__file__)'
 
 ### 1.3 WSL 侧要重建的 ASCII 软链接
 
-项目路径含中文（`C:\Users\Administrator\Desktop\疲劳寿命`），
+项目路径含中文（`C:\Users\<用户名>\Desktop\疲劳寿命`），
 **WSL 里一律走 ASCII 软链接** `/root/pf-wire`：
 
 ```bash
-ln -sfn /mnt/c/Users/Administrator/Desktop/疲劳寿命 /root/pf-wire
+ln -sfn /mnt/c/Users/<用户名>/Desktop/疲劳寿命 /root/pf-wire
 ```
 
-⚠ **新机器上用户名可能不同**（不是 `Administrator`），路径要相应改。
+⚠ **`<用户名>` 要换成新机器上的实际用户名**。
 CLAUDE.md 里所有命令都假设 `/root/pf-wire` 存在，**不建就全部跑不了**。
 
 ### 1.4 验收环境
@@ -155,7 +155,7 @@ git push -u origin master
 
 **方案 B：整个目录拷贝**
 
-直接拷 `C:\Users\Administrator\Desktop\疲劳寿命` 整个目录（含 `.git`）。
+直接拷 `C:\Users\<用户名>\Desktop\疲劳寿命` 整个目录（含 `.git`）。
 ⚠ 若走 U 盘/FAT32，注意中文文件名与 2 GB 单文件限制。
 
 ### 2.3 搬什么、不搬什么
