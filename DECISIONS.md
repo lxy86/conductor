@@ -8559,3 +8559,57 @@ def test_shell_scripts_do_not_hardcode_home_paths():
 
 已 `bash -n` 验过语法，且在**当前无网状态**下实跑：正确停在步骤 0 并打印
 `ip link show`（只有 lo），退出码 2。⇒ 脚本的自检逻辑是有效的。
+
+### 补记 2（2026-10-26）：无网的真因是 `.wslconfig`，不是 HNS
+
+第一版 D-69 把「WSL 无网」归因到 HNS 虚拟交换机，**那是错的**。
+`Restart-Service hns`（用户管理员执行）+ `wsl --shutdown` 两轮都无效，
+于是去查配置，发现 `C:\Users\code\.wslconfig`：
+
+```ini
+[wsl2]
+networkingMode=none        # 2026-09-28 15:17 设置
+```
+
+**`networkingMode=none` 下 WSL 根本不创建 `eth0`** —— 所以 `ip link show`
+永远只有 `lo`，看起来和「网卡驱动坏了」一模一样。任何网络排查都不会有结果。
+
+改成 `mirrored` 后（Win10 自动回退 NAT），`wsl --shutdown` 一次即恢复：
+
+```
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 ... state UP
+getent hosts conda.anaconda.org → 198.18.0.199
+conda-forge: 200   pypi: 200   github: 200
+```
+
+原文件已备份到 `C:\Users\code\.wslconfig.bak-20261026`。
+
+⇒ **教训**：WSL 里「没有网卡」时，**先看 `.wslconfig`，再怀疑 HNS**。
+`networkingMode=none` 是安静的配置项，症状与硬件故障不可区分。
+排查顺序：`.wslconfig` → `ip link` → `getent hosts` → 才轮到 HNS/网卡。
+
+### 补记 3（2026-10-26）：`setup_env.sh` 自己倒在 conda 定位上
+
+修好网络后第一次跑 `setup_env.sh`，日志只有两行：
+
+```
+scripts/setup_env.sh: line 23: conda: command not found
+scripts/setup_env.sh: line 23: /etc/profile.d/conda.sh: No such file or directory
+```
+
+原第 23 行 `source "$(conda info --base)/etc/profile.d/conda.sh"` 在
+非交互式 `bash -lc` 下（不走 `.bashrc`、conda 不在 PATH）展开成
+`source "/etc/profile.d/conda.sh"`。已改成 source `scripts/_env.sh`，
+与其余 25 个脚本一致。
+
+⚠ **同一轮还踩了一个「静默成功」**：后台跑的命令是
+`wsl ... bash -lc 'bash setup_env.sh' > log 2>&1; echo "EXIT=$?"`，
+**拿到 exit 0** —— 因为 `echo` 成功了。脚本真实失败被 `>` 重定向吞掉。
+⇒ **看后台任务结果必须读日志内容，不能只看退出码。**
+这与项目反复记的「不静默失败」是同一个病，只是换了个位置。
+
+### 补记 4（2026-10-26）：`_env.sh` 不能依赖 `$HOME`
+
+`wsl -d X -- bash -c '...'` 这类非登录非交互调用里 `$HOME` 可能是**空的**，
+`${HOME}/miniforge3` 展开成 `/miniforge3`，兜底分支全落空。
+已用 `getent passwd "$(id -u)"` 兜一层，实测 `env -u HOME` 下仍能定位。

@@ -8,7 +8,7 @@
 # 跳过接触求解器：SKIP_CONTACT=1 bash scripts/setup_env.sh
 set -euo pipefail
 
-ENV_NAME=pf-wire
+ENV_NAME="${PFWIRE_ENV:-pf-wire}"
 ADIOS4DOLFINX_VERSION=0.11.0
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -19,8 +19,14 @@ CONTACT_REPO=https://github.com/Wells-Group/asimov-contact.git
 CONTACT_COMMIT=f605fffdcabe470e6d20525c424aa985b36b3c42
 CONTACT_SRC="$REPO_DIR/.ext/asimov-contact"
 
-# shellcheck disable=SC1091
-source "$(conda info --base)/etc/profile.d/conda.sh"
+# 定位 conda：不能写 `source "$(conda info --base)/..."` —— 非交互式
+# `bash -lc` 不走 .bashrc，conda 不在 PATH 时那行会展开成
+# `/etc/profile.d/conda.sh`（家目录都没了），报 `conda: command not found`。
+# 2026-10-26 实测踩过。_env.sh 按 $PFWIRE_CONDA_BASE → conda info --base
+# → 常见安装位置三级兜底，建环境这一步尤其不能倒在这里。
+# shellcheck source=./_env.sh
+source "$REPO_DIR/scripts/_env.sh"
+# _env.sh 里 PFWIRE_ENV 默认就是 pf-wire；ENV_NAME 在第 11 行已按它取过值。
 
 if conda env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
   echo "[1/5] 环境 $ENV_NAME 已存在，按 environment.yml 更新"

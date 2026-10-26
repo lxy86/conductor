@@ -110,9 +110,9 @@ export PFWIRE_HOME=/mnt/d/疲劳寿命     # 想绕开软链时
 ### 1.4 验收环境
 
 ```bash
-wsl -d Ubuntu-26
-source /root/miniforge3/etc/profile.d/conda.sh && conda activate pf-wire
-cd /root/pf-wire
+wsl -l -v                            # 先确认发行版真名，别假设 Ubuntu-26
+wsl -d <真名>
+source scripts/_env.sh && conda activate "${PFWIRE_ENV:-pf-wire}" && cd "$PFWIRE_HOME"
 pytest tests/test_env.py -q          # 必须全绿（含 PETSc real 变体断言）
 ```
 
@@ -391,9 +391,9 @@ test_I3_reaction_is_reproducible
    不报错只白等）。DG0 的 `x.array` 含 ghost，统计前要切 `[:size_local]`
 7. **从 Windows 侧进 WSL 跑脚本，循环变量与路径会被 Git Bash 吃掉**：
    `wsl ... bash -lc 'for w in ...; do ...'` 里 `$w` 会先被外层展开成空；
-   `/root/...` 会被 MSYS 改写成 `C:/Program Files/Git/root/...`。
-   **正确做法**：脚本写到项目里，用
-   `wsl -d Ubuntu-26 bash -lc 'bash /root/pf-wire/data/_x.sh'` 跑
+   `/root/...` 这类绝对路径会被 MSYS 改写成 `C:/Program Files/Git/root/...`。
+   **正确做法**：脚本写到项目里（Windows 侧可见的那个目录），用
+   `wsl -d <真名> bash -lc 'bash /mnt/d/疲劳寿命/data/_x.sh'` 跑
 8. ⚠⚠ **不要往求解器方法里插代码做诊断 —— 插桩会污染被测对象**。
    2026-10-25 实证：给 `uzawa_update` 插打印，报告 `mu=0/lim=0/contact=0`
    **全是假象**，据此追了五轮假说全错。**定位数值问题用零插桩探针**
@@ -450,30 +450,61 @@ git status                  # 应只有 §2.4 那几个未提交项
 
 **全部对上 = 衔接完成。** 然后回到 §5，等用户决定 (b) 还是 (c)。
 
-### 7.1 本机（2026-10-26）实际卡在哪
+### 7.1 本机（2026-10-26）卡过的三个坑（都已解决，但换机器会再遇到）
 
-接手时环境**没建起来**，原因不是版本冲突，是 **WSL 的网络栈坏了**：
+**(1) WSL 里完全没有网络 —— 真因是 `.wslconfig` 把网络关了，不是 HNS 故障**
 
 ```
-$ ip link show          →  只有 lo，没有 eth0
+$ ip link show            →  只有 lo，没有 eth0
 $ getent hosts github.com →  空
-$ conda env create ...  →  NameResolutionError: conda.anaconda.org
+$ conda env create ...    →  NameResolutionError: conda.anaconda.org
 ```
 
-Windows 宿主侧网络正常（`git ls-remote origin` 成功、`git clone` 可行），
-**只有 WSL 里没网**。`wsl --shutdown` + 重启试过两次，`eth0` 仍不出现。
-这是 WSL 宿主的 HNS 虚拟交换机问题，**需要管理员权限**修：
+Windows 宿主侧网络正常（`git ls-remote` 成功），只有 WSL 里没网。
+一度以为是 HNS 虚拟交换机坏了，`Restart-Service hns` + `wsl --shutdown`
+试了两轮**都无效**。真相是 `C:\Users\<用户名>\.wslconfig`：
 
-```powershell
-# 管理员 PowerShell
-wsl --shutdown
-Get-NetAdapter | Where-Object Name -like "*WSL*" | Restart-NetAdapter
-# 或：重启 Hyper-V 主机计算服务
-Restart-Service hns
+```ini
+[wsl2]
+networkingMode=none      ← 2026-09-28 设的，等于「WSL 不要网络」
 ```
 
-**在 eth0 恢复前，本清单第 2~6 步全部做不了**（装不了包、跑不了 pytest）。
-第 1 步与第 7 步可以做。
+`networkingMode=none` 下 **eth0 从来就不会被创建**，所以任何网络排查
+都看不到它。改成 `mirrored`（Win11）或删掉该行用默认 NAT（Win10）即可：
+
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+
+⚠ **Win10 (19045) 不支持 mirrored**，WSL 会自动回退到 NAT 并打印一句
+`检测到 Windows 版本 19045... 回退到 NAT 模式` —— 这是正常提示，不是错误。
+改完**必须 `wsl --shutdown`** 才生效（只重启服务不够，旧 VM 会继续跑旧配置）。
+
+> 排查顺序建议：先看 `.wslconfig`，再看 `ip link`，最后才怀疑 HNS。
+> `networkingMode=none` 是个安静的配置项，症状和「网卡坏了」一模一样。
+
+**(2) `setup_env.sh` 自己也倒在 conda 定位上**
+
+原第 23 行是 `source "$(conda info --base)/etc/profile.d/conda.sh"`。
+非交互式 `bash -lc` 不走 `.bashrc`，conda 不在 PATH，于是它展开成
+`source "/etc/profile.d/conda.sh"`，报 `conda: command not found`。
+**已改成 source `scripts/_env.sh`**（与其余 25 个脚本一致）。
+
+⚠ 更阴的一点：当时用 `wsl ... bash -lc 'bash setup_env.sh' > log 2>&1; echo EXIT=$?`
+拿到 **exit 0** —— 因为 `echo` 成功了，脚本的真实失败被吞掉。
+**看后台任务结果要读日志内容，不能只看退出码。**
+
+**(3) `_env.sh` 依赖 `$HOME`**
+
+`wsl -d X -- bash -c '...'` 这种非登录非交互调用里 `$HOME` 可能是**空的**，
+于是 `${HOME}/miniforge3` 展开成 `/miniforge3`，兜底分支全部落空。
+已在 `_env.sh` 里用 `getent passwd $(id -u)` 兜一层。
+
+### 7.2 硬件与原机器不同（见 §1.5）
+
+本机 **Xeon Gold 5218R / 20 物理核 / 31 GB**，不是 HANDOFF 早先记的
+6 核 / 47 GB。`-n` 策略**必须重测**，详见 §1.5 的对照表。
 
 ---
 

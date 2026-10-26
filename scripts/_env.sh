@@ -25,10 +25,18 @@ if [ -z "${PFWIRE_CONDA_BASE:-}" ]; then
         PFWIRE_CONDA_BASE="$(conda info --base 2>/dev/null || true)"
     fi
 fi
-# conda 不在 PATH 时，试常见的 miniforge/miniconda 位置（登录 shell 才有 PATH）
+# conda 不在 PATH 时，试常见的 miniforge/miniconda 位置（登录 shell 才有 PATH）。
+# ⚠ $HOME 不保证有值：`wsl -d X -- bash -c '...'` 这种非登录非交互的调用里
+# HOME 可能是空的（2026-10-26 实测），于是 "${HOME}/miniforge3" 会展开成
+# "/miniforge3" 而全部落空。用 `getent passwd` 兜一层，再退回 /root。
 if [ -z "${PFWIRE_CONDA_BASE:-}" ]; then
+    _home="${HOME:-}"
+    if [ -z "$_home" ]; then
+        _home="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"
+    fi
+    : "${_home:=/root}"
     for _cand in \
-        "${HOME}/miniforge3" "${HOME}/miniconda3" "${HOME}/mambaforge" \
+        "${_home}/miniforge3" "${_home}/miniconda3" "${_home}/mambaforge" \
         /opt/conda /opt/miniforge3 /opt/miniconda3 \
         /root/miniforge3 /root/miniconda3; do
         if [ -f "$_cand/etc/profile.d/conda.sh" ]; then
@@ -36,6 +44,7 @@ if [ -z "${PFWIRE_CONDA_BASE:-}" ]; then
             break
         fi
     done
+    unset _home
 fi
 
 if [ -n "${PFWIRE_CONDA_BASE:-}" ] && [ -f "$PFWIRE_CONDA_BASE/etc/profile.d/conda.sh" ]; then
