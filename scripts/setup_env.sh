@@ -60,6 +60,23 @@ else
   fi
   git -C "$CONTACT_SRC" checkout -q FETCH_HEAD
 
+  # ---- 清掉从别处带来的构建缓存 -------------------------------------------
+  # CMake 把**绝对路径**写进 CMakeCache.txt。换机器/换项目路径后（本机从
+  # `/root/pf-wire` 变成 `/mnt/d/疲劳寿命`），cmake 直接拒绝复用：
+  #   CMake Error: The current CMakeCache.txt directory <新路径> is different
+  #   than the directory <旧路径> where CMakeCache.txt was created.
+  # 而 .ext/ 在 .gitignore 里、`build-contact/` 又不会被 setup 脚本清理，
+  # 于是**只要拷过目录就必踩**（2026-10-26 实测）。
+  # 判据：cache 里记录的构建目录 ≠ 当前，就整个删掉重来（它是纯产物，删了不心疼）。
+  CONTACT_BUILD="$CONTACT_SRC/build-contact"
+  if [ -f "$CONTACT_BUILD/CMakeCache.txt" ]; then
+    CACHED_DIR=$(sed -n 's|^# For build in directory: ||p' "$CONTACT_BUILD/CMakeCache.txt" | head -1)
+    if [ -n "$CACHED_DIR" ] && [ "$CACHED_DIR" != "$CONTACT_BUILD" ]; then
+      echo "  构建缓存来自别处（$CACHED_DIR），删掉重建"
+      rm -rf "$CONTACT_BUILD"
+    fi
+  fi
+
   # ---- 必打的两个补丁（D-48）----------------------------------------------
   # 上游 python/CMakeLists.txt 建 nanobind 模块时**没开 stable ABI**，
   # 而 conda-forge 的 dolfinx 绑定是 cpp.abi3.so（stable ABI）。两者 ABI 不同

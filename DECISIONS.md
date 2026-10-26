@@ -8613,3 +8613,93 @@ scripts/setup_env.sh: line 23: /etc/profile.d/conda.sh: No such file or director
 `wsl -d X -- bash -c '...'` 这类非登录非交互调用里 `$HOME` 可能是**空的**，
 `${HOME}/miniforge3` 展开成 `/miniforge3`，兜底分支全落空。
 已用 `getent passwd "$(id -u)"` 兜一层，实测 `env -u HOME` 下仍能定位。
+
+### 补记 5（2026-10-26）：换机器必踩的第 4 个坑 —— 旧 `build-contact/` 缓存
+
+`dolfinx_contact` 的 `cmake` 在 `.ext/asimov-contact/build-contact/CMakeCache.txt`
+里写的是**绝对路径**。把整个目录从旧机器拷过来后（本机 `.ext/` 里的 cache 记的是
+`/root/pf-wire/...`），cmake 直接拒绝复用：
+
+```
+CMake Error: The current CMakeCache.txt directory /mnt/d/疲劳寿命/... is different
+than the directory /root/pf-wire/... where CMakeCache.txt was created.
+CMake Error: The source .../cpp/CMakeLists.txt does not match the source
+/root/pf-wire/.../cpp/CMakeLists.txt used to generate cache.
+```
+
+`.ext/` 在 `.gitignore` 里，`build-contact/` 又不在 `setup_env.sh` 的清理范围，
+所以**只要拷过目录就必踩**。已在 `setup_env.sh` 里加自动检测：
+读出 cache 里的 `# For build in directory:`，与当前路径不符就整个删掉重建。
+
+### 补记 6（2026-10-26）：**不要在 shell 脚本正在运行时编辑它**
+
+同一天犯了**两次**同样的错。第一次改 `setup_env.sh` 时它在后台跑，
+结果脚本在 `line 86: syntax error near unexpected token '('` 处中断 ——
+那行是 Python heredoc 里的代码，本身完全合法。
+
+机理：bash **按字节偏移**增量读取正在执行的脚本文件。运行中改动前面几行
+（我改了第 11 行和第 28 行的长度），后续读取的偏移就错位了，
+于是从一段 Python 代码的中间开始解析，报出与真实内容无关的语法错误。
+
+**后果比报错更糟**：第一次的环境其实建好了 conda 部分（`pf-wire` 环境存在、
+dolfinx 0.11.0 装好），但 adios4dolfinx / pfwire / dolfinx_contact **全没装**，
+而外层命令报 `EXIT=0`。又是一次「静默半成品」。
+
+⇒ 规则：**跑长脚本前后不要改那个文件**。要改就先 `TaskStop` 停掉、
+确认进程清干净（`pkill` + `ps aux | grep`）、改完 `bash -n` 验语法，再重跑。
+`bash -n` 对**已损坏的运行**没有诊断价值 —— 它检查的是磁盘上的当前版本，
+而 bash 执行的是它自己按偏移读到的旧片段。这两者不是一回事。
+
+### 补记 7（2026-10-26）：环境重建成功，基线对拍结果
+
+网络修好后的完整重建结果：
+
+| 项 | 结果 |
+|---|---|
+| `setup_env.sh` | ✅ 走完全部 5 步 |
+| dolfinx / basix | 0.11.0 / 0.11.0 ✅ |
+| petsc4py / numpy | **3.25.6 / 2.5.4**（原记 3.25.5 / 2.5.3，`3.25.*`/`2.5.*` 范围内） |
+| PETSc scalar | `float64` ✅（real 变体） |
+| `dolfinx_contact` | **`cpp.abi3.so`** ✅ stable-ABI 补丁生效（D-48 关键验收） |
+| `tests/test_env.py` | **8 passed** ✅ |
+| `tests/test_solver_failure_surfaces.py` | **7 passed** ✅ |
+| 全量基线 | **6 failed，全部在 `test_clamp_friction.py`** ✅ |
+
+**6 个失败名与 HANDOFF §4 逐字一致**：
+
+```
+test_G1_tangent_with_friction_and_plastic
+test_G3_G4_G5_coulomb_bounds_and_saturation
+test_H1_H4_partial_slip_and_slip_zone_location
+test_H2_H3_stick_halfwidth_shrinks_toward_mindlin
+test_I2_kappa_t_sensitivity
+test_I3_reaction_is_reproducible
+```
+
+⇒ **环境重建成功，无回归。**
+
+### ⚠ 修正一条基线口径：**「632 收集」不是可靠判据**
+
+HANDOFF §4 与 CLAUDE.md 的验收命令都写着「收集 **632** 项」。本机实测是
+**598~602**（同一台机器上连跑两次都不同）。原因查清了：
+
+`tests/test_repo_hygiene.py` 的 LF 行尾测试对 **磁盘上的** `scripts/*.sh`
+**和 `data/*.sh`** 逐个 parametrize，而 `data/_*.sh` 是**不入库的一次性脚手架**
+（`.gitignore` 明确排除，CLAUDE.md 陷阱 10）：
+
+```
+git ls-files "data/*.sh"   →  4 个
+ls data/*.sh               →  112 个
+```
+
+112 - 4 = 108 个差量全来自这里，而原机器的 `data/` 磁盘状态与现在不同，
+所以 632 是**原机器某时刻的快照**，不是可复现的常量。
+
+⇒ **回归判据应该只看「失败名单与数量」，不看收集数。**
+真正的基线是：**6 failed，且全部是上面那 6 个 `test_clamp_friction` 用例**。
+失败数超过 6 才是新回归。
+
+**这条建议后续改掉 `test_repo_hygiene.py`**：LF 测试不该把不入库的
+`data/*.sh` 算进参数化（否则收集数随脚手架数量漂移，且每次清理 data/ 都会
+让「基线」变化）。本轮**未改**（属独立议题，且会改变现有基线口径），
+在此记下以免下次接手又困惑。

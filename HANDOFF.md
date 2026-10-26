@@ -34,17 +34,21 @@
 
 ### 1.1 版本必须逐位复现
 
-这台机器上**实测**的版本组合（不是照抄 environment.yml，是实际 `import` 出来的）：
+**实测**的版本组合（不是照抄 environment.yml，是实际 `import` 出来的）：
 
-```
-dolfinx        0.11.0
-basix          0.11.0
-petsc4py       3.25.5      （PETSc 必须是 real 变体，不是 complex）
-numpy          2.5.3
-scipy          1.18.1
-adios4dolfinx  0.11.0
-dolfinx_contact  <conda env>/lib/python3.12/site-packages/dolfinx_contact/
-```
+| 包 | 原机器 | 本机（2026-10-26 重建） | 硬 pin？ |
+|---|---|---|---|
+| dolfinx | 0.11.0 | 0.11.0 | **是**（硬约束 1） |
+| basix | 0.11.0 | 0.11.0 | 是 |
+| petsc4py | 3.25.5 | **3.25.6** | 否（`petsc=3.25.*=real_*`） |
+| numpy | 2.5.3 | **2.5.4** | 否（`2.5.*`） |
+| scipy | 1.18.1 | 1.18.1 | 否 |
+| adios4dolfinx | 0.11.0 | 0.11.0 | 是（PyPI，`--no-deps`） |
+
+`petsc4py` / `numpy` 的小版本漂移**不影响任何测试** ——
+`tests/test_env.py` 只断言 `dolfinx.startswith("0.11")`、
+`adios4dolfinx.startswith("0.11")` 和 **PETSc 是 real 变体**，
+不 pin 具体小版本。重建环境时看到这两个漂移不用当失败。
 
 `environment.yml` 里 `fenics-dolfinx=0.11.0` / `petsc=3.25.*=real_*` 已 pin 好。
 **dolfinx 版本是硬约束**（CLAUDE.md 硬约束 1）：0.9→0.11 有 API 改名
@@ -307,10 +311,18 @@ pytest tests/ -q --ignore=tests/test_fretting.py \
                 --ignore=tests/test_clamp_case.py
 ```
 
-**收集 632 项，6 项失败，全部在 `tests/test_clamp_friction.py`。**
+**判据是「6 failed，且全是下面这 6 个」，不是收集数。**
+
+⚠ **收集数不可靠，别拿它对拍。** 本机 2026-10-26 实测是 **598~602**（同一台机器
+连跑两次都不同），旧文档记的「632」是原机器某时刻的快照。原因：
+`tests/test_repo_hygiene.py` 的 LF 行尾测试对**磁盘上的** `scripts/*.sh` **和
+`data/*.sh`** 逐个 parametrize，而 `data/_*.sh` 是**不入库的一次性脚手架**
+（`.gitignore` 排除，陷阱 10）—— 仓库里 4 个、磁盘上 112 个，差量全在这儿。
+
+⇒ **只看失败名单与数量。失败数超过 6 才是新回归。**
 
 那 6 项失败是**既有问题，不是回归**（已用 `git stash` 把三处源码改动撤掉后
-重跑验证过，同样 6 项失败）：
+重跑验证过，同样 6 项失败；2026-10-26 换机器重建环境后再次逐字复现）：
 
 ```
 test_G1_tangent_with_friction_and_plastic
@@ -438,7 +450,7 @@ pytest tests/test_env.py -q
 # 5. 本轮新增的失败处理测试
 pytest tests/test_solver_failure_surfaces.py -q     # 7 passed
 
-# 6. 全量基线（期望 632 收集 / 6 failed，且失败全在 test_clamp_friction.py）
+# 6. 全量基线（期望 6 failed，且失败全在 test_clamp_friction.py；收集数不看）
 pytest tests/ -q --ignore=tests/test_fretting.py \
                 --ignore=tests/test_fretting_restart.py \
                 --ignore=tests/test_clamp_case.py
@@ -450,7 +462,22 @@ git status                  # 应只有 §2.4 那几个未提交项
 
 **全部对上 = 衔接完成。** 然后回到 §5，等用户决定 (b) 还是 (c)。
 
-### 7.1 本机（2026-10-26）卡过的三个坑（都已解决，但换机器会再遇到）
+### 7.0 本机（2026-10-26）已验收通过 ✅
+
+| 项 | 结果 |
+|---|---|
+| `setup_env.sh` 全 5 步 | ✅ |
+| dolfinx / basix | 0.11.0 / 0.11.0 |
+| petsc4py / numpy | 3.25.6 / 2.5.4（原记 3.25.5 / 2.5.3，范围内） |
+| PETSc scalar | `float64`（real） |
+| `dolfinx_contact` | **`cpp.abi3.so`**（stable-ABI 生效） |
+| `test_env.py` | **8 passed** |
+| `test_solver_failure_surfaces.py` | **7 passed** |
+| 全量基线 | **6 failed，名单与 §4 逐字一致** |
+
+⇒ **衔接完成。** 6.6.3 仍未推进，等 (b)/(c) 拍板。
+
+### 7.1 本机（2026-10-26）卡过的四个坑（都已解决，但换机器会再遇到）
 
 **(1) WSL 里完全没有网络 —— 真因是 `.wslconfig` 把网络关了，不是 HNS 故障**
 
@@ -500,6 +527,30 @@ networkingMode=mirrored
 `wsl -d X -- bash -c '...'` 这种非登录非交互调用里 `$HOME` 可能是**空的**，
 于是 `${HOME}/miniforge3` 展开成 `/miniforge3`，兜底分支全部落空。
 已在 `_env.sh` 里用 `getent passwd $(id -u)` 兜一层。
+
+**(4) 旧 `build-contact/` 的 CMake 缓存**
+
+`.ext/asimov-contact/build-contact/CMakeCache.txt` 里写的是**绝对路径**。
+目录从旧机器拷过来后（cache 里记的是 `/root/pf-wire/...`），cmake 拒绝复用：
+
+```
+CMake Error: The current CMakeCache.txt directory /mnt/d/疲劳寿命/... is
+different than the directory /root/pf-wire/... where it was created.
+```
+
+`.ext/` 被 `.gitignore`，`build-contact/` 又不在清理范围，**只要拷过目录就必踩**。
+已在 `setup_env.sh` 里加自动检测（读 cache 里的 `# For build in directory:`，
+与当前路径不符就删掉重建）。
+
+**(5) 不要在 shell 脚本正在运行时编辑它**
+
+同一天犯了两次。bash **按字节偏移**增量读正在执行的脚本，运行中改前面几行，
+后续读取就错位 —— 表现是从一段 Python heredoc 中间开始解析，报
+`line 86: syntax error near unexpected token '('`（那行本身完全合法）。
+
+后果比报错更糟：conda 部分建好了、后面三步全没跑，而外层命令报 `EXIT=0`。
+⇒ 要改脚本先 `TaskStop` + `pkill` 确认清干净，改完 `bash -n` 再重跑。
+`bash -n` 对已损坏的运行没有诊断价值（它查磁盘当前版本，bash 读的是旧偏移片段）。
 
 ### 7.2 硬件与原机器不同（见 §1.5）
 

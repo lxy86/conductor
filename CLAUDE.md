@@ -172,9 +172,13 @@ source scripts/_env.sh && conda activate "${PFWIRE_ENV:-pf-wire}" && cd "$PFWIRE
            `python scripts/make_sweep.py && bash scripts/run_sweep.sh`
 - Phase 3: `python -m pfwire.postproc --all`
 - **6.6.3（当前卡点）**：`bash scripts/run_663_serial.sh`（**必须串行**，见陷阱 5）
-- **回归基线**（2026-10-26）：
+- **回归基线**（2026-10-26 换机器重建后实测）：
   `pytest tests/ -q --ignore=tests/test_fretting.py --ignore=tests/test_fretting_restart.py --ignore=tests/test_clamp_case.py`
-  → 收集 **632** 项、**6 failed**，全部在 `tests/test_clamp_friction.py`
+  → **6 failed**，全部在 `tests/test_clamp_friction.py`
   （`切向阶段不收敛（ux=1e-08，SNES reason=-6）`，**既有问题、非回归**，
-  已用 `git stash` 撤掉改动重跑验证过）。**失败数超过 6 就是新回归。**
+  已用 `git stash` 撤掉改动重跑验证过；换机器后逐字复现）。
+  ⚠ **判据只看失败名单与数量，不看收集数** —— 收集数随磁盘上不入库的
+  `data/_*.sh` 脚手架数量浮动（实测 598~602，旧记的 632 是原机器快照）。
+  **失败数超过 6 才是新回归。**
+- 环境自检：`pytest tests/test_env.py -q`（8 项，含 PETSc real 变体与 abi3 断言）
 - 失败处理专项：`pytest tests/test_solver_failure_surfaces.py -q`（7 项，秒级）
