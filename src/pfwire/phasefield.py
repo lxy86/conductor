@@ -671,6 +671,33 @@ class SolverConfig:
                 % (self.u_linesearch_cyclic,)
             )
 
+class MonolithicNotConverged(RuntimeError):
+    """单体 (u,q) Newton **未收敛**（D-68 问题 33 续 19）。
+
+    为什么必须抛而不是 warn：未收敛的 u 会被 ``explicit_cycle`` 直接拿去除
+    累积 ``alpha_bar``，于是 psi+ 从跑飞的 u 算出来 —— 实测粗网格 6.6.3
+    给出 ``max|u| = 6.1e7 m``（位移尺度 2.7e-5 的 2.3e12 倍）、
+    ``max_alpha_bar = 3.29e31``，而**真正的病因（单体 Newton 没收敛）
+    在日志里一句 warning 都没有**（``log_iterations`` 默认 False）。
+    交错路径 ``_solve_u_once`` 一直是抛的，两条路必须一致。
+
+    携带诊断字段，让调用方不必再解字符串就能报告「死在哪一步」。
+    """
+
+    def __init__(self, reason: str, iterations: int, residual: float,
+                 tol: float) -> None:
+        self.reason = str(reason)
+        self.iterations = int(iterations)
+        self.residual = float(residual)
+        self.tol = float(tol)
+        super().__init__(
+            "单体 (u,q) Newton 未收敛：reason=%s，迭代 %d 次，"
+            "自由 dof 残差 ||F||=%.4e（tol=%.1e）。"
+            "该步的 u/q 不可用，不能拿去算 psi+ 或 alpha_bar。"
+            "见 DECISIONS.md D-68 问题 33 续 19。"
+            % (self.reason, self.iterations, self.residual, self.tol))
+
+
 @dataclass
 class StaggeredResult:
     """一个载荷步的交错求解结果。``converged`` 为 False 时 ``failure_mode`` 必非空。"""
@@ -1130,11 +1157,17 @@ class PhaseFieldSolver:
         )
         self.uzawa_iters = res.iterations
         self.uzawa_converged = res.converged
-        if not res.converged and self.config.log_iterations:
-            logger.warning(
-                "单体 Newton 未收敛（reason=%s, it=%d, ||F||=%.3e）。"
-                "见 DECISIONS.md D-68 问题 33 续 18。",
-                res.reason, res.iterations, res.residual)
+        if not res.converged:
+            # ⚠ **必须抛**（续 19）。原先这里是「只 warn 且要 log_iterations」，
+            # 于是粗网格 6.6.3 把未收敛的 u（max|u|=6.1e7 m）当成正常解继续跑，
+            # alpha_bar 累积到 3.29e31，最后表现成 d 的 SNES -6 —— 病因指错地方。
+            # 交错路径 _solve_u_once 一直是抛的，两条路失败处理必须一致。
+            if self.config.log_iterations:
+                logger.warning(
+                    "单体 Newton 未收敛（reason=%s, it=%d, ||F||=%.3e），抛出。",
+                    res.reason, res.iterations, res.residual)
+            raise MonolithicNotConverged(
+                res.reason, res.iterations, res.residual, tol)
         return res.iterations, 0
 
     def _solve_u_once(self) -> None:

@@ -1,0 +1,30 @@
+Info    : Meshing 1D...
+Info    : [  0%] Meshing curve 1 (Line)
+Info    : [ 30%] Meshing curve 2 (Line)
+Info    : [ 60%] Meshing curve 3 (Line)
+Info    : [ 80%] Meshing curve 4 (Line)
+Info    : Done meshing 1D (Wall 0.0263111s, CPU 0.013174s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Frontal-Delaunay)
+Info    : Simple recombination completed (Wall 0.233893s, CPU 0.226765s): 6435 quads, 1580 triangles, 0 invalid quads, 0 quads with Q < 0.1, avg Q = 0.749057, min Q = 0.271581
+Info    : Done meshing 2D (Wall 0.522366s, CPU 0.504915s)
+Info    : Refining mesh...
+Info    : Meshing order 2 (curvilinear on)...
+Info    : [  0%] Meshing curve 1 order 2
+Info    : [ 30%] Meshing curve 2 order 2
+Info    : [ 50%] Meshing curve 3 order 2
+Info    : [ 70%] Meshing curve 4 order 2
+Info    : [ 90%] Meshing surface 1 order 2
+Info    : Surface mesh: worst distortion = 1 (0 elements in ]0, 0.2]); worst gamma = 0.626657
+Info    : Done meshing order 2 (Wall 0.0728753s, CPU 0.069563s)
+Info    : Done refining mesh (Wall 0.090565s, CPU 0.085094s)
+Info    : 30955 nodes 31432 elements
+=== (3) driver.step() 必须 accepted=False 且 N 不推进（从延拓末起步）===
+显式周期在相位 0.050 的 u 求解失败 —— 单体 (u,q) Newton 未收敛：reason=max_it，迭代 50 次，自由 dof 残差 ||F||=2.3143e+12（tol=1.0e-03）。该步的 u/q 不可用，不能拿去算 psi+ 或 alpha_bar。见 DECISIONS.md D-68 问题 33 续 19。 显式周期未完成，本步无法外推；这不是可以忽略的告警，结果不可用。请检查该相位的接触/摩擦求解。
+  ✅ accepted=False
+     failure_mode = 显式周期在相位 0.050 的 u 求解失败 —— 单体 (u,q) Newton 未收敛：reason=max_it，迭代 50 次，自由 dof 残差 ||F||=2.3143e+12（tol=1.0e-03）。该步的 u/q 不可用，不能拿去算 psi+ 或 alpha_bar。见 DECISIONS.md D-68 问题 33 续 19。 显式周期未完成，本步无法外推；这不是可以忽略的告警，结果不可用。请检查该相位的接触/摩擦求解。
+     rejections=0  delta_N=0  peak_phase=0.050
+     N: 0 -> 0
+
+=== 结论：✅ 失败已显式化 ===
+注：检查 (1)(2) 的细粒度断言见 tests/test_solver_failure_surfaces.py（F1~F5，秒级、无污染问题）；本探针只验**粗网格上真的会抛**。

@@ -415,6 +415,28 @@ class RatchetDetected(RuntimeError):
         )
 
 
+class ExplicitCycleFailed(RuntimeError):
+    """显式周期里某个子步的 u 求解失败（D-68 问题 33 续 19）。
+
+    为什么不在 ``explicit_cycle`` 里就地吞掉：``alpha_bar`` 是
+    ``max(psi+ - psi+_prev, 0)`` 的累积，而 ``psi+`` 由 u 算出。拿一个
+    未收敛/跑飞的 u 继续累积，得到的是一条**看起来正常、数值全错**的
+    疲劳历史（实测 ``max|u|=6.1e7 m`` ⇒ ``alpha_bar=3.29e31``，
+    而日志里没有任何错误）。
+
+    ``step()`` 捕获它并转成 ``accepted=False`` 的 :class:`JumpReport`，
+    于是失败走既有的「停下报告、不调参」通道（硬约束 6），
+    而不是以 traceback 的形式打断整个算例。
+    """
+
+    def __init__(self, phase: float, cause: BaseException) -> None:
+        self.phase = float(phase)
+        self.cause = cause
+        super().__init__(
+            "显式周期在相位 %.3f 的 u 求解失败 —— %s"
+            % (self.phase, cause))
+
+
 @dataclass
 class JumpReport:
     """一次 cycle-jump 的结果。``accepted`` 为 False 时 ``failure_mode`` 必非空。
@@ -542,7 +564,12 @@ class CycleJumpDriver:
         """
         cfg = self.config
         self.set_phase(0.0)
-        self.solver.solve_displacement()
+        try:
+            self.solver.solve_displacement()
+        except Exception as exc:
+            # 相位 0 是 prime 的起点：它失败时 alpha_bar 还没有基准，
+            # 后面每一步的增量都无从谈起，必须立刻停。
+            raise ExplicitCycleFailed(0.0, exc) from exc
         self._commit_plastic_substep()
         self.state.prime()
         alpha_before = self.state.alpha_bar.x.array.copy()
@@ -551,7 +578,12 @@ class CycleJumpDriver:
         for k in range(1, cfg.n_sub + 1):
             phase = k / cfg.n_sub
             self.set_phase(phase)
-            self.solver.solve_displacement()
+            try:
+                self.solver.solve_displacement()
+            except Exception as exc:
+                # ⚠ 不能吞（续 19）：未收敛的 u 会让 psi+ 与 alpha_bar 一起跑飞，
+                # 而失败在后续步骤里只会表现成「d 的 SNES -6」，病因指错地方。
+                raise ExplicitCycleFailed(phase, exc) from exc
             self._commit_plastic_substep()
             self.state.accumulate()
             value = self._psi_plus_total()
@@ -606,7 +638,33 @@ class CycleJumpDriver:
             self.reports.append(report)
             return report
 
-        delta_alpha, peak_phase = self.explicit_cycle()
+        try:
+            delta_alpha, peak_phase = self.explicit_cycle()
+        except ExplicitCycleFailed as exc:
+            # 显式周期没跑完 ⇒ 本周期的 Δᾱ_cyc 不存在，外推无从谈起。
+            # **不回滚、不重试**：ΔN 减半对「某个相位的 u 解不出来」没有帮助
+            # （那与 ΔN 无关，只有 Δd 超限才与 ΔN 有关）。直接停下报告。
+            failure = (
+                "%s 显式周期未完成，本步无法外推；这不是可以忽略的告警，"
+                "结果不可用。请检查该相位的接触/摩擦求解。"
+                % (exc,))
+            self._log("error", "%s", failure)
+            report = JumpReport(
+                N=self.N,
+                delta_N=0.0,
+                delta_N_attempted=0.0,
+                max_dd=math.nan,
+                max_d=self.solver.max_damage(),
+                max_alpha_bar=self.state.max_alpha_bar(),
+                delta_alpha_cyc_max=0.0,
+                peak_phase=exc.phase,
+                rejections=0,
+                accepted=False,
+                failure_mode=failure,
+                shakedown=None,
+            )
+            self.reports.append(report)
+            return report
         delta_alpha_max = self._max_over_owned(delta_alpha, self.state.n_owned)
         # 塑性：先判定循环稳定性（PLAN §2.4）。棘轮直接停；未定或不允许时本步只做显式周期
         shake, allow_jump = None, True

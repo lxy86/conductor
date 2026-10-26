@@ -937,7 +937,7 @@ def run_clamp_case(case: ClampCase, *, log=None, resume_meta: dict | None = None
     from mpi4py import MPI
 
     from pfwire import checkpoint
-    from pfwire.cyclejump import RatchetDetected
+    from pfwire.cyclejump import ExplicitCycleFailed, RatchetDetected
 
     comm = case.mesh.comm
     is_root = comm.rank == 0
@@ -1003,6 +1003,14 @@ def run_clamp_case(case: ClampCase, *, log=None, resume_meta: dict | None = None
         # T7：棘轮 -> 停下报告，绝不调参（硬约束 6）
         status = "ratcheting"
         say("error", "检测到棘轮（ratcheting），停下报告：%s", exc)
+        reports = list(case.driver.reports)
+    except ExplicitCycleFailed as exc:
+        # 显式周期的 u 求解失败（D-68 问题 33 续 19）。正常路径下 driver.step()
+        # 已把它转成 accepted=False 的 report，这里兜住从 driver.run 之外
+        # 冒出来的情形（例如调用方直接用 driver 而非 run_clamp_case）。
+        # 目的只有一个：**不要以 traceback 结束**，而是给出可读的失败结论。
+        status = "not_converged"
+        say("error", "显式周期失败，停下报告：%s", exc)
         reports = list(case.driver.reports)
     finally:
         # 退出前一定存一次断点（D-30 的教训：只按倍数存会丢掉失败时刻的状态）

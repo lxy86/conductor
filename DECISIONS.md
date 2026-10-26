@@ -8310,3 +8310,99 @@ max|dx_q| = 3.6533e+09   ← μp ≈ 1.5e8 的 **24 倍**
 故该探针的**逐单元残差归因不可用**（与续 17「锥超出 3.04e6」同型的度量错误）；
 它的符号统计（188/839 同号）也因此含 19 个被钉单元，只能当**粗线索**，
 不能当结论。真正的结论来自上面的 Armijo 地板 + `uzawa_update` 非不动点两项。
+## D-68 问题 33 续 20：(a) 修失败处理 —— 单体未收敛即抛，失败走「停下报告」通道
+
+用户 2026-10-26 指示「先做 (a)，修失败处理」。续 19 查明：粗网格 6.6.3 的
+`max_alpha_bar = 3.29e31` 是**单体 Newton 未收敛却被静默放过**的下游后果。
+本节把那条静默路径堵死。
+
+### 改了什么（三处）
+
+**(1) `phasefield.MonolithicNotConverged(RuntimeError)`**
+
+携带 `reason / iterations / residual / tol` 四个字段，消息里直接写出
+「迭代 50 次、‖F‖=2.3e12、tol=1e-3」。为什么带字段而不只是字符串：
+调用方与测试都不该靠解字符串来判断失败类型。
+
+**(2) `_solve_u_monolithic` 未收敛即抛**
+
+```python
+self.uzawa_converged = res.converged
+if not res.converged:
+    raise MonolithicNotConverged(res.reason, res.iterations, res.residual, tol)
+```
+
+原先是 `if not res.converged and self.config.log_iterations: logger.warning(...)`
+然后照常 `return`。`log_iterations` 默认 `False`，所以**生产配置下连 warning
+都没有**。交错路径 `_solve_u_once` 一直是 `raise RuntimeError` 的 ——
+两条路的失败处理现在一致。
+
+**(3) `cyclejump.ExplicitCycleFailed` + `step()` 转成 report**
+
+- `explicit_cycle` 的两个 `solve_displacement()` 调用（相位 0 的 prime 起点、
+  以及每个子步）都包 try，失败转成 `ExplicitCycleFailed(phase, cause)`。
+  相位 0 也要包：它失败时 `alpha_bar` 还没有基准，后续增量无从谈起。
+- `step()` 捕获它并返回 `accepted=False` 的 `JumpReport`：`N` 不推进、
+  `failure_mode` 写明相位与原因、`rejections=0`。
+  **不重试**是有意的：ΔN 减半只对「Δd 超限」有意义，对「某个相位的 u
+  解不出来」毫无帮助，重试只会把同一个失败重复 `log2(dN_init/dN_min)` 次。
+- `run_clamp_case` 也加了 `except ExplicitCycleFailed` 兜底，
+  保证从 `driver.run` 之外冒出来的情形也不会以 traceback 结束。
+
+### 验证
+
+**单测**（新增 `tests/test_solver_failure_surfaces.py`，7 项，秒级、无需网格装配）：
+
+| 用例 | 断言 |
+|---|---|
+| F1 | 异常携带 reason/it/residual/tol，且消息可读 |
+| F2 | `explicit_cycle` 转成 `ExplicitCycleFailed`，`phase == 0.50`，cause 链完整 |
+| F2b | 相位 0 的失败标成相位 0（不误标） |
+| F3 | `step()` 返回 `accepted=False`、`N` 不动、`rejections==0`、`peak_phase==0.50` |
+| F4 | 相位 0 失败同样给 report |
+| F4b | `run()` 停下来，且失败那一步进了 `stop()` |
+| F5 | **正常路径不变**：`explicit_cycle` 仍返回正确增量（回归保护） |
+
+**回归**：`test_cyclejump_driver.py`、`test_shakedown.py`、`test_clamp_uzawa.py`
+共 52 项全绿。全量 `pytest tests/`（除 fretting/fretting_restart/clamp_case）
+无新增失败。
+
+⚠ `tests/test_clamp_friction.py` 有 **6 项失败**，但**不是本次改动造成的**：
+把三处源码 `git stash` 后重跑，同样是 6 项失败（`切向阶段不收敛（ux=1e-08，
+SNES reason=-6）`）。那是交错切向路径的既有问题，与本节无关，留待单独处理。
+
+**粗网格实跑**（`data/_probe_fail_fast.py`，零插桩，调生产 API）：
+
+```
+=== driver.step() 从延拓末起步 ===
+显式周期在相位 0.050 的 u 求解失败 —— 单体 (u,q) Newton 未收敛：
+  reason=max_it，迭代 50 次，自由 dof 残差 ||F||=2.3143e+12（tol=1.0e-03）。
+  ...
+  ✅ accepted=False
+     rejections=0  delta_N=0  peak_phase=0.050
+     N: 0 -> 0
+=== 结论：✅ 失败已显式化 ===
+```
+
+对比续 19 的修前现场：那时 `solve_displacement()` 正常返回、
+`max|u|` 一路跑到 `6.139e7 m`、`alpha_bar = 3.29e31`、日志里一句错都没有。
+现在同一个点位**立刻**以 `accepted=False` + 相位 0.050 停下。
+
+### 一个踩到的坑（探针自身的）
+
+第一次跑验收探针时，检查 (1) 故意触发失败后，我又用「把 u/q 抄回去」
+的方式复位去跑检查 (3)，结果检查 (3) 在**相位 0** 就失败，误报
+「failure_mode 没带相位」。原因：未收敛的 u 就留在场上，而
+`u.x.array[:] = u0` 抄回去**恢复不了全部状态**（`q`、滑移基准之外的
+内部量也在变）。修法是把最完整的检查（`driver.step()`，含相位 0 的 prime）
+放在**最前面**，从延拓末的干净状态起步。
+⇒ 教训：验证「失败处理」的探针**本身**不能被前一次失败污染；
+这类探针要么每次重建 case，要么把最强的断言放在最前。
+
+### 状态
+
+- (a) **已完成**。单体路径现在会明确失败，不再吐出 3.29e31 的假结果。
+- 6.6.3 仍**未勾选**：现在它会在第一个开摩擦相位以 `not_converged` 停下，
+  这是**正确**的行为（硬约束 6），但寿命仍未算出来。
+- 下一步仍待用户决定：(b) 换 `F_q` 的互补条件表述使滑移态有根，
+  或 (c) 放弃单体回交错（但续 13 的 blocker B 会回来）。
