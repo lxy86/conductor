@@ -1,546 +1,433 @@
-# HANDOFF — 6.5 已定论；6.6.1 独立验证完成，**Nitsche 已否决，只剩罚函数一路**
+# HANDOFF — 换电脑交接说明
 
-> 写给**完全没有上下文**的新会话。日期：2026-10-19。
-> **当前状态：6.5 结题（本工况不起裂，根因是驱动机制缺失）；
-> 6.6.1 的摩擦独立验证已完成（走 Nitsche 路径，Mindlin c/a 一致性通过）；
-> Nitsche 的三场耦合同样已评估并否决（σ_el·n 高估 2.87 倍，问题 24）——
-> 6.6 现在只剩罚函数一路，而它卡在问题 22 的墙 3（切向只到 Coulomb 上限 10%）。**
-
-## 0. 先读这六行
-
-- 代码树在 `C:\Users\Administrator\Desktop\疲劳寿命`（WSL `/root/pf-wire`）。
-  ⚠️ 若环境显示工作目录是 `D:\导线疲劳` —— **那是陈旧副本**（git 停在 `e79372d`，
-  没有任何 D-68 的工作）。**所有操作都在 Desktop 那个树里做。**
-- 主分支 `master`；最新提交见 `git log --oneline -3`。
-- 全部结论、实测数字、被作废的假设都记在 `DECISIONS.md`（D-68 问题 1–23）。
-  **动手前先读那一节**，否则很容易把已经证伪过的东西重新捡起来。
-  **最相关的几节**：问题 20（6.5 根因）、21（模型能裂）、22（罚摩擦的墙）、
-  **23（Mindlin 独立验证完成，最新）**、「6.6 范围决定」（选项 1 已定）。
-- `pytest -q` **560 项 / 6 失败 / 0 errors / 1 skipped**（2026-10-19）。
-  那 6 个失败全是问题 22 的同一个原因（罚摩擦够不到 Coulomb 饱和），
-  不是回归。⚠ 早期 HANDOFF 记的 615 是过时数字。
-- 探针 30–38 在 `data/_probe_*.py` 与 `scripts/estimate_friction_psi.py`，
-  日志在 `data/probe_*.log`。
-- ⚠ **上一会话留下的未提交修改**：`src/pfwire/clamp_loads.py` 的
-  `traction_with()`（D-68 方案 a 的 monolithic 用），与本轮无关，未动。
+> **写给完全没有上下文的新会话 / 新机器。**
+> 上一版 HANDOFF 是 2026-10-19 的，已过时（那时还停在 6.6.1 的 Nitsche 阶段）。
+> 本文件覆盖到 **2026-10-26**，对应提交 `f187dfa`。
+>
+> **先读顺序**：本文件 → `CLAUDE.md`（工作约定与陷阱）→ `PLAN.md` 的 6.6 节
+> → `DECISIONS.md` 的 **D-68 问题 33 续 13~20**（当前工作的全部上下文）。
 
 ---
 
-## 1. 我们在做什么任务
+## 0. 三十秒摘要
 
-Phase 6.5：**线夹压紧铝单丝的微动疲劳寿命预测**（PLAN.md 的 6.5 节）。
+**项目**：FEniCSx 相场疲劳模型，预测铝单丝微动疲劳寿命。
+代码在 `src/pfwire/`，算例在 `configs/`，全部结论在 `DECISIONS.md`（8408 行）。
 
-模型链：AT1 相场断裂 + J2 弹塑性 + 罚接触 + Carrara 2020 疲劳累积
-（`ᾱ += max(Δψ⁺, 0)`），用 cycle-jump 加速推进到起裂。
+**当前卡点**：PLAN 的 **6.6.3 验收**（裂纹在钳口接触边缘萌生、初始倾斜、随后转向）。
+延拓、W' 搜索、κ 敏感性**全部正常**；卡在**第一个开摩擦的循环子步**的
+(u,q) 求解上。
 
-**验收判据**（`configs/clamp_base_c_1um.yaml` 的 `nucleation` 段）：
-起裂 = `d ≥ 0.95` 且**从上表面连通贯穿到 6 µm**；
-终止 = 裂纹走到 `turn_depth = 100 µm`。要报的是 `N_nuc`、`x_init`、`θ_init`。
-
-**工况**：`configs/clamp_base_c_1um.yaml`
-（W' = 1.75e6 N/m、σ_a = 45 MPa、T' = 1e4、ℓ = 2 µm、490529 单元、6 rank）
-
-### 当前主故障的性质（**已变**）
-
-| | 旧（HANDOFF v1） | 现在 |
-|---|---|---|
-| 现象 | N=94.28 那一 jump u–d 交错发散 | 发散早已消除（掩码），N 推到 14352 |
-| 卡点 | d 的 SNES 报 -6 | SNES 解出的 d 就是 0，**解对了** |
-| 停机原因 | ratcheting 判定 | 仍是 ratcheting，但**已不重要** |
-| 真正的问题 | （未识别） | **驱动差 0.06% 够不着起裂门槛** |
+**本轮刚做完的事（D-68 问题 33 续 19/20）**：
+1. 查明粗网格 6.6.3 首跑给出 `max_alpha_bar = 3.29e31` 的真因 —— 不是损伤，
+   是**单体 Newton 未收敛却被静默放过**，未收敛的 u（`max|u| = 6.1e7 m`）
+   被拿去算 ψ⁺。
+2. 已修：单体未收敛**立即抛** `MonolithicNotConverged`，显式周期失败转成
+   `accepted=False` 的 report，`N` 不推进。**这条已完成、已测、已提交。**
+3. 剩下的**真问题**：单体格式的 `F_q = q − clip(q − ε_t·s) = 0` 在**滑移态没有根**
+   （解析：黏着要求 s=0，滑移要求 s 与 q 反号，而 s 由 u 决定、u 又要与 q=±μp 平衡）。
+   这是格式缺陷，**不是调参能解决的**。三条路待用户拍板，见 §5。
 
 ---
 
-## 2. 已经完成了什么
+## 1. 换机器第一步：环境重建（最容易翻车的地方）
 
-### 2.1 路线 A（损伤可信区掩码）—— 已实现并验证有效 ✅
+### 1.1 版本必须逐位复现
 
-**根因（问题 12/13）**：38 个「越过起裂门槛」的点几乎全在**粗网格区**
-（`h/ℓ = 42~945`）。那里的 ψ⁺ 反推出等效应力 **451 MPa**，
-是 σ_y0 = 167 MPa 的 2.7 倍 —— **超出 J2 屈服面上界 σ_y²/(6E) 达 7.3 倍**，
-在 J2 模型里不可能存在，是离散误差。
-
-**实现**（A-1 + A-b 口径）：
-
-- `src/pfwire/mesh_h.py`：`cell_max_edge` / `damage_region_mask` /
-  `damage_region_stats`
-- `PhaseFieldModel.damage_region`：可选 DG0 掩码，**默认 None = 全域，逐位不变**
-- `PhaseFieldSolver.psi_plus_drive()` = `psi_plus_expr() × 掩码`
-- `_build_d_problem` 的驱动力改用 `psi_plus_drive()`
-- `psi_plus_expr()` **保持未屏蔽**（诊断/ᾱ 累积仍看原始值）
-- `PhaseFieldSolver.set_damage_region(mask)`：换掩码并重建 `_d_problem`
-  （⚠ 掩码在装配时烘进 form，直接改 `model.damage_region` **静默无效**）
-- 配置开关：`configs/clamp_base_c_1um.yaml` 的 `model.damage_region_h_max: 6.0e-06`
-  （**不设此键 = 关闭**）
-
-**验证结果（实测）**：
+这台机器上**实测**的版本组合（不是照抄 environment.yml，是实际 `import` 出来的）：
 
 ```
-掩码覆盖率：480726 / 490529 cell（98.00%），阈值 1ℓ~5ℓ 只差 0.7 个百分点
-掩码效果：  ∫drive / ∫ψ⁺ = 0.31%（切掉 99.7% 的驱动）
-完整跑：    N_final 从 452.34 → 14352.39（31 倍），全程 max_d = 0，不再发散
+dolfinx        0.11.0
+basix          0.11.0
+petsc4py       3.25.5      （PETSc 必须是 real 变体，不是 complex）
+numpy          2.5.3
+scipy          1.18.1
+adios4dolfinx  0.11.0
+dolfinx_contact  <conda env>/lib/python3.12/site-packages/dolfinx_contact/
 ```
 
-**测试**：`tests/test_damage_region.py`（14 项）+ 全量 pytest 绿。
-
-### 2.2 decay_jitter —— 修掉一处判据误判 ✅
-
-`ShakedownConfig.decay_jitter`（默认 0 严格判据；本工况 0.01）。
-只放宽「衰减」的**边界判定**，不放宽「不衰减」的定义 —— 真棘轮依然过不了。
-修掉了问题 17 的误判（halving 序列末项超阈值 0.16%）。
-**测试**：`tests/test_shakedown_jitter.py`（6 项，全绿）。
-
-### 2.3 问题 19 的核查链（本会话所做）—— **这是当前状态的定论**
-
-四个探针，从 N=14352.4 断点、**峰值相位 0.25** 逐层收窄：
-
-| 探针 | 文件 | 量到什么 |
-|---|---|---|
-| 30 | `_probe_r_at_n14352.py` | 按坐标分盒：盒内 r_max = 1.81（⚠ 口径与掩码不一致，不可直接用） |
-| 31 | `_probe_r_masked.py` | **按掩码分**：掩码内 r_max = 1.1441、214298 单元越门槛；直接解 d 得 0 |
-| 32 | `_probe_clusters_masked.py` | 那 21 万单元 = **1 个连通团簇**，R_eq = 32.22 µm = 16.11 ℓ |
-| 33 | `_probe_cluster_profile.py` | 团簇剖面 + **决定性对照**：塑性发展后 r_max = **0.9994** |
-
-**问题 19 的最终结论：`max_d ≡ 0` 是正确的。**
-
-塑性在第一周期就安定（`max|ε_p| = 1.2289e-2`，周期 2–6 逐位相同 —— 零增量，
-与 D-66 的 `closed`/`decaying` 一致）。安定后掩码内
-**r_max = 0.999373、中位 0.844、r > 1 的单元 0 个** —— 全场均匀地差
-0.06% 够不着起裂门槛。d 方程的 VI 下界 `d_old = 0` 生效，d ≡ 0 正是解。
-
-**⚠ 中途的误判（已撤回，记录以防重犯）**：探针 32 量到「16 ℓ 大连通团簇、
-位置正确、形态完美」，我按问题 3 的判读标准报了「真 bug」。
-**错因：没有先排除 `ep_n ≡ 0` 这个混淆源就去套判据。**
-断点不存塑性历史（ε_p/p），而 `elastic_strain(u, g)` 读的是**已提交**的
-`ep_n`（`plasticity.py:244-255`），于是探针 30–32 的 ψ⁺ 按**全量应变**
-算、被高估 14%（1.1441 vs 0.9994）。
-
-> **教训（重要）**：**任何用断点恢复现场量的 r，都必须先确认塑性历史是否在场。**
-> 本项目已两次因「断点缺场」差点误判（本次、以及问题 17 的
-> `plastic_increments` 口径）。判据本身没错，错在喂给它的数被污染了。
-
----
-
-## 3. 当前卡在哪
-
-**不是求解器问题，是物理口径问题：r_max = 0.9994，差 0.06%。**
-
-```
-塑性安定后掩码内：r_max = 0.999373   中位 = 0.844109   r>1 的单元 = 0
-塑性：max|ε_p| = 1.228857e-02，第一周期即饱和，后续逐周期零增量
-ᾱ_max = 4.2859e9，f(ᾱ_max) = 0.190，门槛 f·σ_c²/E = 9.4349e4 Pa
-```
-
-**HANDOFF v1 的路线 1/2/3 全部失去前提**：
-
-- **路线 1**（d 的 SNES 为何在大 ΔN 下报 -6）：SNES 在起裂判定相位解出的 d
-  就是 0，是对的；-6 只发生在外推步的 d 重解上，与「能否起裂」无关。
-- **路线 2/3**（放宽 decay_ratio / 按 closed 处理）：棘轮判定只影响 N 能否
-  继续涨，而 r 已饱和在 0.9994，再涨也不起裂。**顺序上应反过来**：
-  先解决「驱动差 0.06%」，棘轮判定才有意义。
-
-**N=14352.4 的棘轮停机**（增量比值 0.5035/0.5047/0.5156，均值 0.508 > 0.5）
-仍是独立未解项，但**优先级低于驱动问题**。⚠ 不要再调大 `decay_jitter`
-去盖 0.5156 —— 那是调参让跑通（硬约束 6 禁止），问题 18 已明确。
-
-### 为什么「提高 σ_a 或 W'」不是默认答案
-
-按 DECISIONS 2026-10-16 的论证：
-
-- σ_a = 45 MPa 对应 Y_b = 1.45 mm，**已超 Lévesque 2011 实测区间上限 61%**
-  （实测 Y_b ∈ [0.3, 0.9] mm → σ_a ∈ [9.3, 27.9] MPa）；
-- W' = 1.75e6 对应 p ≈ 2.15σ_y = 359 MPa，**已在饱和压力上沿**
-  （实测接触痕宽约 1 mm、p_avg ≈ 2.15σ_y）；
-- 且 contact 侧 ψ⁺ 效率天然低：spectral 分解把三轴压缩的静水部分划给 ψ⁻，
-  361 MPa 的钳口压力只贡献 ψ⁺ 门槛的 33%。
-
-**提高任一输入都破坏与文献的可比性。**
-
-### 0.06% 是物理量还是数值伪迹？—— 已查，是物理量
-
-求积阶 2→12 只动 r_max 2.0e-7（比差距小 3000 倍），求积级伪迹排除；
-amor 口径在有塑性时**不存在**（三维形式未实现，D-65）。
-空间离散方面：分箱数据显示加密只会让 r_max 更小（0.9994 → 0.9950）。
-
-### 缺摩擦吗？—— 已估算，**摩擦也救不了**
-
-探针 38（`scripts/estimate_friction_psi.py`）：Hertz p0 = 2.15σ_y +
-Mindlin 切向 τ = μ p0，ψ⁺ 用项目的 spectral 分解 + **J2 径向返回映射**。
-
-    μ      τ[MPa]   ψ⁺[Pa]     r = 2ψ⁺/门槛   抬升
-    0.3    107.7   1.4477e+04    0.307       1.02
-    0.7    251.3   1.5370e+04    0.326       1.08   ← PLAN μ=0.7
-    1.0    359.1   1.6379e+04    0.347       1.15
-
-**只抬 8%。** 原因：p0 = 359 MPa 早已压过屈服（σ_y = 167 MPa），J2 返回映射
-把全部超额吸收为塑性应变，弹性应变被钉在屈服面上 —— **钳口区塑性饱和，
-摩擦切向力加不进来。**
-
-⚠ 第一版用纯弹性 Hooke 算出 r = 2.87（与 FE 差 2.87 倍），**已修正**——
-正是 PLAN §1.4「塑性是必需项」的含义。故该估算**只有相对抬升可用，绝对值不可信**。
-
-**两个缺口**：没算 Mindlin 粘滑边界的平方根奇异性；没算周期累积
-（当前 δ 恒定，切向力不随相位变）。
-
-### 根因（问题 20）—— 三层驱动，核心那个不存在
-
-| 驱动 | 现状 | 对 ψ⁺ 贡献 |
-|---|---|---|
-| 端部弯曲 σ_a = 45 MPa | ✅ 存在 | 门槛 9% |
-| 钳口法向压紧 p0 = 2.15σ_y | ✅ 存在 | 91%，但三轴压缩下 spectral 划 ψ⁻，效率低 |
-| **循环切向微滑**（微动疲劳核心） | ❌ **不存在** | 无摩擦 + δ 恒定 → Carrara 的 `max(Δψ⁺,0)` 滤掉 |
-
-即：**微动疲劳的驱动力在当前工况里被结构性关掉了**。
-这与 `PLAN.md:116-117` 记录的「6.5 先用无摩擦法向接触，
-Coulomb 摩擦单列为后续子任务」直接相关 —— 那个"单列"至今没做。
-
-**模型本身没问题**：Phase 1–5 全部有解析解对拍（悬臂梁/Hertz/Mindlin/厚壁圆筒），
-Phase 6.1–6.4 通过。**「相场法做不到导线开裂」不成立**，
-失败的是**工况的驱动配置**。
-
----
-
-## 4. 下一步：6.6.2/6.6.3 —— **但先要用户定三场耦合走哪条接触离散**
-
-用户 2026-10-19 选了问题 22 的**选项 1**：摩擦的**独立验证**走 Nitsche 路径
-（已完成，见下），**三场耦合另议**。
-
-### 4.1 已完成：6.6.1 的独立验证（D-68 问题 23）
-
-`scripts/analyze_mindlin_sweep.py` 对 `verify_contact_mindlin.py` 的 28 步
-扫描（Q/(μP) = 0.048 ~ 0.983）做 c/a 一致性检查，结果：
-
-    Spearman rho = -1.000（12/12 步单调降，与解析严格同序）
-    |差| 均值 0.030、最大 0.086
-    高 Q 端（0.89 / 0.93）差 1.2% / 0.9%
-
-**口径三要点（读这个结论前必须知道，否则会误判）**：
-
-1. **不设通过判据**（D-51）：Cattaneo-Mindlin 是半空间解，有限尺寸圆柱的
-   剪力/反力偶须由法向偏心平衡，系统偏差是物理差别不是实现错误；
-2. **FE 侧用 D-52 的微滑幅判据**（`stick_half`），**不用** q 判黏着的外半径
-   —— 实测后者在整个扫描里**卡在 0.867 不动**（Q/(μP) 0.20~0.93 全是同一值），
-   被网格量化钉死，分辨不出黏着区收缩；
-3. 两侧**非同一几何量**（半宽 vs 外半径），故是形状一致性检查、不是逐点误差。
-
-### 4.2 罚函数摩擦为什么被放弃（D-68 问题 22）
-
-`ClampContact(mu=..., kappa_t=...)` 已实现且无回归（缺省关闭、逐位不变），
-但**切向力只能到 Coulomb 上限的约 10%**（Q/(μP) ≈ 0.1 即 SNES -6），
-与 κ_t（10/1/0.1 三档）和正则化形式都无关。**这是本项目第二次在罚摩擦上
-撞墙**（前次 D-51 的黏滑极限环）。**别再调 κ_t 重试。**
-
-    Nitsche（已验证）  Q/(muP) 到 0.983，c/a 一致
-    罚函数（已放弃）   只到 ~0.10，够不着验证区间
-
-### 4.3 三场耦合的路线已收窄到一条：**罚函数**（Nitsche 已否决，问题 24）
-
-用户要求先评估 Nitsche 的可行性再定。评估完成，**Nitsche 路线否决**：
-
-| 路线 | 结论 | 依据 |
-|---|---|---|
-| **Nitsche**（dolfinx_contact 摩擦核） | ❌ **不可行** | 它的「接触牵引用线弹性试探应力 σ_el·n」在 6.5 钳口区**高估 2.87 倍**（∫σ_el·n ds = 4.639e6 vs ∫σ_true·n ds = 1.618e6 N/m）。物理必然：p0 = 2.15σ_y ≫ σ_y，σ_el = E·ε_tot 不知道屈服，比值就是超屈服的程度。**调 γ 救不了** —— 问题不在穿透量，在 traction 本身就错，压力按这个比例跑偏（D-56 失败模式） |
-| **罚函数**（本项目自有） | ⚠ 法向对、切向不够 | 法向自洽：W = 1.6903e6 与 ∫p ds = 1.6903e6 N/m 一致到 **2e-5**。切向只能到 Coulomb 上限 ~10%（问题 22 墙 3） |
-
-**故没有绕道选项**：必须先解决问题 22 的墙 3（罚摩擦切向饱和），
-否则 6.6 的三场耦合做不了。这是当前 6.6 的唯一阻塞点。
-
-**探针**：`data/_probe_nitsche_feasibility.py`（探针 39），
-日志 `data/probe_nitsche_feasibility.log`。它自己踩过三个坑（都记在
-DECISIONS 问题 24，别再犯）：resume 不恢复 δ；resume 后不能直接换相位；
-不能用 DG0 单元中心判接触。
-
-### 4.4 定下来之后：6.6.2 + 6.6.3
-
-- **6.6.2 往复加载**：把钳口夹持位移从恒定 δ 改为循环切向 δ(t)。
-  ⚠ **与摩擦必须同时生效** —— Carrara 累积 `max(Δψ⁺,0)`，恒定切向力下
-  它仍被滤掉（问题 20 的根因就是这个）。
-  幅值/频率的出处须记进 DECISIONS（风振幅值或档距振动量级）。
-- **6.6.3 验收**：d ≥ 0.95 且从上表面连通到 6 µm；报 N_nuc / x_init / θ_init
-  与 Q/(μP) 摩擦学工况（**由求解结果判定，不得预设**，D-44）。
-  ⚠ 若仍不起裂：**先量 r_max 与门槛的距离再怀疑求解器**（问题 21 已证明模型能裂）。
-
-### 4.5 参考：6.6 三个子项速查（PLAN 6.6.1–6.6.3）
-
-| 子项 | 内容 | 关键约束 |
-|---|---|---|
-| 6.6.1 | Coulomb 摩擦接触（`obstacle_contact` 加法向切向，μ = 0.7） | 以 **Mindlin 部分滑移**为独立验证点；罚接触可解边界 h ≤ 6.39 µm |
-| 6.6.2 | 钳口夹持位移改为**循环** δ(t) | 与 6.6.1 **必须同时做** —— 恒定切向力下 Carrara 的 `max(Δψ⁺,0)` 仍滤掉驱动 |
-| 6.6.3 | 验收：d ≥ 0.95 且连通到 6 µm | 报 `N_nuc`/`x_init`/`θ_init` + Q/(μP) 工况（**不得预设**部分/整体滑移，D-44） |
-
-**6.6 的已知前置风险（不是新发现）**：罚接触可解边界
-`h ≤ 2σ_yR/(25κE)` = 6.39 µm（κ = 10），而问题 19 续 3 实测
-edge_target 2.5/1.25 µm 的 δ 延拓报 `SNES -6/-9`。摩擦使切向刚度进入
-Jacobian 后可能更病态；备选是 Nitsche / 增广 Lagrange（D-48：曾因 nanobind
-ABI 放弃，需重新评估）。
-
-**6.6 若仍不起裂**：先量 r_max 与门槛的距离再谈求解器 —— 问题 21 已证明
-模型能裂，别再优先怀疑 d 方程。
-
-### 路线 A（旧，已被选项 1 吸收）：如实报「本工况不起裂」，并量化「差多少」
-
-r_max = 0.9994。ψ⁺ ∝ σ²、r ∝ ψ⁺，故需 ψ⁺ 提高 0.06%，
-即 σ_a 或 p 提高约 **0.03%**。这个量级本身就是结论：
-**该工况被设计在起裂门槛的边缘上，差一根头发。**
-
-论文里这可以成为诚实且有信息量的结果（PLAN/D-43 的定位是
-「报机理与相对敏感度，不报绝对寿命」），但必须同时报告
-r_max 的置信区间与它离门槛多近 —— 而置信区间目前缺 E4（见路线 B）。
-
-### 路线 B：核查 ψ⁺ 的计算口径 —— **已做，结论：0.06% 是物理量** ✅
-
-探针 34（`_probe_psi_errorbars.py`）。**求积级伪迹已排除**：
-ψ⁺ 含 sqrt/conditional/⟨·⟩₊，预期求积阶会影响 r，实测
-quad_degree 从 2 到 12 变化 6 倍，r_max 只动 **2.0e-07**
-—— 比 6.133e-04 的差距小 **3000 倍**。
-
-**amor 口径测不了（硬限制，不是 bug）**：`energy_split_3d` 只实现 spectral，
-`'amor' 的三维形式未定义`（D-65：2D 的 K = λ+μ 与 2D 偏量不能直接推广到
-含 ε_zz 的情形）。**故有塑性的工况（整个 6.5）不存在 amor 口径可对比。**
-
-**E3 没测成（探针自身缺陷）**：`V_ep` 是 `("DG", 2, (3,))`（3 分量向量），
-我误建标量空间，报 `different value dimensions`。修法明确
-（建 `("DG", deg, (3,))`），未重跑。
-
-**E4（网格加密）前置已做，结论比原计划更细**（探针 35，`_probe_r_vs_h.py`）：
-
-**r_max 随单元尺寸单调增，跨 3 个数量级**：
-
-    h ≤ 0.6 µm   75247 单元   r_max 0.995037   r>1: 0
-    h 0.6–1 µm  398537 单元   r_max 0.996347   r>1: 0
-    h 1–2 / 2–3 / 3–4 / 4–5 / 5–6 µm          r_max 0.9980~0.9994   r>1: 0
-    h 6–10 µm     701 单元   r_max 1.006878   r>1: 16
-    h 10–20 µm    712 单元   r_max 1.012462   r>1: 27
-    h 20–50 µm   4838 单元   r_max 1.297873   r>1: 238
-    h 50–100 µm   890 单元   r_max 1.517648   r>1: 69
-    h 100–500 µm 1805 单元   r_max 2.128480   r>1: 63
-
-**掩码阈值卡在悬崖边**（这是最要注意的）：
-
-    h_max = 4 µm → r_max 0.999222，r>1: 0
-    h_max = 6 µm → r_max 0.999387，r>1: 0     ← 当前生产值
-    h_max = 8 µm → r_max 1.006878，r>1: 12    ← 越门槛了
-    h_max =12 µm → r_max 1.007037，r>1: 20
-
-故「差 0.06%」**依赖 `damage_region_h_max = 6 µm` 这个选择**。
-⚠ 问题 14 的「1ℓ~5ℓ 只差 0.7 个百分点」是**覆盖率**敏感性，
-**不是 r_max 的**，不能互相引用。
-
-**掩码内 r_max 对加密极不敏感**：掩码内按尺寸细分，r_max 从 0.9950（最细）
-单调爬到 0.9994（最粗 5–6 µm），极差仅 0.4%，**没有一个单元 r > 1**。
-故加密细区只会让 r_max 更小，不可能越过 1。
-
-**全局 r_max = 2.128 落在 h = 137.6 µm = 68.8 ℓ，(+3.908, −0.0363) mm** ——
-与探针 9（问题 4）的起裂候选点**完全一致**。那个「起裂点」从来就在粗网格区。
-
-**E4 因此降级为一次「掩码内加密确认」**：把 5–6 µm 那 302 个单元所在区域
-细化，验证 r_max 如预期降到 ~0.995。原计划「每档重建 mesh + 重搜 δ* + 重跑安定」
-已无必要（加密细区不改变结论）。
-
-**但加密确认也做不了（问题 19 续 3）**：探针 36（`_probe_refine_confirm.py`）
-的 2.5/1.25 µm 变体都在 `find_working_delta` 的 δ 延拓里报 u 的 Newton
-`SNES -6`（basic 线搜索下 `-9`）。诊断（探针 37，`_probe_diag_ramp.py`）：
-
-    步 10–13：W = 5.5e2 ~ 7.6e3（首次接触）
-    步 14：   W = 1.384e4，reason=3，iters=12
-    步 15：   **SNES -6**，iters=0（线搜索第一步即失败）；放宽 atol 无效
-
-发散在 W ≈ 1.4e4，**离目标 W' = 1.75e6 还差 126 倍**。
-
-**这不是新问题**：`_ramp_plan` 的 docstring（`clamp_case.py:660-665`）
-已记录「h = 0.5 µm 时 ε ≈ 1.4e18，δ = 1 µm 就给 1.4e12 Pa —— 比 σ_y 高
-4 个数量级，Newton 从这样的初值起步必然发散（**实测 SNES -6/-9**）」。
-基线 5 µm 能跑通说明它恰在可解边界上，往细加密是往**更不可解**的方向走。
-
-**两条猜测都被否掉（别重走）**：
-1. 罚刚度 ε 随加密翻倍是真的，但**钉不死** —— `clamp_case.py:424-427` 的判据
-   `edge_eff == el["edge_target"]`（0.5 µm）对生产值 5 µm永远走 else，
-   显式 `contact.h_contact` 被静默丢弃。且它只让延拓更碎，未改变发散位置。
-2. 线搜索不适应 spectral 分片光滑 —— `bt` → `basic` 后从 -6 变 **-9（更差）**。
-
-**相容性核算**：`h ≤ 2σ_yR/(25κE)` = 6.39 µm（κ=10），5/2.5/1.25 µm 都在窗内，
-故不是「h 越界」，是窗口内的 Newton 鲁棒性问题。
-
-**结论强度不受影响**：续 2 的分箱数据本身就是「加密方向」的证据 ——
-掩码内 r_max 随 h 变细**单调下降**（0.9994 @5–6 µm → 0.9950 @<0.6 µm）且**全部 < 1**，
-真实加密只会让 r_max 更小，不可能越过 1。这已达到 E4 的目的。
-要真正的网格无关性需换接触离散（Nitsche/增广 Lagrange），
-D-48 记着曾因 nanobind ABI 放弃，需重新评估 —— 独立工程量，不塞进 6.5 收尾。
-
-**论文表述边界**：**不得**写「0.06% 与网格无关」；可写「掩码内 r_max < 1
-且随加密单调下降」，但**必须同时报 h_max 敏感性表**，
-并声明依赖掩码阈值 6 µm。
-
-### 路线 C：换 σ_a 落到 Lévesque 区间的工况重跑，检验稳健性
-
-若 σ_a = 20 MPa 时 r 显著更低（如 0.7），则「该构型不起裂」是**稳健结论**；
-若仍贴 1.0，则说明驱动被某个与 σ_a 无关的项主导（最可能是钳口接触），
-那 0.06% 的边缘性就是**结构性的**，结论反而更强。
-⚠ 这一跑是数小时量级（101 min 跑到 N=14352），且要先解决棘轮停机
-否则又是白跑 —— 故优先级最低。
-
----
-
-## 5. 踩过的坑 —— 绝对不要再踩
-
-### 5.1 MPI：不要写「按 rank 局部的判断」（**本项目第 4 次踩**）
-
-```python
-# ❌ 死锁。damage_region_stats 内部有 5 次 comm.allreduce，
-#    只有 rank 0 进来 -> rank 0 永远等不到 rank 1..5
-if comm.rank == 0:
-    st = damage_region_stats(msh, h_max, comm)
-    print(...)
-
-# ✅ 统计所有 rank 都算，只有 print 留在 rank 0
-st = damage_region_stats(msh, h_max, comm)
-if comm.rank == 0:
-    print(...)
-```
-
-**症状（很好认）**：100% CPU 空转、零输出、Python 的 SIGALRM 不触发
-（阻塞在 MPI 原生代码）、各组件单独测都快。**完整跑卡在 build_clamp_case
->40 min 就是这么死的**（问题 15），而根因只是这两行。
-历史踩点：探针 3、探针 26、探针 29、生产代码（clamp_case.py）。
-**凡是「取最大 / 是否非空 / allreduce」一律先问是不是 rank 局部。**
-
-### 5.2 **用断点恢复现场量的 r，必须先确认塑性历史在场**（问题 19 的新教训）
-
-断点的 `checkpoint.FIELD_NAMES = ("u", "d", "d_old", "alpha_bar",
-"psi_plus_prev")` **不含 ε_p/p**。于是 resume 后 `ep_n ≡ 0`，
-而 `elastic_strain(u, g)` 读的是**已提交**的 `ep_n`
-（`plasticity.py:244-255`）→ ψ⁺ 按全量应变算 → **r 被高估 14%**
-（1.1441 vs 真实的 0.9994）。我因此误报了「真 bug」。
-
-**正确做法**：要么先跑若干显式周期让塑性发展（探针 33 的做法，
-`sol.commit_step()` 逐子步提交），要么明确在结论里标注
-「本数在 ep_n ≡ 0 下量得，可能偏高」。
-
-### 5.3 探针：解 d 之前必须先解一次 u
-
-```
-不解 u 直接解 d  -> SNES reason=+2, iters=0, max_d=0   ← 假的，空收敛
-先解 u 再解 d    -> iters=1, max_d=0.0836             ← 真的
-```
-
-两次残差几乎相同（差 0.5%），**不是**「ψ⁺ 读旧值」。
-真实推进（`solve_step`）总是 u/d 交替，不存在这条路径 ——
-但**你写探针时一定会不小心走到这条路径**，然后误以为「掩码把 d 压成 0 了」。
-
-### 5.4 探针：不要用清零当「重置状态」
-
-把 `u` 也清零 → u 的 Newton 直接 `SNES -4`（自相矛盾的初值）。
-**正确做法：保留 u，只清 d/d_old/ε_p/p**，然后重新解一次 u。
-
-### 5.5 探针：`tabulate_dof_coordinates()` 与 DG2 的 dof 顺序**不对齐**
-
-直接取会让 742104 个 dof 全落进 `|x| ≤ 3.5 mm`、且「1 mm 邻域」命中全部
-本地 dof（两个都不可能）。**把 x[0]/x[1] 插值成场再取**，同序才有保证，
-并加「坐标必须铺开到域宽」的自检断言。
-
-### 5.6 r 的三种口径差 5 倍，必须选接近求解器的那个
-
-```
-A  ψ⁺ 投 DG2 节点 + numpy f  : ψ⁺max = 4.886e5, r_max = 3.434  ← 插值假象，别用
-B  r 整条 UFL 投 DG0        : r_max = 0.668                    ← 接近求解器
-C  ψ⁺/ᾱ 投 DG0 + numpy f    : r_max = 0.668（与 B 逐位一致）
-```
-
-d 方程在 `solver.dx`（`quadrature_degree = PlasticLaw.quad_degree = 4`）的
-**求积点**上算，故 B/C 才是求解器看到的世界。**A 的 15 个 r>1 点是插值假象。**
-
-### 5.6b ⚠ 改 `mesh.edge_target` 会**静默连带改掉罚刚度**（E4 踩过）
-
-`clamp_case.py:424-427`：当 `mesh.edge_target` 与 `clamp_mesh.yaml` 的
-`element.edge_target` 不同时，`h_contact` 被自动改成
-`h_fine_eff × edge_ratio`（数值上就等于 `edge_target`），于是罚刚度
-`ε = κE/h_contact` **随加密同步翻倍**：
-
-    edge_target = 5.00 µm → h_contact = 5.00 µm → ε = 1.380e17
-    edge_target = 2.50 µm → h_contact = 2.50 µm → ε = 2.760e17   ← 翻倍
-    edge_target = 1.25 µm → h_contact = 1.25 µm → ε = 5.520e17   ← 四倍
-
-**做网格收敛性研究时必须显式钉死 `contact.h_contact`**（取基线值 5 µm），
-否则一次改了两个变量（网格 + 罚刚度），结论无效。
-第一版探针就这样在 δ* 延拓首步报 u 的 Newton `SNES -6` ——
-症状像「加密后发散」，实际是罚刚度翻倍把首步罚压力推爆。
-
-### 5.7 配置：`raw.get("model", {})` 可能返回 None
-
-YAML 里 `model:` 后面只有注释（没有实际键）会被解析成 **null**，
-而 `dict.get` 的默认值只管**键不存在**的情形。已修成 `raw.get("model") or {}`。
-同款隐患修过 `run_case.py:218`、`clamp_case.py:449/479`。
-
-### 5.8 dolfinx 0.11：DG0 与 P1 的 basix family **都是 P**
-
-区分 DG0 与 P1 **必须看 `basix_element.discontinuous`**，不能看 family
-（`FiniteElement` 也没有 `family_name` 属性，会 AttributeError）。
-
-### 5.9 环境：Bash 权限分类服务会长时间不可用
-
-2026-10-17 中午起 `claude-sonnet-5[1m] is temporarily unavailable (timed out)`
-持续约半小时，**连 `git commit` 都被挡**。简单命令（`echo`、`git add`）可用，
-所以容易误以为是自己的命令写错。**等待 + 重试即可，不是代码问题。**
-
-### 5.10 WSL 路径：`wsl -d Ubuntu-26 -- bash /root/...` 会被 Git Bash 改写
-
-报 `bash: C:/Program Files/Git/root/pf-wire/...: No such file or directory`。
-**用 `bash -lc '...'` 内联写法**，或写成脚本后用 `wsl -- bash -lc` 调。
-
-### 5.11 输出缓冲：管道 + 重定向会吃掉几小时的日志
-
-`... > log 2>&1 | tail` / `| grep` 都会块缓冲，跑几小时只留 3 行。
-**直接 `> /root/pf-wire/data/xxx.log 2>&1`**，且脚本里 `PYTHONUNBUFFERED=1`。
-
----
-
-## 6. 关键文件与入口
-
-| 用途 | 文件 |
-|---|---|
-| 主工况配置 | `configs/clamp_base_c_1um.yaml` |
-| 掩码实现 | `src/pfwire/mesh_h.py` |
-| 求解器/掩码接入 | `src/pfwire/phasefield.py`（`psi_plus_drive`、`set_damage_region`） |
-| 装配/配置读取 | `src/pfwire/clamp_case.py` |
-| cycle-jump/棘轮判定 | `src/pfwire/cyclejump.py`（`ShakedownConfig`、`classify_plastic_history`） |
-| 塑性（返回映射语义） | `src/pfwire/plasticity.py`（`update`/`commit`/`elastic_strain`，:244-255） |
-| 掩码测试 | `tests/test_damage_region.py`（14 项） |
-| jitter 测试 | `tests/test_shakedown_jitter.py`（6 项） |
-| **所有结论与实测数字** | `DECISIONS.md`（D-68 问题 1–21 +「6.6 范围决定」） |
-| 问题 21（塑性激活能裂） | `scripts/verify_plastic_crack.py`、`data/verify_plastic_crack/result.json` |
-| 断点 | `data/clamp_base_c_1um/`（`ckpt_0.bp` / `ckpt_1.bp`，各 265 MB） |
-| 运行日志 | `data/run_mask_jitter.log`（最后一次完整跑） |
-| 问题 19 探针 | `data/_probe_{r_at_n14352,r_masked,clusters_masked,cluster_profile}.py` |
-| 问题 19 日志 | `data/probe_{r_at_n14352,r_masked,clusters_masked,cluster_profile}.log` |
-| 路线 B 探针（误差棒） | `data/_probe_psi_errorbars.py` / `data/probe_psi_errorbars.log` |
-
-### 跑法
+`environment.yml` 里 `fenics-dolfinx=0.11.0` / `petsc=3.25.*=real_*` 已 pin 好。
+**dolfinx 版本是硬约束**（CLAUDE.md 硬约束 1）：0.9→0.11 有 API 改名
+（`dolfinx.io.gmshio` → `dolfinx.io.gmsh`，`LinearProblem`/`NonlinearProblem`
+新增必需关键字 `petsc_options_prefix`）。**不确定 API 先查源码 / `help()`，不凭记忆写。**
+
+### 1.2 建环境**只能用** `scripts/setup_env.sh`
 
 ```bash
-wsl -d Ubuntu-26 -- bash -lc 'source /root/miniforge3/etc/profile.d/conda.sh && conda activate pf-wire && cd /root/pf-wire && export OMP_NUM_THREADS=1 PYTHONUNBUFFERED=1 && mpirun -n 6 python -u -m pfwire.run_clamp configs/clamp_base_c_1um.yaml --resume'
+bash scripts/setup_env.sh
 ```
 
-⚠️ **绝不用 `-n 12`**（超线程超订，实测慢 33 倍且不报错）。单工况一律 `-n 6`。
+**不要裸跑 `conda env create`。** 两个包 conda-forge 上没有或版本不对：
 
-### 断点续跑须知
+| 包 | 问题 | 处理 |
+|---|---|---|
+| `adios4dolfinx` | conda-forge 最高 0.10.*，与 dolfinx 0.11 冲突；0.11 只在 PyPI | `pip install --no-deps --no-build-isolation adios4dolfinx==0.11.0` |
+| `dolfinx_contact` | conda-forge 没有，只能源码编译 | 见下 |
 
-`--resume` 会读 `data/clamp_base_c_1um/checkpoint.json` 指向的 slot。
-⚠ **断点里没有塑性历史 `ε_p`/`p`**（附带发现，见 DECISIONS.md）——
-自己写探针时别假设能恢复它，**这是问题 19 误判的直接原因，见 §5.2**。
+`dolfinx_contact` 来自 `Wells-Group/asimov-contact`，**钉死在 commit
+`f605fffdcabe470e6d20525c424aa985b36b3c42`**（不跟 main 漂，D-46）。
+`setup_env.sh` 会自动 clone 到 `.ext/asimov-contact`（该目录在 .gitignore 里，
+**不随仓库搬运**，必须由脚本重新拉）。
+
+**这个库要打两个补丁才装得上**（D-48），`setup_env.sh` 已内置：
+
+1. `find_package(Python ... Development.SABIModule ...)` —— 否则 nanobind 找不到 SABI
+2. `nanobind_add_module(... STABLE_ABI ...)` —— 否则产物是 `cpp.cpython-312-*.so`
+
+**为什么必须**：conda-forge 的 dolfinx 绑定是 **stable ABI**（`cpp.abi3.so`）。
+两者 ABI 不同就不共享 nanobind 类型注册表，`ContactProblem` 构造时报
+`incompatible function arguments ... dolfinx::mesh::MeshTags<int>`
+（签名里打印裸 C++ 类型名 = 认不出对方类型）。
+
+**装完必须验这一条**：
+
+```bash
+python -c 'import dolfinx_contact; print(dolfinx_contact.__file__)'
+# 必须是 cpp.abi3.so；若是 cpp.cpython-312-*.so 则 stable-ABI 补丁没生效
+```
+
+### 1.3 WSL 侧要重建的 ASCII 软链接
+
+项目路径含中文（`C:\Users\Administrator\Desktop\疲劳寿命`），
+**WSL 里一律走 ASCII 软链接** `/root/pf-wire`：
+
+```bash
+ln -sfn /mnt/c/Users/Administrator/Desktop/疲劳寿命 /root/pf-wire
+```
+
+⚠ **新机器上用户名可能不同**（不是 `Administrator`），路径要相应改。
+CLAUDE.md 里所有命令都假设 `/root/pf-wire` 存在，**不建就全部跑不了**。
+
+### 1.4 验收环境
+
+```bash
+wsl -d Ubuntu-26
+source /root/miniforge3/etc/profile.d/conda.sh && conda activate pf-wire
+cd /root/pf-wire
+pytest tests/test_env.py -q          # 必须全绿（含 PETSc real 变体断言）
+```
+
+### 1.5 机器与并行策略（新机器可能不同，务必重测）
+
+原机器：Xeon E5-1650 v4，**6 物理核 / 12 线程**（`nproc` 报 12 是超线程数）/ 47 GB。
+
+- **单工况用 `mpirun -n 6`**（一核一 rank），`OMP_NUM_THREADS=1`
+- ⚠⚠ **绝对不要用 `-n 12`**：超订物理核，MPICH 忙等下**塌方**。
+  2026-09-10 实测（CT 疲劳算例，5 个 jump 步）：`-n 6` 21 s、`-n 2` 49 s、
+  `-n 4` 70 s、**`-n 12` 约 700 s（慢 33 倍）**。
+  **各进程数结果逐位相同，只是慢 —— 不会报错、只会白等**，这是它难发现的地方。
+- ⚠ **接触（dolfinx_contact）目前只能串行**（CLAUDE.md 陷阱 5）。
+  `mpirun -n 6` 下接触检测失败，压下后 `P ≈ 5e-14`、上体穿过下体，**不报错**。
+  **6.6.3 的验收一律串行判**：`bash scripts/run_663_serial.sh`。
+- ⚠⚠ **`psi+` 的 DG-2 采样在并行下不可信**（D-68 问题 33 续 11，2026-10-25）：
+  同 config 同相位，串行 `max|psi+| = 7.06e5`（α_T 的 4.0 倍），
+  `mpirun -n 6` 给出 `1.02e10`（**57933 倍**），而 u 与 δ 同量级/逐位相同。
+  三个并行探针都崩在 `state.sample_psi_plus()`（`MPI_Abort(59)`）。
+
+> 新机器若核数不同，**重测一遍 `-n` 扫描再定策略**，不要照搬 6。
 
 ---
 
-## 7. 开工前的 checklist
+## 2. 把仓库搬过去（**当前没有 git remote，这是最大风险**）
 
-1. `git log --oneline -1` 确认在 Desktop 那个树里、且包含问题 21 / 6.6 范围决定的提交；
-2. 读 `DECISIONS.md` 的 D-68 问题 **20**（根因）+ **21**（模型能裂）
-   + 「**6.6 范围决定**」（用户已拍板选项 1）
-   + 问题 19 及续 1–3（d≡0 的依据链）+ 问题 12/13（掩码依据）；
-3. `pytest -q` 确认全绿（基线 551 项 + 1 skip，**不是早期的 615**）；
-4. 范围重估**已定**（选项 1，2026-10-19）—— 别再问，直接从 6.6.1 开始；
-5. 写探针前重读 §5.1–5.6b —— 这七个坑每个都吃过几小时到几十小时；
-6. **不要**再在求解器收敛、棘轮判据、网格加密上投入 —— 四个解释都已被排除。
-   6.5 只剩写结论（r_max = 0.9994 + h_max 敏感性表），不是新计算；
-7. 6.6 若仍不起裂，**先量 r_max 与门槛的距离**再怀疑求解器（问题 21
-   已证明模型链能算到 d = 1）；
-8. 跑摩擦接触前先看 PLAN 6.6.1 的风险注（罚接触可解边界 6.39 µm）。
+### 2.1 现状
+
+```
+分支     master（唯一分支）
+提交数   191
+remote   **无**（git remote -v 为空）
+```
+
+**没有远程仓库 = 仓库只存在于这台机器的 `C:\...\疲劳寿命\.git`（27 MB）。**
+硬盘坏了就全没了。
+
+### 2.2 推荐做法（二选一）
+
+**方案 A：先建远程，再在新机器 clone（推荐）**
+
+```bash
+# 旧机器：推到私有仓库（GitHub/Gitee/自建均可）
+git remote add origin <你的私有仓库地址>
+git push -u origin master
+```
+
+新机器上 `git clone` 即可，`DECISIONS.md` 的全部历史都在。
+
+**方案 B：整个目录拷贝**
+
+直接拷 `C:\Users\Administrator\Desktop\疲劳寿命` 整个目录（含 `.git`）。
+⚠ 若走 U 盘/FAT32，注意中文文件名与 2 GB 单文件限制。
+
+### 2.3 搬什么、不搬什么
+
+| 内容 | 大小 | 是否在 git 里 | 建议 |
+|---|---|---|---|
+| `src/` `tests/` `configs/` `scripts/` `*.md` `*.yml` | ~5 MB | ✅ 全部跟踪 | 随仓库走 |
+| `.git/` | 27 MB | — | 随仓库走 |
+| `data/` 里**已跟踪**的部分 | 7.3 MB | ✅ | 随仓库走（含 result.json、探针、日志） |
+| `data/**/*.bp/`（场数据） | ~1.9 GB | ❌ 被 .gitignore | **不用搬，可重算** |
+| `data/_*.py`（247 个一次性探针） | 小 | ❌ 被 .gitignore | **可选**。本轮关键的 11 个已强制入库 |
+| `data/_*.log`（83+ 个） | 小 | ❌ 被 .gitignore | 同上 |
+| `.ext/asimov-contact` | — | ❌ 被 .gitignore | **必须由 `setup_env.sh` 重新拉** |
+| `_probe_nitsche/`（4 个文件，24 KB） | 小 | ❌ 未跟踪 | 可选，Nitsche 预研残留 |
+
+⚠ **本轮新增的 11 个探针 + 8 个日志已经 `git add -f` 入库**
+（`.gitignore` 里有 `data/_*.py`，普通 `git add` 会被挡）。
+换机器后**不需要**再去找它们：
+
+```
+data/_probe_ckpt.py        data/_probe_u_loc.py      data/_probe_cyc.py
+data/_probe_coarse_cyc.py  data/_probe_fd_coarse.py  data/_probe_damp.py
+data/_probe_step.py        data/_probe_armijo.py     data/_probe_eta.py
+data/_probe_sign.py        data/_probe_fail_fast.py
++ data/probe_*.log 共 8 个
+```
+
+### 2.4 工作区里未提交的东西
+
+```
+M data/fretting_base/config.yaml    （max_iter 300→2000、加 initial_tilt_depth_over_a）
+M data/fretting_base/result.json    （-8901 行，看起来是被截断/重写过）
+?? configs/clamp_base_c_coarse.yaml （未跟踪；DECISIONS 引用它作「无摩擦基线」）
+?? _probe_nitsche/                  （Nitsche 预研残留）
+```
+
+⚠ **`data/fretting_base/result.json` 这个改动要留意**：删了 8901 行、
+`status` 还是 `"running"`，像是某次运行中途写的。**换机器前先决定
+是提交还是 `git checkout --` 丢弃**，别把它带成「已知状态」。
+它属于旧的 `fretting_base` 工况，与当前 6.6.3 无关。
+
+---
+
+## 3. 当前技术状态（必读，否则会重复已证伪的路）
+
+### 3.1 已经**正常**的部分
+
+```
+δ* 搜索     δ* = 2.72527e-05 m，W = 1.74844e6（目标 1.75e6，偏差 0.089%）
+κ 敏感性    κ=10→1，接触反力变化 2.624%（阈值 3%）
+```
+
+这两条说明**法向接触链路是好的**，问题不在那儿。
+
+### 3.2 卡点：6.6.3 的第一个开摩擦循环子步
+
+用 `configs/clamp_fretting_coarse.yaml`（`monolithic_friction: true`），
+粗网格 30480 单元，串行：
+
+```
+相位 0.00  ✅ 收敛（延拓末）
+相位 0.05  ❌ 单体 Newton 50 次不收敛，max|q| = 5.8e13（= μp 的 1e5 倍）
+```
+
+### 3.3 已**排除**的假设（都有实测，别再捡起来）
+
+| 假设 | 判据 | 结果 |
+|---|---|---|
+| Jacobian 算错 | 粗网格整块有限差分，rel ∝ ε | **否证**：rel = 6.241e-6（ε=1e-6），纯截断误差 |
+| η 光滑化造成残差地板 | `uzawa_eta_rel` 从 0.05 扫到 0.0005 | **否证**：残差 4.52e4 → 4.50e4，几乎不动 |
+| 方向 f（补 ε_t·(τ·du)(τ·v)） | 零插桩探针 | **否证**：UFL 自动求导的切向刚度不是 0（占比 4.6e-9），我加的那项是它的 **9.5e7 倍**，是凭空加弹簧 |
+| 并行特有的 ψ⁺ 采样问题 | 串行 vs `-n 6` 对照 | **已定位**，但不影响串行；6.6.3 走串行 |
+| 插桩能诊断 | 给 `uzawa_update` 插打印 | **否证**：插桩报告 `mu=0/lim=0/contact=0` **全是假象**（GC 与 mpi_jit 不同步），追了五轮假说。见 CLAUDE.md 陷阱 8 |
+
+### 3.4 真因（D-68 问题 33 续 19）
+
+单体格式把 Coulomb 投影写成点态残差方程：
+
+```
+F_q = q − clip_η(q − ε_t·s(u); μp, η) = 0
+```
+
+它的不动点条件 `q = Proj_{|q|≤μp}(q − ε_t·s)` 的**解析解**是：
+
+| 状态 | 条件 |
+|---|---|
+| 黏着 `\|q\| < μp` | 要求 **s = 0** |
+| 滑移 `q = +μp` | 要求 **s < 0** |
+| 滑移 `q = −μp` | 要求 **s > 0** |
+
+**滑移态要求 s 与 q 反号。** 而 `s = τ·(u − u_prev) − τ_x·x_clamp` 由 u 唯一决定，
+u 又要与「q = ±μp」的面力平衡 —— **这个组合一般无解**，`F_q` 没有根。
+
+实测证据（`data/probe_armijo.log`）：探针内实现 Armijo 回溯后，
+步长能被接受（θ=2e-3），残差却**卡在 4.8e4 不动**，
+同时 `max|q| → 1.358e8 ≈ μp`、`max|u| → 7.16e-5`（状态物理合理）。
+而该状态 `uzawa_update` 的 `rel = 0.97` ⇒ **不是**交错格式的不动点。
+
+⇒ **交错格式从不要求 `F_q = 0`**（它把残差当**更新量**），所以能工作；
+单体格式把它当**误差**，所以在滑移态必然卡住。这是「交错能跑、单体不能」的机制。
+
+### 3.5 已完成的修复（D-68 问题 33 续 20，提交 `f187dfa`）
+
+- `phasefield.MonolithicNotConverged(RuntimeError)`：携带 `reason/iterations/residual/tol`
+- `_solve_u_monolithic` 未收敛**立即抛**（原来只 warn，且 `log_iterations` 默认 False
+  ⇒ 生产配置下**连 warning 都没有**）
+- `cyclejump.ExplicitCycleFailed` + `step()` 转成 `accepted=False` 的 report
+  （`N` 不推进、`rejections=0`、`failure_mode` 写明相位）
+- 新增 `tests/test_solver_failure_surfaces.py`（7 项，秒级）
+
+**效果**：同一个点位现在**立刻**以
+`显式周期在相位 0.050 的 u 求解失败 —— reason=max_it，迭代 50 次，||F||=2.3e12`
+停下，而不是吐出 `alpha_bar = 3.29e31` 的假结果。
+
+---
+
+## 4. 测试基线（换机器后用来对拍）
+
+```bash
+pytest tests/ -q --ignore=tests/test_fretting.py \
+                --ignore=tests/test_fretting_restart.py \
+                --ignore=tests/test_clamp_case.py
+```
+
+**收集 632 项，6 项失败，全部在 `tests/test_clamp_friction.py`。**
+
+那 6 项失败是**既有问题，不是回归**（已用 `git stash` 把三处源码改动撤掉后
+重跑验证过，同样 6 项失败）：
+
+```
+test_G1_tangent_with_friction_and_plastic
+test_G3_G4_G5_coulomb_bounds_and_saturation
+test_H1_H4_partial_slip_and_slip_zone_location
+test_H2_H3_stick_halfwidth_shrinks_toward_mindlin
+test_I2_kappa_t_sensitivity
+test_I3_reaction_is_reproducible
+```
+
+失败信息统一是 `切向阶段不收敛（ux=1e-08，SNES reason=-6）` ——
+**交错切向路径的既有问题**，与单体/失败处理无关。要不要修属于单独议题。
+
+> 被 ignore 的三个文件是端到端算例级，很慢；需要时单独跑。
+
+---
+
+## 5. 下一步：三条路，**待用户拍板**
+
+续 19 留下的三选一，**(a) 已完成**，剩 (b) / (c)：
+
+### (b) 换 `F_q` 的表述，让滑移态有根 ⭐ 技术正解
+
+把点态残差改成**互补条件**形式，使滑移态也有根。候选：
+
+- Fischer–Burmeister 原始形式 `φ(a,b) = a + b − √(a²+b²) = 0`
+  （即 `min(a,b)=0` 的光滑化），配 `a = μp − q`、`b = μp + q` 之类的盒约束
+- 或直接写 `min(μp − q, max(−μp − q, ε_t·s))` 形式的互补残差
+
+⚠ **硬约束 2：所有公式必须来自 PLAN.md 或注释中给出文献出处，不自创公式。**
+`clamp_contact.py` 里已有 Fischer 1992 / Kanzow 1996 的引用
+（见 `smooth_clip` 的 docstring），是现成的出发点。
+**动手前先把出处补进注释，再写代码。**
+
+### (c) 放弃单体，回到交错
+
+交错格式在粗网格相位 0.05 之前是能跑的（tiny 网格 20 子步全绿）。
+但 D-68 问题 33 **续 13** 记的 **blocker B**（深度黏着下 u 的 SNES -5）会回来。
+那条路当时就是走不通才转向单体的。
+
+### (d) 还有一个未探索的角度
+
+续 13 记的 blocker B 与续 19 的「没有根」**可能是同一件事的两面**：
+交错在黏着态收敛慢/振荡，单体在滑移态没根。若能把**黏着态交给单体、
+滑移态交给交错**（或按 `|q|/μp` 分单元切换），也许绕开两边的病。
+⚠ 这只是猜想，**没有实测支撑**，列在这里是防止它被忘掉，不是建议直接做。
+
+---
+
+## 6. 工作约定（`CLAUDE.md` 的要点，务必遵守）
+
+### 流程
+
+> **每个子任务**：先给出函数签名和测试意图 → 用户确认 → 实现 → `pytest -q`
+> → 汇报（通过/失败、耗时、遗留问题）。每个子任务完成后 git commit，
+> message 写明子任务编号。
+
+### 硬约束（节选，全文见 CLAUDE.md）
+
+1. dolfinx 锁 **0.11.0**，不确定 API 先查源码，禁止 legacy FEniCS 写法
+2. **公式必须来自 PLAN.md 或有文献出处，不自创**
+3. 参数全在 `configs/*.yaml`，代码不出现魔数；单位统一 SI
+4. 每个模块有 pytest；有解析解的（Hertz/Mindlin/P–S/CIGRE/悬臂梁）必须比对
+5. 长算例支持断点续跑，sweep 跳过已完成工况
+6. **数值结果异常时停止并报告，不为「跑通」随意调参** ← 本轮严格遵守了这条
+7. 不做 PLAN.md 明确排除的内容
+
+### 最容易踩的坑（全文见 CLAUDE.md「已知陷阱」）
+
+1. **BC 必须建在求解器自己的函数空间上**（否则矩阵缺约束变奇异，
+   而 MUMPS 仍返回 `KSPConvergedReason>0`，得到 1e8 量级的垃圾解）
+2. **PyYAML 是 YAML 1.1**：`500e6` / `1.0e8`（指数不带符号）会被解析成**字符串**
+3. **并行下不要写按 rank 局部的断言**（`facets.size > 0`、`x.array.size` 都依赖分区）
+4. **Amor/spectral 分解使 u 问题实际非线性**；用 `u_solver="linear"` 时必须确认
+   `sign_flips == 0`
+5. **接触只能串行**；⚠ **`psi+` 的 DG-2 采样在并行下不可信**
+6. **并行下造临时目录，路径必须 rank 0 生成后 bcast**（否则 adios4dolfinx 死锁，
+   不报错只白等）。DG0 的 `x.array` 含 ghost，统计前要切 `[:size_local]`
+7. **从 Windows 侧进 WSL 跑脚本，循环变量与路径会被 Git Bash 吃掉**：
+   `wsl ... bash -lc 'for w in ...; do ...'` 里 `$w` 会先被外层展开成空；
+   `/root/...` 会被 MSYS 改写成 `C:/Program Files/Git/root/...`。
+   **正确做法**：脚本写到项目里，用
+   `wsl -d Ubuntu-26 bash -lc 'bash /root/pf-wire/data/_x.sh'` 跑
+8. ⚠⚠ **不要往求解器方法里插代码做诊断 —— 插桩会污染被测对象**。
+   2026-10-25 实证：给 `uzawa_update` 插打印，报告 `mu=0/lim=0/contact=0`
+   **全是假象**，据此追了五轮假说全错。**定位数值问题用零插桩探针**
+   （调公开 API 拿状态，在**探针里**复算源码公式并与真实调用结果对照）。
+   真要在源码里插，先用 `gc.disable()` 包住（`tests/conftest.py` 有先例）。
+
+### 本轮补充的两条经验
+
+9. **验证「失败处理」的探针本身不能被前一次失败污染**。
+   一次失败会就地改写 u/q，**抄回数组恢复不了全部状态**。
+   要么每次重建 case，要么把最强的断言放最前面、从干净状态起步。
+   （本轮第一次跑验收探针就踩了：误报「failure_mode 没带相位」。）
+
+10. **`.gitignore` 里有 `data/_*.py`**。要保留探针必须 `git add -f`。
+    「值得留的结论写进 DECISIONS.md，值得留的检查写成 tests/ 里的回归」——
+    这是项目既有约定，探针只是脚手架。
+
+---
+
+## 7. 换机器后的验收清单
+
+按顺序做完，确认「无缝衔接」：
+
+```bash
+# 1. 环境
+wsl -d Ubuntu-26
+source /root/miniforge3/etc/profile.d/conda.sh && conda activate pf-wire
+cd /root/pf-wire
+
+# 2. 版本对拍（必须与 §1.1 一致）
+python -c "import dolfinx, petsc4py, numpy, scipy, adios4dolfinx, basix
+print('dolfinx', dolfinx.__version__); print('petsc4py', petsc4py.__version__)
+print('numpy', numpy.__version__); print('scipy', scipy.__version__)
+print('adios4dolfinx', adios4dolfinx.__version__); print('basix', basix.__version__)"
+
+# 3. dolfinx_contact 必须是 abi3
+python -c "import dolfinx_contact; print(dolfinx_contact.__file__)"
+
+# 4. 环境自检
+pytest tests/test_env.py -q
+
+# 5. 本轮新增的失败处理测试
+pytest tests/test_solver_failure_surfaces.py -q     # 7 passed
+
+# 6. 全量基线（期望 632 收集 / 6 failed，且失败全在 test_clamp_friction.py）
+pytest tests/ -q --ignore=tests/test_fretting.py \
+                --ignore=tests/test_fretting_restart.py \
+                --ignore=tests/test_clamp_case.py
+
+# 7. git 状态
+git log --oneline -3        # 应看到 f187dfa / f6170b3
+git status                  # 应只有 §2.4 那几个未提交项
+```
+
+**全部对上 = 衔接完成。** 然后回到 §5，等用户决定 (b) 还是 (c)。
+
+---
+
+## 8. 一句话给新会话
+
+> 6.6.3 卡在「单体 Newton 在滑移态没有根」，已排除 Jacobian / η / 并行 / 方向 f
+> 四个方向（都有实测）。失败处理刚修好（`f187dfa`），现在会明确失败而不是
+> 吐出 `alpha_bar = 3.29e31` 的假结果。**下一步是换 `F_q` 的表述或回交错，
+> 等用户拍板。动手前先读 `DECISIONS.md` 的 D-68 问题 33 续 13~20。**

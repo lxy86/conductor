@@ -4,6 +4,15 @@
 见 PLAN.md：FEniCSx 相场疲劳模型预测铝单丝微动疲劳寿命。只做 PLAN.md 中列出的内容，
 按 Phase 顺序推进，每完成一个子任务在 PLAN.md 勾选。
 
+## ⚠ 接手前先读
+**`HANDOFF.md`**（2026-10-26，提交 `f187dfa`）—— 当前进度、换机器的环境重建步骤、
+已证伪的假设清单、测试基线。**再读 `DECISIONS.md` 的 D-68 问题 33 续 13~20**
+（当前工作的全部上下文）。
+
+**一句话状态**：6.6.3 卡在「单体 Newton 在滑移态没有根」（格式缺陷，非调参可解）。
+失败处理刚修好，现在会明确失败而非吐出 `alpha_bar = 3.29e31` 的假结果。
+下一步是换 `F_q` 的表述或回交错，**等用户拍板**。
+
 ## 环境
 WSL2 `Ubuntu-26` 里的 conda 环境 `pf-wire`，dolfinx **0.11.0**（real PETSc）。
 所有命令在此环境运行：
@@ -104,6 +113,19 @@ cd /root/pf-wire   # 指向 C:\Users\Administrator\Desktop\疲劳寿命 的 ASCI
    调公开 API 拿到状态，再在**探针里**复算源码的公式并与真实调用结果对照。
    真要在源码里插，先用 `gc.disable()` 包住（`tests/conftest.py` 已有先例）。
 
+9. **验证「失败处理」的探针本身不能被前一次失败污染**（2026-10-26）。
+   一次失败会**就地改写** u/q，而「把数组抄回去」**恢复不了全部状态**
+   （滑移基准、内部迭代量都在变）。本轮第一次跑验收探针就踩了：
+   检查 (1) 故意触发失败后抄回 u/q 去跑检查 (3)，结果在相位 0 就失败，
+   误报「failure_mode 没带相位」——差点以为修复没生效。
+   **正确做法**：要么每次重建 case，要么把**最强的断言放最前面**、
+   从干净状态起步。同类：陷阱 8 的「诊断工具扰动被测对象」。
+
+10. **`.gitignore` 有 `data/_*.py` 与 `data/_*.log`**：要保留探针/日志必须
+    `git add -f`。项目既有约定是「值得留的结论写进 DECISIONS.md，
+    值得留的检查写成 tests/ 里的回归」——探针只是脚手架，
+    但**证明某个结论的探针要入库**，否则换机器后无法复现。
+
 
 ## 工作流
 - 每个子任务：先给出函数签名和测试意图 → 用户确认 → 实现 → `pytest -q` → 汇报
@@ -118,3 +140,10 @@ cd /root/pf-wire   # 指向 C:\Users\Administrator\Desktop\疲劳寿命 的 ASCI
 - Phase 2: `python -m pfwire.run_case configs/fretting_base.yaml`
            `python scripts/make_sweep.py && bash scripts/run_sweep.sh`
 - Phase 3: `python -m pfwire.postproc --all`
+- **6.6.3（当前卡点）**：`bash scripts/run_663_serial.sh`（**必须串行**，见陷阱 5）
+- **回归基线**（2026-10-26）：
+  `pytest tests/ -q --ignore=tests/test_fretting.py --ignore=tests/test_fretting_restart.py --ignore=tests/test_clamp_case.py`
+  → 收集 **632** 项、**6 failed**，全部在 `tests/test_clamp_friction.py`
+  （`切向阶段不收敛（ux=1e-08，SNES reason=-6）`，**既有问题、非回归**，
+  已用 `git stash` 撤掉改动重跑验证过）。**失败数超过 6 就是新回归。**
+- 失败处理专项：`pytest tests/test_solver_failure_surfaces.py -q`（7 项，秒级）
